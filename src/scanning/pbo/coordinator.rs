@@ -1,15 +1,12 @@
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{info, warn};
-use rayon::prelude::*;
 use walkdir::WalkDir;
 
-use super::types::{ScanDatabase, PboScanResult};
-use super::prescanner::PreScanner;
-use super::processor::PboProcessor;
 use crate::commands::ScanPboArgs;
+use super::{PreScanner, PboProcessor};
+use super::super::types::ScanDatabase;
 
 pub struct ScanCoordinator {
     args: ScanPboArgs,

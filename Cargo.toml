@@ -5,20 +5,29 @@ edition = "2024"
 
 [dependencies]
 pbo_tools = { path = "../pbo_tools" }
-clap = { version = "4.4", features = ["derive"] }
-tokio = { version = "1.0", features = ["full"] }
-walkdir = "2.4"
-log = "0.4"
-env_logger = "0.10"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.10"
-anyhow = "1.0"
-rayon = "1.8"
-indicatif = { version = "0.17", features = ["rayon"] }
+cpp_parser = { path = "../cpp_parser" }
+sqm_parser = { path = "../sqm_parser" }
+sqf_parser = { path = "../sqf_parser" }
+clap = { version = "4.5.31", features = ["derive"] }
+tokio = { version = "1.43.0", features = ["full"] }
+futures = "0.3.31"
+walkdir = "2.5.0"
+log = "0.4.26"
+env_logger = "0.11.6"
+serde = { version = "1.0.218", features = ["derive"] }
+serde_json = "1.0.139"
+sha2 = "0.10.8"
+anyhow = "1.0.96"
+rayon = "1.10.0"
+indicatif = { version = "0.17.11", features = ["rayon"] }
+
+[dev-dependencies]
+test-case = "3.3.1"
+pretty_assertions = "1.4.1"
 
 [lints.rust]
 dead_code = "allow"
 unused_parens = "allow"
 unused_imports = "allow"
 unused_variables = "allow"
+unused_mut = "allow"

@@ -11,8 +11,8 @@ use pbo_tools::{
     core::config::PboConfig,
 };
 
-use super::types::{ScanDatabase, PboScanResult, SkipReason};
 use super::utils::count_matching_files;
+use super::super::types::{ScanDatabase, PboScanResult, SkipReason};
 
 pub struct PboProcessor<'a> {
     input_dir: &'a Path,

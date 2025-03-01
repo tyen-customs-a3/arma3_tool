@@ -1,0 +1,16 @@
+cargo build --release && .\arma3_tool.exe scan-pbos -i "e:/pcanext" -c "./cache_pcanext" -e "cpp,hpp" -t 8
+
+
+
+cargo build --release && .\arma3_tool.exe scan-classes --input-dir .\cache_pcanext\ --output-file class_report.txt
+
+$env:RUST_LOG='trace'; cd D:\pca\git\dep\rs\arma3_tool; cargo run --release -- scan-pbos -i "e:/pca_quick" -c "./cache" -e "cpp,hpp" -t 8  
+$env:RUST_LOG='trace'; cd D:\pca\git\dep\rs\arma3_tool; cargo run --release -- scan-classes --input-dir "./cache" --output-file "output.txt"
+
+$env:RUST_LOG='trace'; cd D:\pca\git\dep\rs\arma3_tool; cargo run --release -- scan-classes --input-dir "./cache" --output-dir "./output"
+
+
+
+cargo run --release -- scan-pbos -i "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" -c "./cache/a3" -e "cpp,hpp,bin" -t 8
+cargo run --release -- scan-classes --input-dir "./a3_cache" --output-dir "./a3_cache_output"
+cargo run --release -- scan-classes --input-dir "./cache/a3" --output-dir "./cache/a3_output"
