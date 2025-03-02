@@ -68,6 +68,14 @@ impl ClassReportWriter {
         Ok(path)
     }
     
+    /// Write a report for circular dependencies in class hierarchy
+    pub fn write_circular_dependencies_report<T: Serialize>(&self, circular_deps: &T) -> Result<PathBuf> {
+        let path = self.base.write_report(circular_deps, "circular_dependencies")?;
+        info!("Wrote circular dependencies report to {}", path.display());
+        
+        Ok(path)
+    }
+    
     /// Write a report for a specific class category
     pub fn write_category_report<T: Serialize>(&self, category: &str, classes: &T) -> Result<PathBuf> {
         let filename = format!("category_{}", sanitize_filename(category));
@@ -117,8 +125,20 @@ pub struct ClassHierarchy {
 }
 
 /// Node in class hierarchy
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ClassNode {
     pub name: String,
     pub children: Vec<ClassNode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub circular_ref: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_circular: bool,
+}
+
+/// Circular dependency information for reporting
+#[derive(Serialize)]
+pub struct CircularDependency {
+    pub class_name: String,
+    pub parent_class: String,
+    pub cycle_path: Vec<String>,
 } 

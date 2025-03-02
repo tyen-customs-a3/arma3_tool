@@ -100,6 +100,24 @@ impl DependencyReportWriter {
         
         Ok(output_path)
     }
+    
+    /// Write a report for class inheritance relationships relevant to missions
+    pub fn write_inheritance_report<T: Serialize>(&self, inheritance_data: &T) -> Result<PathBuf> {
+        let output_path = self.base.write_report(inheritance_data, "class_inheritance")?;
+        
+        info!("Wrote class inheritance report to {}", output_path.display());
+        
+        Ok(output_path)
+    }
+    
+    /// Write a report for class compatibility issues with detailed diagnostics
+    pub fn write_compatibility_diagnostics_report<T: Serialize>(&self, diagnostics_data: &T) -> Result<PathBuf> {
+        let output_path = self.base.write_report(diagnostics_data, "compatibility_diagnostics")?;
+        
+        info!("Wrote compatibility diagnostics report to {}", output_path.display());
+        
+        Ok(output_path)
+    }
 }
 
 /// Dependency summary item for reporting
@@ -110,6 +128,7 @@ pub struct DependencySummaryItem {
     pub missing_classes: usize,
     pub available_classes: usize,
     pub missing_class_percentage: f64,
+    pub inheritance_matches: usize,
 }
 
 /// Dependency summary for reporting
@@ -117,6 +136,7 @@ pub struct DependencySummaryItem {
 pub struct DependencySummary {
     pub total_missions: usize,
     pub missions: Vec<DependencySummaryItem>,
+    pub overall_compatibility: f64,
 }
 
 /// Missing classes report
@@ -132,6 +152,8 @@ pub struct MissingClassDetail {
     pub class_name: String,
     pub used_in_missions: Vec<String>,
     pub usage_count: usize,
+    pub possible_alternatives: Vec<String>,
+    pub inheritance_path: Option<Vec<String>>,
 }
 
 /// Class usage frequency report
@@ -148,6 +170,8 @@ pub struct ClassUsageDetail {
     pub used_in_missions: Vec<String>,
     pub usage_count: usize,
     pub is_available: bool,
+    pub available_through_inheritance: bool,
+    pub parent_classes: Option<Vec<String>>,
 }
 
 /// Mission compatibility report
@@ -163,8 +187,23 @@ pub struct MissionCompatibility {
     pub compatibility_score: f64,
     pub required_classes: usize,
     pub available_classes: usize,
+    pub available_through_inheritance: usize,
     pub missing_classes: usize,
     pub critical_missing_classes: Vec<String>,
+    pub compatibility_level: CompatibilityLevel,
+}
+
+/// Compatibility level enum
+#[derive(Serialize)]
+pub enum CompatibilityLevel {
+    #[serde(rename = "high")]
+    High,    // 90-100% compatibility
+    #[serde(rename = "medium")]
+    Medium,  // 70-90% compatibility
+    #[serde(rename = "low")]
+    Low,     // 50-70% compatibility
+    #[serde(rename = "incompatible")]
+    Incompatible, // <50% compatibility
 }
 
 /// Category needs report
@@ -181,4 +220,46 @@ pub struct CategoryNeedDetail {
     pub total_classes_needed: usize,
     pub available_classes: usize,
     pub missing_classes: usize,
+    pub available_through_inheritance: usize,
+}
+
+/// Class inheritance report
+#[derive(Serialize)]
+pub struct ClassInheritanceReport {
+    pub inheritance_relationships: Vec<InheritanceRelationship>,
+}
+
+/// Inheritance relationship details
+#[derive(Serialize)]
+pub struct InheritanceRelationship {
+    pub class_name: String,
+    pub parent_classes: Vec<String>,
+    pub used_in_missions: Vec<String>,
+    pub is_available: bool,
+}
+
+/// Compatibility diagnostics report
+#[derive(Serialize)]
+pub struct CompatibilityDiagnosticsReport {
+    pub mission_diagnostics: Vec<MissionDiagnostics>,
+}
+
+/// Mission diagnostics details
+#[derive(Serialize)]
+pub struct MissionDiagnostics {
+    pub mission_name: String,
+    pub class_diagnostics: Vec<ClassDiagnostic>,
+}
+
+/// Class diagnostic details
+#[derive(Serialize)]
+pub struct ClassDiagnostic {
+    pub class_name: String,
+    pub is_available: bool,
+    pub available_through_inheritance: bool,
+    pub inheritance_path: Option<Vec<String>>,
+    pub source_file: Option<String>,
+    pub line_number: Option<usize>,
+    pub context: Option<String>,
+    pub suggested_alternatives: Vec<String>,
 } 

@@ -48,11 +48,11 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
     let mods_extracted = Path::new(&mods_cache_dir).exists() && 
         fs::read_dir(&mods_cache_dir)?.next().is_some();
     
-    let mission_reports_dir = reports_dir.join("mission_reports");
+    let missions_output_dir = reports_dir.join("missions");
     let missions_extracted = Path::new(&missions_cache_dir).exists() && 
         fs::read_dir(&missions_cache_dir)?.next().is_some() &&
-        Path::new(&mission_reports_dir).exists() &&
-        fs::read_dir(&mission_reports_dir)?.next().is_some();
+        Path::new(&missions_output_dir).exists() &&
+        fs::read_dir(&missions_output_dir)?.next().is_some();
     
     let a3_classes_dir = reports_dir.join("a3_base_classes");
     let a3_classes_exist = Path::new(&a3_classes_dir).exists() && 
@@ -96,7 +96,7 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
         let missions_args = crate::commands::ScanMissionsArgs {
             input_dir: args.missions_dir.clone(),
             cache_dir: missions_cache_dir.clone(),
-            output_dir: mission_reports_dir.clone(),
+            output_dir: reports_dir.join("missions"), // Use a direct "missions" folder instead of "mission_reports"
             threads: args.threads,
         };
         scan_missions(missions_args).await?;
@@ -133,27 +133,24 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
     
     // Step 5: Analyze dependencies
     info!("Step 5/5: Analyzing dependencies");
-    let analysis_cache_dir = args.cache_dir.join("analysis");
-    let analysis_reports_dir = reports_dir.join("analysis_reports");
     
-    // Make sure the analysis directories exist
-    fs::create_dir_all(&analysis_cache_dir)?;
-    fs::create_dir_all(&analysis_reports_dir)?;
+    // Create the missions output directory
+    let missions_output_dir = reports_dir.join("missions");
+    fs::create_dir_all(&missions_output_dir)?;
     
     let analysis_args = crate::commands::AnalyzeMissionDependenciesArgs {
         mission_dir: args.missions_dir,
         addon_dir: args.cache_dir.clone(),
-        cache_dir: analysis_cache_dir,
-        output_dir: analysis_reports_dir,
+        cache_dir: args.cache_dir.clone(), // Use the main cache directory instead of creating a separate analysis cache
+        output_dir: missions_output_dir.clone(), // Use the missions directory directly
         threads: args.threads,
     };
     analyze_mission_dependencies(analysis_args).await?;
     
     info!("Full analysis complete! Reports are available in {}", reports_dir.display());
     info!("Summary of reports:");
-    info!("  - Mission reports: {}", mission_reports_dir.display());
+    info!("  - Mission reports: {}", missions_output_dir.display());
     info!("  - Class reports: {}/a3_base_classes and {}/mods_classes", reports_dir.display(), reports_dir.display());
-    info!("  - Dependency analysis: {}/analysis_reports", reports_dir.display());
     
     Ok(())
 }

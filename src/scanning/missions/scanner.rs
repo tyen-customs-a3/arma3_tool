@@ -7,6 +7,7 @@ use pbo_tools::core::api::{PboApi, PboApiOps};
 use walkdir::WalkDir;
 use rayon::prelude::*;
 use serde::{Serialize, Deserialize};
+use std::collections::HashSet;
 
 use crate::scanning::types::{ScanDatabase, PboScanResult, SkipReason};
 use super::extractor::MissionExtractor;
@@ -18,6 +19,9 @@ pub struct MissionExtractionResult {
     pub extracted_path: PathBuf,
     pub sqm_file: Option<PathBuf>,
     pub sqf_files: Vec<PathBuf>,
+    pub cpp_files: Vec<PathBuf>,
+    // Track class dependencies directly during extraction for optimization
+    pub direct_class_references: HashSet<String>, 
 }
 
 pub struct MissionScanner<'a> {
@@ -85,7 +89,7 @@ impl<'a> MissionScanner<'a> {
         
         info!("{} mission PBOs need extraction", scan_results.len());
         
-        // Extract PBOs
+        // Extract PBOs - only extract files needed for analysis, not the entire mission
         let extractor = MissionExtractor::new(self.cache_dir, self.threads);
         let extraction_results = extractor.extract_missions(&scan_results, progress)
             .context("Failed to extract mission PBOs")?;
@@ -94,8 +98,7 @@ impl<'a> MissionScanner<'a> {
         let db_path = self.cache_dir.join("mission_scan_db.json");
         {
             let db = self.db.lock().unwrap();
-            db.save(&db_path)
-                .context("Failed to save mission scan database")?;
+            db.save(&db_path)?;
         }
         
         Ok(extraction_results)
@@ -161,8 +164,29 @@ impl<'a> MissionScanner<'a> {
                     let db = self.db.lock().unwrap();
                     match db.get_pbo_info(path) {
                         Some(info) if info.hash == hash && !info.failed => {
-                            debug!("Skipping unchanged mission PBO: {}", path.display());
-                            false
+                            // Check if the extracted directory actually exists and has files
+                            let extracted_path = self.cache_dir.join(path.file_name().unwrap())
+                                .with_extension("");
+                            
+                            if extracted_path.exists() {
+                                // Check if the directory has any files
+                                let has_files = walkdir::WalkDir::new(&extracted_path)
+                                    .max_depth(3)
+                                    .into_iter()
+                                    .filter_map(|e| e.ok())
+                                    .any(|e| e.file_type().is_file());
+                                
+                                if has_files {
+                                    debug!("Skipping unchanged mission PBO: {}", path.display());
+                                    false
+                                } else {
+                                    debug!("Extraction directory exists but is empty for {}, re-extracting", path.display());
+                                    true
+                                }
+                            } else {
+                                debug!("Extraction directory doesn't exist for {}, re-extracting", path.display());
+                                true
+                            }
                         }
                         _ => true
                     }
@@ -172,26 +196,64 @@ impl<'a> MissionScanner<'a> {
                     return None;
                 }
                 
+                // If we need to process this PBO, delete the target directory if it exists
+                let extracted_path = self.cache_dir.join(path.file_name().unwrap())
+                    .with_extension("");
+                
+                if extracted_path.exists() {
+                    debug!("Removing existing extraction directory for {}", path.display());
+                    if let Err(e) = std::fs::remove_dir_all(&extracted_path) {
+                        warn!("Failed to remove existing extraction directory {}: {}", extracted_path.display(), e);
+                        // Continue anyway, the extraction might still work
+                    }
+                }
+                
                 // List PBO contents to check for mission files
                 let api = PboApi::builder()
                     .with_timeout(30)
+                    .with_config(pbo_tools::core::config::PboConfig::default())
                     .build();
                 
                 match api.list_contents(path) {
                     Ok(result) => {
                         if result.is_success() {
-                            let files: Vec<String> = result.get_file_list()
-                                .into_iter()
+                            let files = result.get_file_list();
+                            
+                            // Check for mission.sqm file (case insensitive)
+                            let has_mission_sqm = files.iter().any(|f| {
+                                let file_name = Path::new(f).file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("");
+                                file_name.to_lowercase() == "mission.sqm"
+                            });
+                            
+                            // Also collect SQF files and other mission-related files
+                            let mission_files: Vec<String> = files.into_iter()
                                 .filter(|f| {
                                     let ext = Path::new(f)
                                         .extension()
                                         .and_then(|e| e.to_str())
                                         .unwrap_or("");
-                                    ext == "sqm" || ext == "sqf"
+                                    ext.eq_ignore_ascii_case("sqm") || 
+                                    ext.eq_ignore_ascii_case("sqf") ||
+                                    ext.eq_ignore_ascii_case("hpp") ||
+                                    ext.eq_ignore_ascii_case("cpp") ||
+                                    ext.eq_ignore_ascii_case("fsm")
                                 })
                                 .collect();
                             
-                            if files.is_empty() {
+                            if !has_mission_sqm {
+                                debug!("PBO doesn't contain mission.sqm: {}", path.display());
+                                let mut db = self.db.lock().unwrap();
+                                db.update_pbo_with_reason(
+                                    path,
+                                    &hash,
+                                    false,
+                                    SkipReason::NoMatchingFiles
+                                );
+                                None
+                            } else if mission_files.is_empty() {
+                                debug!("PBO doesn't contain any mission files: {}", path.display());
                                 let mut db = self.db.lock().unwrap();
                                 db.update_pbo_with_reason(
                                     path,
@@ -201,9 +263,10 @@ impl<'a> MissionScanner<'a> {
                                 );
                                 None
                             } else {
+                                debug!("Found {} mission files in {}", mission_files.len(), path.display());
                                 Some(PboScanResult {
                                     path: path.clone(),
-                                    expected_files: files,
+                                    expected_files: mission_files,
                                     hash,
                                 })
                             }
@@ -270,6 +333,20 @@ impl<'a> MissionScanner<'a> {
                 .map(|e| e.path().to_owned())
                 .collect();
             
+            // Find CPP/HPP files
+            let cpp_files: Vec<PathBuf> = WalkDir::new(&extracted_path)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let ext = e.path()
+                        .extension()
+                        .and_then(|ext| ext.to_str())
+                        .unwrap_or("");
+                    ext.eq_ignore_ascii_case("cpp") || ext.eq_ignore_ascii_case("hpp")
+                })
+                .map(|e| e.path().to_owned())
+                .collect();
+            
             let mission_name = path.file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown")
@@ -281,9 +358,11 @@ impl<'a> MissionScanner<'a> {
                 extracted_path,
                 sqm_file,
                 sqf_files,
+                cpp_files,
+                direct_class_references: HashSet::new(), // Initialize with empty set
             });
         }
         
         Ok(results)
     }
-} 
+}

@@ -65,20 +65,23 @@ impl<'a> PboProcessor<'a> {
         let config = PboConfig::default(); // Get default config with binary mappings
         let api = PboApi::builder()
             .with_config(config.clone())
-            .with_timeout(30)
+            .with_timeout(60) // Increase timeout for larger PBOs
             .build();
 
         // Create a combined filter that includes both target extensions and binary files
+        // Also include mission-specific file types
         let bin_exts = vec!["bin", "binpbo"]; // Add binary extensions
+        let mission_exts = vec!["sqm", "sqf", "hpp", "cpp", "fsm", "h", "inc", "ext"]; // Add mission file extensions
         let mut all_exts = self.extensions.split(',').collect::<Vec<_>>();
         all_exts.extend(bin_exts.iter());
+        all_exts.extend(mission_exts.iter());
         let filter = format!("*.{{{}}}", all_exts.join(","));
 
         let options = ExtractOptions {
             no_pause: true,
             warnings_as_errors: false,
             file_filter: Some(filter),
-            verbose: false,
+            verbose: true, // Enable verbose output for better debugging
             ..Default::default()
         };
 
@@ -90,16 +93,87 @@ impl<'a> PboProcessor<'a> {
                 let mut db = self.db.lock().unwrap();
                 if result.is_success() {
                     // After extraction, we need to check both original extensions and converted files
-                    match count_matching_files(&output_dir, &format!("{},cpp", self.extensions)) {
+                    // Include mission file types in the check
+                    let check_extensions = format!("{},cpp,sqm,sqf,hpp,fsm", self.extensions);
+                    match count_matching_files(&output_dir, &check_extensions) {
                         Ok(final_files) => {
                             let new_files = final_files - initial_files;
                             if new_files == 0 {
-                                db.update_pbo_with_reason(
-                                    &scan_result.path, 
-                                    &scan_result.hash, 
-                                    true, 
-                                    SkipReason::Failed
-                                );
+                                // Try again with no file filter
+                                info!("No files extracted with filter, trying without filter for: {}", 
+                                      scan_result.path.display());
+                                
+                                let permissive_options = ExtractOptions {
+                                    no_pause: true,
+                                    warnings_as_errors: false,
+                                    file_filter: None, // Extract all files
+                                    verbose: true,
+                                    ..Default::default()
+                                };
+                                
+                                match api.extract_with_options(&scan_result.path, &output_dir, permissive_options) {
+                                    Ok(retry_result) => {
+                                        if retry_result.is_success() {
+                                            match count_matching_files(&output_dir, &check_extensions) {
+                                                Ok(retry_files) => {
+                                                    let retry_new_files = retry_files - initial_files;
+                                                    if retry_new_files == 0 {
+                                                        warn!("Failed to extract any files from {} after retry", 
+                                                              scan_result.path.display());
+                                                        db.update_pbo_with_reason(
+                                                            &scan_result.path, 
+                                                            &scan_result.hash, 
+                                                            true, 
+                                                            SkipReason::Failed
+                                                        );
+                                                    } else {
+                                                        info!("Successfully extracted {} files on retry from: {}", 
+                                                              retry_new_files, 
+                                                              scan_result.path.display());
+                                                        db.update_pbo_with_reason(
+                                                            &scan_result.path, 
+                                                            &scan_result.hash, 
+                                                            false, 
+                                                            SkipReason::None
+                                                        );
+                                                    }
+                                                },
+                                                Err(e) => {
+                                                    warn!("Failed to verify extracted files on retry from {}: {}", 
+                                                          scan_result.path.display(), 
+                                                          e);
+                                                    db.update_pbo_with_reason(
+                                                        &scan_result.path, 
+                                                        &scan_result.hash, 
+                                                        true, 
+                                                        SkipReason::Failed
+                                                    );
+                                                }
+                                            }
+                                        } else {
+                                            warn!("Retry extraction failed for: {} - {}", 
+                                                  scan_result.path.display(), 
+                                                  retry_result);
+                                            db.update_pbo_with_reason(
+                                                &scan_result.path, 
+                                                &scan_result.hash, 
+                                                true, 
+                                                SkipReason::Failed
+                                            );
+                                        }
+                                    },
+                                    Err(e) => {
+                                        warn!("Failed to retry extraction for {}: {}", 
+                                              scan_result.path.display(), 
+                                              e);
+                                        db.update_pbo_with_reason(
+                                            &scan_result.path, 
+                                            &scan_result.hash, 
+                                            true, 
+                                            SkipReason::Failed
+                                        );
+                                    }
+                                }
                                 return Ok(());
                             }
                             

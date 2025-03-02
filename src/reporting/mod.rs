@@ -44,6 +44,11 @@ impl BaseReportWriter {
     pub fn output_dir(&self) -> &Path {
         &self.output_dir
     }
+    
+    /// Get the report format
+    pub fn format(&self) -> ReportFormat {
+        self.format
+    }
 }
 
 impl ReportWriter for BaseReportWriter {
