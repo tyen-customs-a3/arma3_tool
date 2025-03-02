@@ -42,57 +42,104 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
     fs::create_dir_all(&missions_cache_dir)?;
     fs::create_dir_all(&reports_dir)?;
     
-    // Step 1: Scan Arma 3 base game files
-    info!("Step 1/5: Scanning Arma 3 base game files");
-    let a3_pbo_args = crate::commands::ScanPboArgs {
-        input_dir: args.arma3_dir.clone(),
-        cache_dir: a3_cache_dir.clone(),
-        extensions: "hpp,cpp,sqf,sqm".to_string(),
-        threads: args.threads,
-    };
-    scan_pbos(a3_pbo_args).await?;
+    // Check if we have already extracted data
+    let a3_extracted = Path::new(&a3_cache_dir).exists() && 
+        fs::read_dir(&a3_cache_dir)?.next().is_some();
+    let mods_extracted = Path::new(&mods_cache_dir).exists() && 
+        fs::read_dir(&mods_cache_dir)?.next().is_some();
     
-    // Step 2: Scan mod files
-    info!("Step 2/5: Scanning mod files");
-    let mods_pbo_args = crate::commands::ScanPboArgs {
-        input_dir: args.mods_dir.clone(),
-        cache_dir: mods_cache_dir.clone(),
-        extensions: "hpp,cpp,sqf,sqm".to_string(),
-        threads: args.threads,
-    };
-    scan_pbos(mods_pbo_args).await?;
-    
-    // Step 3: Scan mission files
-    info!("Step 3/5: Scanning mission files");
     let mission_reports_dir = reports_dir.join("mission_reports");
-    let missions_args = crate::commands::ScanMissionsArgs {
-        input_dir: args.missions_dir.clone(),
-        cache_dir: missions_cache_dir.clone(),
-        output_dir: mission_reports_dir.clone(),
-        threads: args.threads,
-    };
-    scan_missions(missions_args).await?;
+    let missions_extracted = Path::new(&missions_cache_dir).exists() && 
+        fs::read_dir(&missions_cache_dir)?.next().is_some() &&
+        Path::new(&mission_reports_dir).exists() &&
+        fs::read_dir(&mission_reports_dir)?.next().is_some();
     
-    // Step 4: Scan class definitions
-    info!("Step 4/5: Scanning class definitions");
     let a3_classes_dir = reports_dir.join("a3_base_classes");
-    let a3_classes_args = crate::commands::ScanClassesArgs {
-        input_dir: a3_cache_dir,
-        output_dir: a3_classes_dir,
-    };
-    scan_classes(a3_classes_args).await?;
+    let a3_classes_exist = Path::new(&a3_classes_dir).exists() && 
+        fs::read_dir(&a3_classes_dir)?.next().is_some();
     
     let mods_classes_dir = reports_dir.join("mods_classes");
-    let mods_classes_args = crate::commands::ScanClassesArgs {
-        input_dir: mods_cache_dir,
-        output_dir: mods_classes_dir,
-    };
-    scan_classes(mods_classes_args).await?;
+    let mods_classes_exist = Path::new(&mods_classes_dir).exists() && 
+        fs::read_dir(&mods_classes_dir)?.next().is_some();
+    
+    // Step 1: Scan Arma 3 base game files (only if not already extracted)
+    if !a3_extracted {
+        info!("Step 1/5: Scanning Arma 3 base game files");
+        let a3_pbo_args = crate::commands::ScanPboArgs {
+            input_dir: args.arma3_dir.clone(),
+            cache_dir: a3_cache_dir.clone(),
+            extensions: "hpp,cpp,sqf,sqm".to_string(),
+            threads: args.threads,
+        };
+        scan_pbos(a3_pbo_args).await?;
+    } else {
+        info!("Step 1/5: Skipping Arma 3 base game extraction (using cached data)");
+    }
+    
+    // Step 2: Scan mod files (only if not already extracted)
+    if !mods_extracted {
+        info!("Step 2/5: Scanning mod files");
+        let mods_pbo_args = crate::commands::ScanPboArgs {
+            input_dir: args.mods_dir.clone(),
+            cache_dir: mods_cache_dir.clone(),
+            extensions: "hpp,cpp,sqf,sqm".to_string(),
+            threads: args.threads,
+        };
+        scan_pbos(mods_pbo_args).await?;
+    } else {
+        info!("Step 2/5: Skipping mod files extraction (using cached data)");
+    }
+    
+    // Step 3: Scan mission files (only if not already extracted)
+    if !missions_extracted {
+        info!("Step 3/5: Scanning mission files");
+        let missions_args = crate::commands::ScanMissionsArgs {
+            input_dir: args.missions_dir.clone(),
+            cache_dir: missions_cache_dir.clone(),
+            output_dir: mission_reports_dir.clone(),
+            threads: args.threads,
+        };
+        scan_missions(missions_args).await?;
+    } else {
+        info!("Step 3/5: Skipping mission files extraction (using cached data)");
+    }
+    
+    // Step 4: Scan class definitions (only if not already scanned)
+    if !a3_classes_exist {
+        info!("Step 4a/5: Scanning Arma 3 base game class definitions");
+        let a3_classes_args = crate::commands::ScanClassesArgs {
+            input_dir: a3_cache_dir.clone(),
+            output_dir: a3_classes_dir.clone(),
+            max_files: None,
+            verbose_errors: false,
+        };
+        scan_classes(a3_classes_args).await?;
+    } else {
+        info!("Step 4a/5: Skipping Arma 3 base game class scanning (using cached data)");
+    }
+    
+    if !mods_classes_exist {
+        info!("Step 4b/5: Scanning mod class definitions");
+        let mods_classes_args = crate::commands::ScanClassesArgs {
+            input_dir: mods_cache_dir.clone(),
+            output_dir: mods_classes_dir.clone(),
+            max_files: None,
+            verbose_errors: false,
+        };
+        scan_classes(mods_classes_args).await?;
+    } else {
+        info!("Step 4b/5: Skipping mod class scanning (using cached data)");
+    }
     
     // Step 5: Analyze dependencies
     info!("Step 5/5: Analyzing dependencies");
     let analysis_cache_dir = args.cache_dir.join("analysis");
     let analysis_reports_dir = reports_dir.join("analysis_reports");
+    
+    // Make sure the analysis directories exist
+    fs::create_dir_all(&analysis_cache_dir)?;
+    fs::create_dir_all(&analysis_reports_dir)?;
+    
     let analysis_args = crate::commands::AnalyzeMissionDependenciesArgs {
         mission_dir: args.missions_dir,
         addon_dir: args.cache_dir.clone(),

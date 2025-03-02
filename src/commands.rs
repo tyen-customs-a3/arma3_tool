@@ -48,6 +48,14 @@ pub struct ScanClassesArgs {
     /// Output directory for the class reports
     #[arg(short, long, default_value = "class_reports")]
     pub output_dir: PathBuf,
+    
+    /// Maximum number of files to process (useful for debugging)
+    #[arg(long)]
+    pub max_files: Option<usize>,
+    
+    /// Enable verbose error reporting for parse errors
+    #[arg(short, long)]
+    pub verbose_errors: bool,
 }
 
 #[derive(clap::Args, Debug)]

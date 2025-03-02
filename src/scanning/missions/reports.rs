@@ -1,194 +1,239 @@
 use std::path::{Path, PathBuf};
-use std::fs;
+use std::collections::{HashMap, HashSet};
 use anyhow::{Result, Context};
 use log::{info, debug};
-use serde_json::to_string_pretty;
+use serde::Serialize;
 
+use crate::reporting::mission::MissionReportWriter;
+use crate::reporting::dependency::DependencyReportWriter;
+use crate::reporting::mission::MissionName;
+use crate::reporting::dependency::{
+    MissingClassesReport, MissingClassDetail, 
+    ClassUsageReport, ClassUsageDetail,
+    MissionCompatibilityReport, MissionCompatibility,
+    CategoryNeedsReport, CategoryNeedDetail
+};
 use super::analyzer::{MissionAnalysisResult, DependencyAnalysisResult};
 
-pub struct MissionReportWriter<'a> {
-    output_dir: &'a Path,
+// Implement MissionName trait for MissionAnalysisResult
+impl MissionName for MissionAnalysisResult {
+    fn mission_name(&self) -> String {
+        self.mission_name.clone()
+    }
 }
 
-impl<'a> MissionReportWriter<'a> {
-    pub fn new(output_dir: &'a Path) -> Self {
+// Implement MissionName trait for DependencyAnalysisResult
+impl MissionName for DependencyAnalysisResult {
+    fn mission_name(&self) -> String {
+        self.mission_name.clone()
+    }
+}
+
+/// Manager for mission reports
+pub struct MissionReportManager {
+    output_dir: PathBuf,
+}
+
+impl MissionReportManager {
+    pub fn new(output_dir: &Path) -> Self {
         Self {
-            output_dir,
+            output_dir: output_dir.to_owned(),
         }
     }
     
-    pub fn write_reports(&self, analysis_results: &[MissionAnalysisResult]) -> Result<()> {
+    pub fn write_reports(&self, results: &[MissionAnalysisResult]) -> Result<()> {
         // Create output directory if it doesn't exist
-        fs::create_dir_all(self.output_dir)
+        std::fs::create_dir_all(&self.output_dir)
             .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
         
-        // Write individual mission reports
-        for result in analysis_results {
-            self.write_mission_report(result)?;
-        }
+        // Use the MissionReportWriter to write reports
+        let report_writer = MissionReportWriter::new(&self.output_dir);
+        report_writer.write_reports(results)?;
         
-        // Write summary report
-        self.write_summary_report(analysis_results)?;
-        
-        info!("Wrote {} mission reports to {}", analysis_results.len(), self.output_dir.display());
-        
-        Ok(())
-    }
-    
-    fn write_mission_report(&self, result: &MissionAnalysisResult) -> Result<()> {
-        let mission_name = sanitize_filename(&result.mission_name);
-        let output_path = self.output_dir.join(format!("{}.json", mission_name));
-        
-        let json = to_string_pretty(result)
-            .context("Failed to serialize mission analysis result")?;
-        
-        fs::write(&output_path, json)
-            .context(format!("Failed to write mission report to {}", output_path.display()))?;
-        
-        debug!("Wrote mission report for '{}' to {}", result.mission_name, output_path.display());
-        
-        Ok(())
-    }
-    
-    fn write_summary_report(&self, results: &[MissionAnalysisResult]) -> Result<()> {
-        let output_path = self.output_dir.join("summary.json");
-        
-        // Create a summary structure
-        let summary = MissionSummary {
-            total_missions: results.len(),
-            missions: results.iter().map(|r| MissionSummaryItem {
-                name: r.mission_name.clone(),
-                equipment_count: r.equipment.len(),
-                vehicle_count: r.vehicles.len(),
-                weapon_count: r.weapons.len(),
-                magazine_count: r.magazines.len(),
-                item_count: r.items.len(),
-                backpack_count: r.backpacks.len(),
-            }).collect(),
-        };
-        
-        let json = to_string_pretty(&summary)
-            .context("Failed to serialize mission summary")?;
-        
-        fs::write(&output_path, json)
-            .context(format!("Failed to write summary report to {}", output_path.display()))?;
-        
-        info!("Wrote mission summary report to {}", output_path.display());
+        info!("Wrote mission reports to {}", self.output_dir.display());
         
         Ok(())
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct MissionSummary {
-    total_missions: usize,
-    missions: Vec<MissionSummaryItem>,
+/// Manager for dependency reports
+pub struct DependencyReportManager {
+    output_dir: PathBuf,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct MissionSummaryItem {
-    name: String,
-    equipment_count: usize,
-    vehicle_count: usize,
-    weapon_count: usize,
-    magazine_count: usize,
-    item_count: usize,
-    backpack_count: usize,
-}
-
-pub struct DependencyReportWriter<'a> {
-    output_dir: &'a Path,
-}
-
-impl<'a> DependencyReportWriter<'a> {
-    pub fn new(output_dir: &'a Path) -> Self {
+impl DependencyReportManager {
+    pub fn new(output_dir: &Path) -> Self {
         Self {
-            output_dir,
+            output_dir: output_dir.to_owned(),
         }
     }
     
     pub fn write_dependency_report(&self, results: &[DependencyAnalysisResult]) -> Result<()> {
         // Create output directory if it doesn't exist
-        fs::create_dir_all(self.output_dir)
+        std::fs::create_dir_all(&self.output_dir)
             .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
         
-        // Write individual dependency reports
+        // Use the DependencyReportWriter to write reports
+        let report_writer = DependencyReportWriter::new(&self.output_dir);
+        
+        // Write the main dependency reports
+        report_writer.write_dependency_report(results)?;
+        
+        // Generate and write additional reports
+        self.write_additional_reports(&report_writer, results)?;
+        
+        info!("Wrote dependency reports to {}", self.output_dir.display());
+        
+        Ok(())
+    }
+    
+    /// Generate and write additional dependency reports
+    fn write_additional_reports(&self, report_writer: &DependencyReportWriter, results: &[DependencyAnalysisResult]) -> Result<()> {
+        // Generate missing classes report
+        let missing_classes_report = self.generate_missing_classes_report(results);
+        report_writer.write_missing_classes_report(&missing_classes_report)?;
+        
+        // Generate class usage report
+        let class_usage_report = self.generate_class_usage_report(results);
+        report_writer.write_class_usage_report(&class_usage_report)?;
+        
+        // Generate mission compatibility report
+        let compatibility_report = self.generate_compatibility_report(results);
+        report_writer.write_compatibility_report(&compatibility_report)?;
+        
+        // Generate category needs report
+        let category_needs_report = self.generate_category_needs_report(results);
+        report_writer.write_category_needs_report(&category_needs_report)?;
+        
+        Ok(())
+    }
+    
+    /// Generate a report of missing classes across all missions
+    fn generate_missing_classes_report(&self, results: &[DependencyAnalysisResult]) -> MissingClassesReport {
+        let mut missing_class_map: HashMap<String, Vec<String>> = HashMap::new();
+        
+        // Collect missing classes from all missions
         for result in results {
-            self.write_single_dependency_report(result)?;
+            for class_name in &result.missing_classes {
+                missing_class_map.entry(class_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(result.mission_name.clone());
+            }
         }
         
-        // Write summary report
-        self.write_dependency_summary(results)?;
+        // Convert to report format
+        let missing_classes = missing_class_map.into_iter()
+            .map(|(class_name, missions)| {
+                MissingClassDetail {
+                    class_name,
+                    used_in_missions: missions.clone(),
+                    usage_count: missions.len(),
+                }
+            })
+            .collect::<Vec<_>>();
         
-        info!("Wrote {} dependency reports to {}", results.len(), self.output_dir.display());
-        
-        Ok(())
+        MissingClassesReport {
+            total_missing_classes: missing_classes.len(),
+            missing_classes,
+        }
     }
     
-    fn write_single_dependency_report(&self, result: &DependencyAnalysisResult) -> Result<()> {
-        let mission_name = sanitize_filename(&result.mission_name);
-        let output_path = self.output_dir.join(format!("{}_dependencies.json", mission_name));
+    /// Generate a report of class usage frequency across missions
+    fn generate_class_usage_report(&self, results: &[DependencyAnalysisResult]) -> ClassUsageReport {
+        let mut class_usage_map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut available_classes: HashSet<String> = HashSet::new();
         
-        let json = to_string_pretty(result)
-            .context("Failed to serialize dependency analysis result")?;
+        // Collect all classes (both missing and available)
+        for result in results {
+            for class_name in &result.missing_classes {
+                class_usage_map.entry(class_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(result.mission_name.clone());
+            }
+            
+            for class_name in &result.available_classes {
+                available_classes.insert(class_name.clone());
+                class_usage_map.entry(class_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(result.mission_name.clone());
+            }
+        }
         
-        fs::write(&output_path, json)
-            .context(format!("Failed to write dependency report to {}", output_path.display()))?;
+        // Convert to report format
+        let class_usage = class_usage_map.into_iter()
+            .map(|(class_name, missions)| {
+                ClassUsageDetail {
+                    class_name: class_name.clone(),
+                    used_in_missions: missions.clone(),
+                    usage_count: missions.len(),
+                    is_available: available_classes.contains(&class_name),
+                }
+            })
+            .collect::<Vec<_>>();
         
-        debug!("Wrote dependency report for '{}' to {}", result.mission_name, output_path.display());
-        
-        Ok(())
+        ClassUsageReport {
+            total_classes: class_usage.len(),
+            class_usage,
+        }
     }
     
-    fn write_dependency_summary(&self, results: &[DependencyAnalysisResult]) -> Result<()> {
-        let output_path = self.output_dir.join("dependency_report.json");
-        
-        // Create a summary structure
-        let summary = DependencySummary {
-            total_missions: results.len(),
-            missions: results.iter().map(|r| DependencySummaryItem {
-                name: r.mission_name.clone(),
-                total_equipment: r.total_equipment_count,
-                missing_classes: r.missing_classes.len(),
-                available_classes: r.available_classes.len(),
-                missing_class_percentage: if r.total_equipment_count > 0 {
-                    (r.missing_classes.len() as f64 / r.total_equipment_count as f64) * 100.0
+    /// Generate a report of mission compatibility with available classes
+    fn generate_compatibility_report(&self, results: &[DependencyAnalysisResult]) -> MissionCompatibilityReport {
+        let missions = results.iter()
+            .map(|result| {
+                let total_required = result.total_equipment_count;
+                let available = result.available_classes.len();
+                let missing = result.missing_classes.len();
+                
+                // Calculate compatibility score (percentage of available classes)
+                let compatibility_score = if total_required > 0 {
+                    available as f64 / total_required as f64
                 } else {
-                    0.0
-                },
-            }).collect(),
-        };
+                    1.0 // If no classes required, compatibility is 100%
+                };
+                
+                // Identify critical missing classes (top 5 most used)
+                let critical_missing = result.missing_classes.iter()
+                    .take(5)
+                    .cloned()
+                    .collect();
+                
+                MissionCompatibility {
+                    mission_name: result.mission_name.clone(),
+                    compatibility_score,
+                    required_classes: total_required,
+                    available_classes: available,
+                    missing_classes: missing,
+                    critical_missing_classes: critical_missing,
+                }
+            })
+            .collect();
         
-        let json = to_string_pretty(&summary)
-            .context("Failed to serialize dependency summary")?;
-        
-        fs::write(&output_path, json)
-            .context(format!("Failed to write dependency summary to {}", output_path.display()))?;
-        
-        info!("Wrote dependency summary report to {}", output_path.display());
-        
-        Ok(())
+        MissionCompatibilityReport { missions }
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct DependencySummary {
-    total_missions: usize,
-    missions: Vec<DependencySummaryItem>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct DependencySummaryItem {
-    name: String,
-    total_equipment: usize,
-    missing_classes: usize,
-    available_classes: usize,
-    missing_class_percentage: f64,
-}
-
-// Helper function to sanitize filenames
-fn sanitize_filename(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect()
+    
+    /// Generate a report of class categories needed by missions
+    fn generate_category_needs_report(&self, results: &[DependencyAnalysisResult]) -> CategoryNeedsReport {
+        // This would require category information from class analysis
+        // For now, we'll create a placeholder with basic categories
+        let mut categories: HashMap<String, CategoryNeedDetail> = HashMap::new();
+        
+        // Initialize with common Arma 3 categories
+        let category_names = vec!["Vehicle", "Weapon", "Magazine", "Item", "Backpack"];
+        
+        for category_name in category_names {
+            categories.insert(category_name.to_string(), CategoryNeedDetail {
+                category: category_name.to_string(),
+                required_by_missions: Vec::new(),
+                total_classes_needed: 0,
+                available_classes: 0,
+                missing_classes: 0,
+            });
+        }
+        
+        // In a real implementation, we would analyze the classes by category
+        // and populate this report with actual data
+        
+        CategoryNeedsReport { categories }
+    }
 } 

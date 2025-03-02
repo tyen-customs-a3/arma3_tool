@@ -1,5 +1,6 @@
 mod commands;
 mod scanning;
+mod reporting;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
@@ -77,16 +78,16 @@ async fn main() -> Result<()> {
 async fn process_command(command: Commands) -> Result<()> {
     match command {
         Commands::ScanPbos(args) => {
-            scanning::scan_pbos(args).await?;
+            scanning::pbo::scan_pbos(args).await?;
         }
         Commands::ScanClasses(args) => {
-            scanning::scan_classes(args).await?;
+            scanning::classes::scan_classes(args).await?;
         }
         Commands::ScanMissions(args) => {
-            scanning::scan_missions(args).await?;
+            scanning::missions::scan_missions(args).await?;
         }
         Commands::AnalyzeMissionDependencies(args) => {
-            scanning::analyze_mission_dependencies(args).await?;
+            scanning::missions::analyze_mission_dependencies(args).await?;
         }
         Commands::FullAnalysis(args) => {
             scanning::full_analysis(args).await?;

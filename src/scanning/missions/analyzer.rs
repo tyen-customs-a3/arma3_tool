@@ -349,6 +349,46 @@ impl<'a> EquipmentAnalyzer<'a> {
                         if let Some(end_quote_idx) = after_quote.find('"') {
                             return Some(&after_quote[..end_quote_idx]);
                         }
+                    } else {
+                        // Handle case without quotes: vehicle=ClassName;
+                        let after_eq_trimmed = after_eq.trim();
+                        if let Some(semi_idx) = after_eq_trimmed.find(';') {
+                            let class_name = &after_eq_trimmed[..semi_idx].trim();
+                            if !class_name.is_empty() {
+                                return Some(class_name);
+                            }
+                        } else if let Some(comma_idx) = after_eq_trimmed.find(',') {
+                            // Handle case with comma: vehicle=ClassName,
+                            let class_name = &after_eq_trimmed[..comma_idx].trim();
+                            if !class_name.is_empty() {
+                                return Some(class_name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Look for patterns like: "ClassName"
+        if line.contains('"') {
+            let mut in_quotes = false;
+            let mut start_idx = 0;
+            
+            for (i, c) in line.char_indices() {
+                if c == '"' {
+                    if in_quotes {
+                        // End of quoted string
+                        let potential_class = &line[start_idx..i];
+                        // Check if it looks like a class name (alphanumeric with underscores)
+                        if !potential_class.is_empty() && 
+                           potential_class.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                            return Some(potential_class);
+                        }
+                        in_quotes = false;
+                    } else {
+                        // Start of quoted string
+                        start_idx = i + 1;
+                        in_quotes = true;
                     }
                 }
             }
