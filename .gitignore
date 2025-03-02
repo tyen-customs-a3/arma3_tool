@@ -3,3 +3,4 @@ cache/scan_db.json
 cache/
 a3_cache/
 Cargo.lock
+reports/
