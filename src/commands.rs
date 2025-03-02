@@ -13,6 +13,9 @@ pub enum Commands {
     #[command(name = "scan-missions")]
     ScanMissions(ScanMissionsArgs),
     /// Run a complete analysis pipeline: extract PBOs, scan missions, and verify class dependencies
+    /// 
+    /// This command extracts mission PBOs, analyzes their class dependencies, and can validate
+    /// if the classes used in missions exist in a provided class database.
     #[command(name = "analyze-mission-dependencies")]
     AnalyzeMissionDependencies(AnalyzeMissionDependenciesArgs),
     /// Run a complete analysis pipeline for Arma 3 base game, mods, and missions
@@ -56,6 +59,26 @@ pub struct ScanClassesArgs {
     /// Enable verbose error reporting for parse errors
     #[arg(short, long)]
     pub verbose_errors: bool,
+    
+    /// Disable specific reports (comma-separated list)
+    /// 
+    /// Available report types:
+    /// - classes: Main class list report
+    /// - class_stats: Class statistics report
+    /// - classes_by_category: Classes categorized by type
+    /// - class_mission_usage: Classes used in missions
+    /// - class_hierarchy: Class inheritance hierarchy
+    /// - circular_dependencies: Circular dependencies in class hierarchy
+    /// - category_*: Individual category reports
+    #[arg(long)]
+    pub disable_reports: Option<String>,
+    
+    /// Enable only specific reports (comma-separated list)
+    /// 
+    /// If specified, only the listed reports will be generated.
+    /// This overrides --disable-reports if both are specified.
+    #[arg(long)]
+    pub enable_reports: Option<String>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -75,6 +98,24 @@ pub struct ScanMissionsArgs {
     /// Number of parallel extraction threads
     #[arg(short, long, default_value = "4")]
     pub threads: usize,
+    
+    /// Disable specific reports (comma-separated list)
+    /// 
+    /// Available report types:
+    /// - mission_summary: Summary of all missions
+    /// - mission_info: Basic mission information
+    /// - equipment_items: Equipment items used in missions
+    /// - dependencies: Missing dependencies in missions
+    /// - mission_*: Reports for specific missions
+    #[arg(long)]
+    pub disable_reports: Option<String>,
+    
+    /// Enable only specific reports (comma-separated list)
+    /// 
+    /// If specified, only the listed reports will be generated.
+    /// This overrides --disable-reports if both are specified.
+    #[arg(long)]
+    pub enable_reports: Option<String>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -98,6 +139,31 @@ pub struct AnalyzeMissionDependenciesArgs {
     /// Number of parallel extraction threads
     #[arg(short, long, default_value = "4")]
     pub threads: usize,
+    
+    /// Directory containing class database files for validation
+    #[arg(long)]
+    pub class_db_dir: Option<PathBuf>,
+    
+    /// Disable specific reports (comma-separated list)
+    /// 
+    /// Available report types:
+    /// - dependency_report: Summary of dependencies
+    /// - missing_classes: Missing classes across all missions
+    /// - class_usage_frequency: Class usage frequency
+    /// - mission_compatibility: Mission compatibility with available classes
+    /// - category_needs: Class categories needed by missions
+    /// - class_inheritance: Class inheritance relationships
+    /// - compatibility_diagnostics: Detailed compatibility diagnostics
+    /// - class_existence_validation: Class existence validation
+    #[arg(long)]
+    pub disable_reports: Option<String>,
+    
+    /// Enable only specific reports (comma-separated list)
+    /// 
+    /// If specified, only the listed reports will be generated.
+    /// This overrides --disable-reports if both are specified.
+    #[arg(long)]
+    pub enable_reports: Option<String>,
 }
 
 #[derive(clap::Args, Debug)]
@@ -125,4 +191,18 @@ pub struct FullAnalysisArgs {
     /// Number of parallel extraction threads
     #[arg(short, long, default_value = "4")]
     pub threads: usize,
+    
+    /// Disable specific reports (comma-separated list)
+    /// 
+    /// This can include any report type from scan-classes, scan-missions,
+    /// and analyze-mission-dependencies commands.
+    #[arg(long)]
+    pub disable_reports: Option<String>,
+    
+    /// Enable only specific reports (comma-separated list)
+    /// 
+    /// If specified, only the listed reports will be generated.
+    /// This overrides --disable-reports if both are specified.
+    #[arg(long)]
+    pub enable_reports: Option<String>,
 }

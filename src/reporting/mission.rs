@@ -4,7 +4,7 @@ use log::{info, debug};
 use serde::Serialize;
 use std::fs;
 
-use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename};
+use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename, ReportConfig};
 
 /// Writer for mission analysis reports
 pub struct MissionReportWriter {
@@ -24,6 +24,22 @@ impl MissionReportWriter {
         }
     }
     
+    pub fn with_config(output_dir: &Path, format: ReportFormat, config: ReportConfig) -> Self {
+        Self {
+            base: BaseReportWriter::with_config(output_dir, format, config),
+        }
+    }
+    
+    /// Get a reference to the report configuration
+    pub fn config(&self) -> &ReportConfig {
+        self.base.config()
+    }
+    
+    /// Get a mutable reference to the report configuration
+    pub fn config_mut(&mut self) -> &mut ReportConfig {
+        self.base.config_mut()
+    }
+    
     /// Write reports for multiple mission analysis results
     pub fn write_reports<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
         // Create output directory if it doesn't exist
@@ -36,7 +52,11 @@ impl MissionReportWriter {
         }
         
         // Write summary report
-        self.write_summary_report(results)?;
+        if self.base.is_report_enabled("mission_summary") {
+            self.write_summary_report(results)?;
+        } else {
+            debug!("Skipping mission summary report (disabled in configuration)");
+        }
         
         info!("Wrote {} mission reports to {}", results.len(), self.base.output_dir().display());
         
@@ -52,24 +72,37 @@ impl MissionReportWriter {
         let mission_name = sanitize_filename(&result.mission_name());
         let folder_name = if mission_name.is_empty() { default_name.to_string() } else { mission_name };
         
+        // Check if mission reports are enabled
+        let report_type = format!("mission_{}", folder_name);
+        if !self.base.is_report_enabled(&report_type) {
+            debug!("Skipping reports for mission '{}' (disabled in configuration)", result.mission_name());
+            return Ok(PathBuf::new());
+        }
+        
         // Create mission folder
         let mission_folder = self.base.output_dir().join(&folder_name);
         fs::create_dir_all(&mission_folder)
             .context(format!("Failed to create mission folder: {}", mission_folder.display()))?;
         
         // Create a report writer for this mission folder
-        let mission_writer = BaseReportWriter::new(&mission_folder, self.base.format);
+        let mission_writer = BaseReportWriter::with_config(&mission_folder, self.base.format(), self.base.config().clone());
         
         // Write main mission report
-        let main_path = mission_writer.write_report(result, "mission_info")?;
+        if mission_writer.is_report_enabled("mission_info") {
+            mission_writer.write_report(result, "mission_info")?;
+        }
         
         // Write equipment report
-        let equipment = result.get_equipment();
-        mission_writer.write_report(&equipment, "equipment_items")?;
+        if mission_writer.is_report_enabled("equipment_items") {
+            let equipment = result.get_equipment();
+            mission_writer.write_report(&equipment, "equipment_items")?;
+        }
         
         // Write missing dependencies report
-        let dependencies = result.get_dependencies();
-        mission_writer.write_report(&dependencies, "dependencies")?;
+        if mission_writer.is_report_enabled("dependencies") {
+            let dependencies = result.get_dependencies();
+            mission_writer.write_report(&dependencies, "dependencies")?;
+        }
         
         debug!("Wrote mission reports for '{}' to {}", result.mission_name(), mission_folder.display());
         
@@ -81,6 +114,12 @@ impl MissionReportWriter {
         let mission_name = sanitize_filename(&result.mission_name());
         let filename = if mission_name.is_empty() { default_name.to_string() } else { mission_name };
         
+        let report_type = format!("mission_{}", filename);
+        if !self.base.is_report_enabled(&report_type) {
+            debug!("Skipping report for mission '{}' (disabled in configuration)", result.mission_name());
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(result, &filename)?;
         debug!("Wrote mission report for '{}' to {}", result.mission_name(), path.display());
         
@@ -89,6 +128,11 @@ impl MissionReportWriter {
     
     /// Write a summary report for multiple mission analysis results
     pub fn write_summary_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("mission_summary") {
+            debug!("Skipping mission summary report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         // Create summary items
         let summary_items = results.iter().map(|result| {
             let equipment = result.get_equipment();
@@ -96,12 +140,7 @@ impl MissionReportWriter {
             
             MissionSummaryItem {
                 name: result.mission_name(),
-                equipment_count: equipment.equipment.len(),
-                vehicle_count: equipment.vehicles.len(),
-                weapon_count: equipment.weapons.len(),
-                magazine_count: equipment.magazines.len(),
-                item_count: equipment.items.len(),
-                backpack_count: equipment.backpacks.len(),
+                class_count: equipment.classes.len(),
                 missing_dependencies_count: dependencies.missing_classes.len(),
             }
         }).collect::<Vec<_>>();
@@ -137,12 +176,7 @@ pub trait MissionDependencies {
 #[derive(Serialize)]
 pub struct MissionEquipmentReport {
     pub total_items: usize,
-    pub equipment: Vec<EquipmentItemReport>,
-    pub vehicles: Vec<EquipmentItemReport>,
-    pub weapons: Vec<EquipmentItemReport>,
-    pub magazines: Vec<EquipmentItemReport>,
-    pub items: Vec<EquipmentItemReport>,
-    pub backpacks: Vec<EquipmentItemReport>,
+    pub classes: Vec<EquipmentItemReport>,
 }
 
 /// Equipment item for reporting
@@ -165,12 +199,7 @@ pub struct MissionDependenciesReport {
 #[derive(Serialize)]
 pub struct MissionSummaryItem {
     pub name: String,
-    pub equipment_count: usize,
-    pub vehicle_count: usize,
-    pub weapon_count: usize,
-    pub magazine_count: usize,
-    pub item_count: usize,
-    pub backpack_count: usize,
+    pub class_count: usize,
     pub missing_dependencies_count: usize,
 }
 

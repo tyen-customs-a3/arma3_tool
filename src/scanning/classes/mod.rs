@@ -3,17 +3,47 @@ use anyhow::{Result, Context, anyhow};
 use log::{info, warn, error, debug};
 use indicatif::{ProgressBar, ProgressStyle};
 use crate::commands::ScanClassesArgs;
-use crate::reporting::ClassReportWriter;
+use crate::reporting::{ReportFormat, ReportConfig, ClassReportManager};
 
 mod scanner;
-mod processor;
-mod reports;
+pub mod processor;
 
 use scanner::collect_files;
-use processor::process_classes;
-use reports::ReportWriter;
+use processor::{process_classes, ProcessedClass, ProcessingStats};
 
-pub async fn scan_classes(args: ScanClassesArgs) -> Result<()> {
+/// Create a report configuration from command-line arguments
+fn create_report_config(disable_reports: Option<&str>, enable_reports: Option<&str>) -> ReportConfig {
+    match (disable_reports, enable_reports) {
+        // If enable_reports is specified, create a config with all reports disabled by default
+        // and then enable only the specified reports
+        (_, Some(enable_list)) => {
+            let mut config = ReportConfig::all_disabled();
+            for report_type in enable_list.split(',').map(|s| s.trim()) {
+                if !report_type.is_empty() {
+                    config.enable(report_type);
+                }
+            }
+            config
+        },
+        // If only disable_reports is specified, create a config with all reports enabled by default
+        // and then disable the specified reports
+        (Some(disable_list), None) => {
+            let mut config = ReportConfig::new();
+            for report_type in disable_list.split(',').map(|s| s.trim()) {
+                if !report_type.is_empty() {
+                    config.disable(report_type);
+                }
+            }
+            config
+        },
+        // If neither is specified, create a config with all reports enabled by default
+        (None, None) => ReportConfig::new(),
+    }
+}
+
+/// Scan class definitions in extracted files
+/// Returns the processed class data in addition to writing reports to disk
+pub async fn scan_classes(args: ScanClassesArgs) -> Result<Vec<ProcessedClass>> {
     info!("Starting class scan in {}", args.input_dir.display());
     
     // Validate input directory
@@ -41,7 +71,7 @@ pub async fn scan_classes(args: ScanClassesArgs) -> Result<()> {
         
     if files.is_empty() {
         error!("No files found to scan in {}", args.input_dir.display());
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     info!("Found {} files to scan", files.len());
@@ -98,23 +128,40 @@ pub async fn scan_classes(args: ScanClassesArgs) -> Result<()> {
 
     if processed_results.is_empty() {
         warn!("No classes were processed. Check input directory and file patterns.");
-        return Ok(());
+        return Ok(Vec::new());
+    }
+    
+    // Create report configuration from command-line arguments
+    let report_config = create_report_config(
+        args.disable_reports.as_deref(),
+        args.enable_reports.as_deref()
+    );
+    
+    // Log which reports are disabled
+    if let Some(disable_reports) = &args.disable_reports {
+        info!("Disabling reports: {}", disable_reports);
+    }
+    
+    // Log which reports are enabled (if using enable_reports)
+    if let Some(enable_reports) = &args.enable_reports {
+        info!("Enabling only these reports: {}", enable_reports);
     }
     
     // Generate reports
     info!("Writing reports to {}", args.output_dir.display());
-    let report_writer = ReportWriter::new(&args.output_dir);
+    let report_manager = ClassReportManager::with_config(&args.output_dir, report_config);
     
     // Write the main class reports
-    report_writer.write_all_reports(&processed_results)
+    report_manager.write_all_reports(&processed_results)
         .context(format!("Failed to write class reports to {}", args.output_dir.display()))?;
     
     // Write statistics report
-    report_writer.write_stats_report(&stats)
+    report_manager.write_stats_report(&stats)
         .context(format!("Failed to write statistics report to {}", args.output_dir.display()))?;
 
     info!("Reports written to {}", args.output_dir.display());
     info!("Class scan completed successfully");
 
-    Ok(())
+    // Return the processed class data
+    Ok(processed_results)
 }

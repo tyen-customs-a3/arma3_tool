@@ -20,8 +20,6 @@ pub struct MissionExtractionResult {
     pub sqm_file: Option<PathBuf>,
     pub sqf_files: Vec<PathBuf>,
     pub cpp_files: Vec<PathBuf>,
-    // Track class dependencies directly during extraction for optimization
-    pub direct_class_references: HashSet<String>, 
 }
 
 pub struct MissionScanner<'a> {
@@ -359,7 +357,6 @@ impl<'a> MissionScanner<'a> {
                 sqm_file,
                 sqf_files,
                 cpp_files,
-                direct_class_references: HashSet::new(), // Initialize with empty set
             });
         }
         

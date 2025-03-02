@@ -4,19 +4,29 @@ use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
 
-use crate::reporting::ClassReportWriter;
+use crate::reporting::{ClassReportWriter, ReportFormat, ReportConfig};
 use crate::reporting::class::{ClassStats, ClassCategoryCount, CategorizedClasses, ClassHierarchy, ClassNode, CircularDependency};
-use super::processor::{ProcessedClass, ProcessingStats};
+use crate::scanning::classes::processor::{ProcessedClass, ProcessingStats};
 
-/// Writer for class reports
-pub struct ReportWriter {
+/// Manager for class reports
+pub struct ClassReportManager {
     output_dir: PathBuf,
+    config: Option<ReportConfig>,
 }
 
-impl ReportWriter {
+impl ClassReportManager {
     pub fn new(output_dir: &Path) -> Self {
         Self {
             output_dir: output_dir.to_owned(),
+            config: None,
+        }
+    }
+    
+    /// Create a new ClassReportManager with a specific configuration
+    pub fn with_config(output_dir: &Path, config: ReportConfig) -> Self {
+        Self {
+            output_dir: output_dir.to_owned(),
+            config: Some(config),
         }
     }
     
@@ -27,7 +37,11 @@ impl ReportWriter {
             .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
         
         // Use the ClassReportWriter to write reports
-        let report_writer = ClassReportWriter::new(&self.output_dir);
+        let report_writer = if let Some(config) = &self.config {
+            ClassReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassReportWriter::new(&self.output_dir)
+        };
         
         // Write the main classes report
         let path = report_writer.write_all_reports(classes)?;
@@ -65,7 +79,12 @@ impl ReportWriter {
         let class_stats = self.create_class_stats(stats);
         
         // Use the ClassReportWriter to write the stats report
-        let report_writer = ClassReportWriter::new(&self.output_dir);
+        let report_writer = if let Some(config) = &self.config {
+            ClassReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassReportWriter::new(&self.output_dir)
+        };
+        
         let path = report_writer.write_stats_report(&class_stats)?;
         
         info!("Wrote class statistics report to {}", path.display());
@@ -89,83 +108,17 @@ impl ReportWriter {
     fn categorize_classes(&self, classes: &[ProcessedClass]) -> CategorizedClasses {
         let mut categories: HashMap<String, Vec<String>> = HashMap::new();
         
-        // Common categories in Arma 3
-        categories.insert("Vehicle".to_string(), Vec::new());
-        categories.insert("Weapon".to_string(), Vec::new());
-        categories.insert("Magazine".to_string(), Vec::new());
-        categories.insert("Item".to_string(), Vec::new());
-        categories.insert("Backpack".to_string(), Vec::new());
-        categories.insert("Other".to_string(), Vec::new());
+        // Use a single "All" category instead of multiple categories
+        categories.insert("All".to_string(), Vec::new());
         
-        for class in classes {
-            let category = self.determine_class_category(class);
-            if let Some(class_list) = categories.get_mut(&category) {
+        // Add all classes to the "All" category
+        if let Some(class_list) = categories.get_mut("All") {
+            for class in classes {
                 class_list.push(class.name.clone());
             }
         }
         
         CategorizedClasses { categories }
-    }
-    
-    /// Determine the category of a class based on its properties and parent
-    fn determine_class_category(&self, class: &ProcessedClass) -> String {
-        // Check parent class for common base classes
-        if let Some(parent) = &class.parent {
-            let parent_lower = parent.to_lowercase();
-            
-            if parent_lower.contains("vehicle") || parent_lower.contains("car") || 
-               parent_lower.contains("tank") || parent_lower.contains("air") {
-                return "Vehicle".to_string();
-            }
-            
-            if parent_lower.contains("weapon") || parent_lower.contains("rifle") || 
-               parent_lower.contains("launcher") || parent_lower.contains("pistol") {
-                return "Weapon".to_string();
-            }
-            
-            if parent_lower.contains("magazine") || parent_lower.contains("ammo") {
-                return "Magazine".to_string();
-            }
-            
-            if parent_lower.contains("item") || parent_lower.contains("equipment") {
-                return "Item".to_string();
-            }
-            
-            if parent_lower.contains("backpack") {
-                return "Backpack".to_string();
-            }
-        }
-        
-        // Check properties for hints about the class type
-        for (key, value) in &class.properties {
-            let key_lower = key.to_lowercase();
-            let value_lower = value.to_lowercase();
-            
-            if key_lower == "vehicleclass" {
-                return "Vehicle".to_string();
-            }
-            
-            if key_lower.contains("weapon") || key_lower.contains("rifle") || 
-               key_lower.contains("gun") || key_lower.contains("firearm") {
-                return "Weapon".to_string();
-            }
-            
-            if key_lower.contains("magazine") || key_lower.contains("ammo") || 
-               key_lower.contains("rounds") {
-                return "Magazine".to_string();
-            }
-            
-            if key_lower.contains("item") || key_lower.contains("equipment") {
-                return "Item".to_string();
-            }
-            
-            if key_lower.contains("backpack") || key_lower.contains("bag") {
-                return "Backpack".to_string();
-            }
-        }
-        
-        // Default category if no specific category is determined
-        "Other".to_string()
     }
     
     /// Build class hierarchy from processed classes

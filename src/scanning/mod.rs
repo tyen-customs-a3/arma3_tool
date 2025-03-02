@@ -4,6 +4,7 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use log::{info, warn, error};
+use missions::analyze_mission_dependencies_with_classes;
 use rayon::prelude::*;
 use walkdir::{WalkDir, DirEntry};
 use serde::{Serialize, Deserialize};
@@ -27,6 +28,36 @@ pub use classes::scan_classes;
 pub use missions::scan_missions;
 pub use missions::analyze_mission_dependencies;
 
+/// Create a report configuration from command-line arguments
+fn create_report_config(disable_reports: Option<&str>, enable_reports: Option<&str>) -> crate::reporting::ReportConfig {
+    match (disable_reports, enable_reports) {
+        // If enable_reports is specified, create a config with all reports disabled by default
+        // and then enable only the specified reports
+        (_, Some(enable_list)) => {
+            let mut config = crate::reporting::ReportConfig::all_disabled();
+            for report_type in enable_list.split(',').map(|s| s.trim()) {
+                if !report_type.is_empty() {
+                    config.enable(report_type);
+                }
+            }
+            config
+        },
+        // If only disable_reports is specified, create a config with all reports enabled by default
+        // and then disable the specified reports
+        (Some(disable_list), None) => {
+            let mut config = crate::reporting::ReportConfig::new();
+            for report_type in disable_list.split(',').map(|s| s.trim()) {
+                if !report_type.is_empty() {
+                    config.disable(report_type);
+                }
+            }
+            config
+        },
+        // If neither is specified, create a config with all reports enabled by default
+        (None, None) => crate::reporting::ReportConfig::new(),
+    }
+}
+
 /// Run a complete analysis pipeline for Arma 3 base game, mods, and missions
 pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()> {
     info!("Starting full Arma 3 analysis pipeline");
@@ -42,6 +73,22 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
     fs::create_dir_all(&missions_cache_dir)?;
     fs::create_dir_all(&reports_dir)?;
     
+    // Create report configuration from command-line arguments
+    let report_config = create_report_config(
+        args.disable_reports.as_deref(),
+        args.enable_reports.as_deref()
+    );
+    
+    // Log which reports are disabled
+    if let Some(disable_reports) = &args.disable_reports {
+        info!("Disabling reports: {}", disable_reports);
+    }
+    
+    // Log which reports are enabled (if using enable_reports)
+    if let Some(enable_reports) = &args.enable_reports {
+        info!("Enabling only these reports: {}", enable_reports);
+    }
+    
     // Check if we have already extracted data
     let a3_extracted = Path::new(&a3_cache_dir).exists() && 
         fs::read_dir(&a3_cache_dir)?.next().is_some();
@@ -55,12 +102,7 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
         fs::read_dir(&missions_output_dir)?.next().is_some();
     
     let a3_classes_dir = reports_dir.join("a3_base_classes");
-    let a3_classes_exist = Path::new(&a3_classes_dir).exists() && 
-        fs::read_dir(&a3_classes_dir)?.next().is_some();
-    
     let mods_classes_dir = reports_dir.join("mods_classes");
-    let mods_classes_exist = Path::new(&mods_classes_dir).exists() && 
-        fs::read_dir(&mods_classes_dir)?.next().is_some();
     
     // Step 1: Scan Arma 3 base game files (only if not already extracted)
     if !a3_extracted {
@@ -98,40 +140,46 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
             cache_dir: missions_cache_dir.clone(),
             output_dir: reports_dir.join("missions"), // Use a direct "missions" folder instead of "mission_reports"
             threads: args.threads,
+            disable_reports: args.disable_reports.clone(),
+            enable_reports: args.enable_reports.clone(),
         };
         scan_missions(missions_args).await?;
     } else {
         info!("Step 3/5: Skipping mission files extraction (using cached data)");
     }
     
-    // Step 4: Scan class definitions (only if not already scanned)
-    if !a3_classes_exist {
-        info!("Step 4a/5: Scanning Arma 3 base game class definitions");
-        let a3_classes_args = crate::commands::ScanClassesArgs {
-            input_dir: a3_cache_dir.clone(),
-            output_dir: a3_classes_dir.clone(),
-            max_files: None,
-            verbose_errors: false,
-        };
-        scan_classes(a3_classes_args).await?;
-    } else {
-        info!("Step 4a/5: Skipping Arma 3 base game class scanning (using cached data)");
-    }
+    // Step 4: Scan class definitions and keep the data in memory
+    info!("Step 4a/5: Scanning Arma 3 base game class definitions");
+    let a3_classes_args = crate::commands::ScanClassesArgs {
+        input_dir: a3_cache_dir.clone(),
+        output_dir: a3_classes_dir.clone(),
+        max_files: None,
+        verbose_errors: false,
+        disable_reports: args.disable_reports.clone(),
+        enable_reports: args.enable_reports.clone(),
+    };
+    let a3_classes = scan_classes(a3_classes_args).await?;
+    info!("Loaded {} base game classes into memory", a3_classes.len());
     
-    if !mods_classes_exist {
-        info!("Step 4b/5: Scanning mod class definitions");
-        let mods_classes_args = crate::commands::ScanClassesArgs {
-            input_dir: mods_cache_dir.clone(),
-            output_dir: mods_classes_dir.clone(),
-            max_files: None,
-            verbose_errors: false,
-        };
-        scan_classes(mods_classes_args).await?;
-    } else {
-        info!("Step 4b/5: Skipping mod class scanning (using cached data)");
-    }
+    info!("Step 4b/5: Scanning mod class definitions");
+    let mods_classes_args = crate::commands::ScanClassesArgs {
+        input_dir: mods_cache_dir.clone(),
+        output_dir: mods_classes_dir.clone(),
+        max_files: None,
+        verbose_errors: false,
+        disable_reports: args.disable_reports.clone(),
+        enable_reports: args.enable_reports.clone(),
+    };
+    let mod_classes = scan_classes(mods_classes_args).await?;
+    info!("Loaded {} mod classes into memory", mod_classes.len());
     
-    // Step 5: Analyze dependencies
+    // Combine all classes for validation
+    let mut all_classes = Vec::new();
+    all_classes.extend(a3_classes);
+    all_classes.extend(mod_classes);
+    info!("Combined {} total classes for validation", all_classes.len());
+    
+    // Step 5: Analyze dependencies using in-memory class data
     info!("Step 5/5: Analyzing dependencies");
     
     // Create the missions output directory
@@ -144,13 +192,15 @@ pub async fn full_analysis(args: crate::commands::FullAnalysisArgs) -> Result<()
         cache_dir: args.cache_dir.clone(), // Use the main cache directory instead of creating a separate analysis cache
         output_dir: missions_output_dir.clone(), // Use the missions directory directly
         threads: args.threads,
+        class_db_dir: None, // We'll use in-memory classes instead
+        disable_reports: args.disable_reports.clone(),
+        enable_reports: args.enable_reports.clone(),
     };
-    analyze_mission_dependencies(analysis_args).await?;
     
-    info!("Full analysis complete! Reports are available in {}", reports_dir.display());
-    info!("Summary of reports:");
-    info!("  - Mission reports: {}", missions_output_dir.display());
-    info!("  - Class reports: {}/a3_base_classes and {}/mods_classes", reports_dir.display(), reports_dir.display());
+    // Call the analyze_mission_dependencies function with in-memory classes
+    analyze_mission_dependencies_with_classes(analysis_args, all_classes).await?;
+    
+    info!("Full analysis completed successfully");
     
     Ok(())
 }

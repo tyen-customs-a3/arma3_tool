@@ -200,35 +200,10 @@ impl<'a> MissionExtractor<'a> {
             .unwrap_or("unknown")
             .to_string();
         
-        // Preliminary scan for class references using quick regex patterns
-        let mut direct_class_references = HashSet::new();
-        
-        // Scan SQM file for class references
-        if let Some(sqm_path) = &sqm_file {
-            if let Ok(content) = fs::read_to_string(sqm_path) {
-                self.extract_preliminary_class_references(&content, &mut direct_class_references);
-            }
-        }
-        
-        // Scan each SQF file for class references
-        for sqf_path in &sqf_files {
-            if let Ok(content) = fs::read_to_string(sqf_path) {
-                self.extract_preliminary_class_references(&content, &mut direct_class_references);
-            }
-        }
-        
-        // Scan each CPP/HPP file for class references
-        for cpp_path in &cpp_files {
-            if let Ok(content) = fs::read_to_string(cpp_path) {
-                self.extract_preliminary_class_references(&content, &mut direct_class_references);
-            }
-        }
-        
-        info!("Extracted mission '{}' with {} SQF files, {} CPP/HPP files, and discovered {} potential class references", 
+        info!("Extracted mission '{}' with {} SQF files and {} CPP/HPP files", 
               mission_name, 
               sqf_files.len(),
-              cpp_files.len(),
-              direct_class_references.len());
+              cpp_files.len());
         
         Ok(MissionExtractionResult {
             mission_name,
@@ -237,125 +212,7 @@ impl<'a> MissionExtractor<'a> {
             sqm_file,
             sqf_files,
             cpp_files,
-            direct_class_references,
         })
-    }
-    
-    // Helper function to find potential class references using regex patterns
-    fn extract_preliminary_class_references(&self, content: &str, class_references: &mut HashSet<String>) {
-        // Common patterns for class references in quotes
-        let patterns = [
-            r#"createVehicle\s*\[\s*"([^"]+)""#, // createVehicle ["ClassName"
-            r#"createVehicle\s*"([^"]+)""#,      // createVehicle "ClassName"
-            r#"addWeapon\s*"([^"]+)""#,          // addWeapon "ClassName"
-            r#"addMagazine\s*"([^"]+)""#,        // addMagazine "ClassName" 
-            r#"addItem\s*"([^"]+)""#,            // addItem "ClassName"
-            r#"addBackpack\s*"([^"]+)""#,        // addBackpack "ClassName"
-            r#"vehicle\s*=\s*"([^"]+)""#,        // vehicle = "ClassName"
-            r#"type\s*=\s*"([^"]+)""#,           // type = "ClassName"
-            r#"weapon\s*=\s*"([^"]+)""#,         // weapon = "ClassName"
-            r#"magazine\s*=\s*"([^"]+)""#,       // magazine = "ClassName"
-            r#"backpack\s*=\s*"([^"]+)""#,       // backpack = "ClassName"
-            r#"uniform\s*=\s*"([^"]+)""#,        // uniform = "ClassName" 
-            r#"vest\s*=\s*"([^"]+)""#,           // vest = "ClassName"
-            r#"headgear\s*=\s*"([^"]+)""#,       // headgear = "ClassName"
-            r#"goggles\s*=\s*"([^"]+)""#,        // goggles = "ClassName"
-            r#"class\s+(\w+)"#,                   // class ClassName (for inheritance)
-            r#"class\s+(\w+)\s*:\s*(\w+)"#,       // class ClassName: ParentClass
-        ];
-        
-        // Process each line to avoid regex DoS on large files
-        for line in content.lines() {
-            // Skip comments in the file
-            let line = line.trim();
-            if line.starts_with("//") || line.starts_with("/*") || line.starts_with("*") {
-                continue;
-            }
-            
-            // Apply each pattern - using a simplified regex approach without the regex crate
-            for pattern in &patterns {
-                // Simple string-based pattern matching
-                self.extract_patterns_manually(line, pattern, class_references);
-            }
-            
-            // Special case for array literals with class names
-            if line.contains('[') && line.contains(']') && line.contains('"') {
-                let mut in_quotes = false;
-                let mut current_item = String::new();
-                
-                for c in line.chars() {
-                    match c {
-                        '"' => {
-                            in_quotes = !in_quotes;
-                            if !in_quotes && !current_item.is_empty() {
-                                // We've found a complete string - check if it looks like a class name
-                                if !current_item.contains(' ') && current_item.len() > 2 && current_item.contains('_') {
-                                    class_references.insert(current_item.clone());
-                                }
-                                current_item.clear();
-                            }
-                        },
-                        _ if in_quotes => {
-                            current_item.push(c);
-                        },
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-    
-    // Simple pattern matcher that doesn't rely on regex crate
-    fn extract_patterns_manually(&self, line: &str, pattern: &str, class_references: &mut HashSet<String>) {
-        // For patterns ending with "([^"]+)" to capture class names in quotes
-        if pattern.ends_with(r#""([^"]+)""#) || pattern.ends_with(r#"(\w+)"#) {
-            if let Some(pos) = line.find('"') {
-                if let Some(end_pos) = line[pos+1..].find('"') {
-                    let potential_class = &line[pos+1..pos+1+end_pos];
-                    if !potential_class.is_empty() && !potential_class.contains(' ') {
-                        class_references.insert(potential_class.to_string());
-                    }
-                }
-            }
-        }
-        
-        // For class inheritance pattern: class ClassName: ParentClass
-        if pattern.contains("class") && pattern.contains(':') {
-            if line.contains("class") && line.contains(':') {
-                let parts: Vec<&str> = line.split(':').collect();
-                if parts.len() >= 2 {
-                    if let Some(class_part) = parts.first() {
-                        if let Some(class_pos) = class_part.find("class") {
-                            let class_name = &class_part[class_pos + 5..].trim();
-                            if !class_name.is_empty() && !class_name.contains(' ') {
-                                class_references.insert(class_name.to_string());
-                            }
-                        }
-                    }
-                    
-                    if let Some(parent_part) = parts.get(1) {
-                        let parent_name = parent_part.trim().split_whitespace().next().unwrap_or("");
-                        if !parent_name.is_empty() && !parent_name.contains(' ') {
-                            class_references.insert(parent_name.to_string());
-                        }
-                    }
-                }
-            }
-        }
-        
-        // For simple class definitions: class ClassName
-        if pattern.contains("class") && !pattern.contains(':') {
-            if line.contains("class") && !line.contains(':') {
-                if let Some(class_pos) = line.find("class") {
-                    let after_class = &line[class_pos + 5..].trim();
-                    if let Some(first_word) = after_class.split_whitespace().next() {
-                        if !first_word.is_empty() && !first_word.contains(' ') {
-                            class_references.insert(first_word.to_string());
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -4,7 +4,7 @@ use log::{info, debug};
 use serde::Serialize;
 use std::collections::HashMap;
 
-use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename};
+use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename, ReportConfig};
 
 /// Writer for class analysis reports
 pub struct ClassReportWriter {
@@ -24,6 +24,22 @@ impl ClassReportWriter {
         }
     }
     
+    pub fn with_config(output_dir: &Path, format: ReportFormat, config: ReportConfig) -> Self {
+        Self {
+            base: BaseReportWriter::with_config(output_dir, format, config),
+        }
+    }
+    
+    /// Get a reference to the report configuration
+    pub fn config(&self) -> &ReportConfig {
+        self.base.config()
+    }
+    
+    /// Get a mutable reference to the report configuration
+    pub fn config_mut(&mut self) -> &mut ReportConfig {
+        self.base.config_mut()
+    }
+    
     /// Write all class reports
     pub fn write_all_reports<T: Serialize>(&self, classes: &[T]) -> Result<PathBuf> {
         // Ensure output directory exists
@@ -38,6 +54,11 @@ impl ClassReportWriter {
     
     /// Write a report for class statistics
     pub fn write_stats_report<T: Serialize>(&self, stats: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("class_stats") {
+            debug!("Skipping class statistics report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(stats, "class_stats")?;
         info!("Wrote class statistics report to {}", path.display());
         
@@ -46,6 +67,11 @@ impl ClassReportWriter {
     
     /// Write a report for classes categorized by type
     pub fn write_categorized_report<T: Serialize>(&self, categorized_classes: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("classes_by_category") {
+            debug!("Skipping categorized class report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(categorized_classes, "classes_by_category")?;
         info!("Wrote categorized class report to {}", path.display());
         
@@ -54,6 +80,11 @@ impl ClassReportWriter {
     
     /// Write a report for classes used in missions
     pub fn write_mission_usage_report<T: Serialize>(&self, usage_data: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("class_mission_usage") {
+            debug!("Skipping class mission usage report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(usage_data, "class_mission_usage")?;
         info!("Wrote class mission usage report to {}", path.display());
         
@@ -62,6 +93,11 @@ impl ClassReportWriter {
     
     /// Write a report for class inheritance hierarchy
     pub fn write_hierarchy_report<T: Serialize>(&self, hierarchy: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("class_hierarchy") {
+            debug!("Skipping class hierarchy report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(hierarchy, "class_hierarchy")?;
         info!("Wrote class hierarchy report to {}", path.display());
         
@@ -70,6 +106,11 @@ impl ClassReportWriter {
     
     /// Write a report for circular dependencies in class hierarchy
     pub fn write_circular_dependencies_report<T: Serialize>(&self, circular_deps: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("circular_dependencies") {
+            debug!("Skipping circular dependencies report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
         let path = self.base.write_report(circular_deps, "circular_dependencies")?;
         info!("Wrote circular dependencies report to {}", path.display());
         
@@ -78,6 +119,12 @@ impl ClassReportWriter {
     
     /// Write a report for a specific class category
     pub fn write_category_report<T: Serialize>(&self, category: &str, classes: &T) -> Result<PathBuf> {
+        let report_type = format!("category_{}", sanitize_filename(category));
+        if !self.base.is_report_enabled(&report_type) {
+            debug!("Skipping report for category '{}' (disabled in configuration)", category);
+            return Ok(PathBuf::new());
+        }
+        
         let filename = format!("category_{}", sanitize_filename(category));
         let path = self.base.write_report(classes, &filename)?;
         debug!("Wrote report for category '{}' to {}", category, path.display());

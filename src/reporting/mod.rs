@@ -3,16 +3,72 @@ use std::fs;
 use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
+use std::collections::HashSet;
 
 pub mod mission;
 pub mod class;
 pub mod dependency;
 pub mod formats;
+pub mod examples;
+pub mod mission_reports;
+pub mod class_reports;
 
 pub use mission::MissionReportWriter;
 pub use class::ClassReportWriter;
 pub use dependency::DependencyReportWriter;
 pub use formats::ReportFormat;
+pub use examples::*;
+pub use mission_reports::MissionReportManager;
+pub use mission_reports::DependencyReportManager;
+pub use class_reports::ClassReportManager;
+
+/// Configuration for controlling which reports are generated
+#[derive(Debug, Clone, Default)]
+pub struct ReportConfig {
+    /// Set of disabled report types
+    disabled_reports: HashSet<String>,
+    /// Whether all reports are enabled (default) or disabled
+    default_enabled: bool,
+}
+
+impl ReportConfig {
+    /// Create a new report configuration with all reports enabled by default
+    pub fn new() -> Self {
+        Self {
+            disabled_reports: HashSet::new(),
+            default_enabled: true,
+        }
+    }
+    
+    /// Create a new report configuration with all reports disabled by default
+    pub fn all_disabled() -> Self {
+        Self {
+            disabled_reports: HashSet::new(),
+            default_enabled: false,
+        }
+    }
+    
+    /// Disable a specific report type
+    pub fn disable(&mut self, report_type: &str) -> &mut Self {
+        self.disabled_reports.insert(report_type.to_string());
+        self
+    }
+    
+    /// Enable a specific report type
+    pub fn enable(&mut self, report_type: &str) -> &mut Self {
+        self.disabled_reports.remove(report_type);
+        self
+    }
+    
+    /// Check if a report type is enabled
+    pub fn is_enabled(&self, report_type: &str) -> bool {
+        if self.default_enabled {
+            !self.disabled_reports.contains(report_type)
+        } else {
+            self.disabled_reports.contains(report_type)
+        }
+    }
+}
 
 /// Base trait for all report writers
 pub trait ReportWriter {
@@ -24,6 +80,7 @@ pub trait ReportWriter {
 pub struct BaseReportWriter {
     output_dir: PathBuf,
     format: ReportFormat,
+    config: ReportConfig,
 }
 
 impl BaseReportWriter {
@@ -31,6 +88,16 @@ impl BaseReportWriter {
         Self {
             output_dir: output_dir.to_owned(),
             format,
+            config: ReportConfig::new(),
+        }
+    }
+    
+    /// Create a new BaseReportWriter with a specific configuration
+    pub fn with_config(output_dir: &Path, format: ReportFormat, config: ReportConfig) -> Self {
+        Self {
+            output_dir: output_dir.to_owned(),
+            format,
+            config,
         }
     }
     
@@ -48,6 +115,21 @@ impl BaseReportWriter {
     /// Get the report format
     pub fn format(&self) -> ReportFormat {
         self.format
+    }
+    
+    /// Get a reference to the report configuration
+    pub fn config(&self) -> &ReportConfig {
+        &self.config
+    }
+    
+    /// Get a mutable reference to the report configuration
+    pub fn config_mut(&mut self) -> &mut ReportConfig {
+        &mut self.config
+    }
+    
+    /// Check if a report type is enabled
+    pub fn is_report_enabled(&self, report_type: &str) -> bool {
+        self.config.is_enabled(report_type)
     }
 }
 
