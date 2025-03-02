@@ -44,9 +44,9 @@ pub fn process_classes(files: &[PathBuf], verbose_errors: bool) -> Result<(Vec<P
     info!("Starting to process {} files", files.len());
     
     for (idx, file) in files.iter().enumerate() {
-        if idx % 50 == 0 || idx == files.len() - 1 {
-            info!("Processing file {}/{}: {}", idx + 1, files.len(), file.display());
-        }
+        // if idx % 50 == 0 || idx == files.len() - 1 {
+        //     info!("Processing file {}/{}: {}", idx + 1, files.len(), file.display());
+        // }
         
         if let Some(pb) = &progress_bar {
             pb.set_position(idx as u64);
@@ -132,10 +132,14 @@ fn process_class(class: &Class, file_path: &Path, classes: &mut Vec<ProcessedCla
                         Value::Number(n) => n.to_string(),
                         Value::Enum(e) => e.to_string(),
                         Value::Array(nested) => format!("{:?}", nested),
+                        Value::MacroReference(m) => format!("${{{}}}", m),
+                        Value::Expression(expr) => format!("({})", expr),
                     }).collect();
                     format!("[{}]", values.join(", "))
                 },
                 Value::Enum(e) => e.to_string(),
+                Value::MacroReference(m) => format!("${{{}}}", m),
+                Value::Expression(expr) => format!("({})", expr),
             };
             (key.clone(), value_str)
         })

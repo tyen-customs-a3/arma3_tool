@@ -54,7 +54,7 @@ pub fn parse_single_file(
     match parse_cpp(&content) {
         Ok(classes) => {
             if classes.is_empty() {
-                warn!("No classes found in file: {}", file.display());
+                debug!("No classes found in file: {}", file.display());
             } else {
                 debug!("Found {} classes in {}", classes.len(), file.display());
                 trace!("Class names: {}", classes.iter()

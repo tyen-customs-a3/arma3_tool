@@ -13,10 +13,7 @@ use sqf_parser::{SqfClassParser, Equipment, equipment::EquipmentType};
 use serde::Serialize;
 
 use super::scanner::MissionExtractionResult;
-use crate::reporting::mission::{
-    MissionName, MissionEquipment, MissionDependencies,
-    MissionEquipmentReport, EquipmentItemReport, MissionDependenciesReport
-};
+use crate::reporting::mission::{MissionName, MissionEquipment, MissionDependencies, MissionEquipmentReport, MissionDependenciesReport, EquipmentItemReport};
 
 /// Represents a discovered class dependency in the mission files
 #[derive(Debug, Clone, Serialize)]
@@ -50,6 +47,48 @@ pub struct MissionDependencyResult {
     pub class_dependencies: Vec<ClassDependency>,
     /// Consolidated list of unique class names the mission depends on
     pub unique_class_names: HashSet<String>,
+}
+
+// Implement the required traits for MissionDependencyResult
+
+impl MissionName for MissionDependencyResult {
+    fn mission_name(&self) -> String {
+        self.mission_name.clone()
+    }
+}
+
+impl MissionEquipment for MissionDependencyResult {
+    fn get_equipment(&self) -> MissionEquipmentReport {
+        let equipment_items: Vec<EquipmentItemReport> = self.class_dependencies.iter()
+            .map(|dep| EquipmentItemReport {
+                class_name: dep.class_name.clone(),
+                source_file: dep.source_file.to_string_lossy().to_string(),
+                line_number: dep.line_number,
+                context: dep.context.clone(),
+            })
+            .collect();
+
+        MissionEquipmentReport {
+            total_items: equipment_items.len(),
+            classes: equipment_items,
+        }
+    }
+}
+
+impl MissionDependencies for MissionDependencyResult {
+    fn get_dependencies(&self) -> MissionDependenciesReport {
+        // For this implementation, we'll consider all unique class names as "missing"
+        // since we don't have information about which ones are actually missing
+        // This can be refined later if needed
+        let missing_classes = self.unique_class_names.iter()
+            .map(|name| name.clone())
+            .collect::<Vec<String>>();
+
+        MissionDependenciesReport {
+            total_missing_classes: missing_classes.len(),
+            missing_classes,
+        }
+    }
 }
 
 pub struct DependencyAnalyzer<'a> {
@@ -96,7 +135,7 @@ impl<'a> DependencyAnalyzer<'a> {
         let mut defined_classes = HashSet::new();
         let mut referenced_classes = HashSet::new();
         let mut parent_classes = HashSet::new();
-        
+
         // First pass: collect all defined classes and parent class references
         // Analyze mission.sqm file if available using sqm_parser
         if let Some(sqm_file) = &extraction.sqm_file {
@@ -180,14 +219,14 @@ impl<'a> DependencyAnalyzer<'a> {
         debug!("  - Parent classes: {}", parent_classes.len());
         debug!("  - External dependencies: {}", external_dependencies.len());
         
-        info!("Mission '{}' dependency analysis complete: {} total references, {} defined classes, {} external dependencies (using proper parsers only)", 
+        info!("Mission '{}' dependency analysis complete: {} total references, {} defined classes, {} external dependencies", 
               extraction.mission_name, all_dependencies.len(), defined_classes.len(), external_dependencies.len());
         
         Ok(MissionDependencyResult {
             mission_name: extraction.mission_name.clone(),
             pbo_path: extraction.pbo_path.clone(),
             class_dependencies: all_dependencies,
-            unique_class_names: external_dependencies, // Use actual external_dependencies instead of empty set
+            unique_class_names: external_dependencies,
         })
     }
     
@@ -209,6 +248,18 @@ impl<'a> DependencyAnalyzer<'a> {
             },
             Err(e) => {
                 warn!("Failed to parse SQM file: {}. Trying to read as text.", e);
+                
+                // Fallback: try to parse the file as a CPP file
+                match parse_cpp(&content) {
+                    Ok(classes) => {
+                        self.extract_dependencies_from_cpp_classes(&classes, sqm_file, &mut dependencies);
+                        debug!("Successfully parsed SQM as CPP and extracted {} dependencies", 
+                              dependencies.len());
+                    },
+                    Err(e) => {
+                        warn!("Failed to parse SQM file as CPP: {}. No dependencies extracted.", e);
+                    }
+                }
             }
         }
         
@@ -266,8 +317,7 @@ impl<'a> DependencyAnalyzer<'a> {
         classes: &[SqmClass],
         file_path: &Path,
         dependencies: &mut Vec<ClassDependency>
-    )
-    {
+    ) {
         for class in classes {
             // Add the class itself as a definition
             dependencies.push(ClassDependency {
@@ -544,35 +594,6 @@ impl std::fmt::Display for ReferenceType {
             ReferenceType::Definition => write!(f, "Definition"),
             ReferenceType::Parent => write!(f, "Parent"),
             ReferenceType::Component => write!(f, "Component"),
-        }
-    }
-}
-
-// Implement MissionName trait for MissionDependencyResult
-impl MissionName for MissionDependencyResult {
-    fn mission_name(&self) -> String {
-        self.mission_name.clone()
-    }
-}
-
-// Implement MissionEquipment trait for MissionDependencyResult
-impl MissionEquipment for MissionDependencyResult {
-    fn get_equipment(&self) -> MissionEquipmentReport {
-        // Since MissionDependencyResult doesn't use the equipment categories, create a simple report
-        MissionEquipmentReport {
-            total_items: self.class_dependencies.len(),
-            classes: Vec::new(), // Single list of classes instead of categorized lists
-        }
-    }
-}
-
-// Implement MissionDependencies trait for MissionDependencyResult
-impl MissionDependencies for MissionDependencyResult {
-    fn get_dependencies(&self) -> MissionDependenciesReport {
-        // Convert our unique class names to the format expected by MissionDependenciesReport
-        MissionDependenciesReport {
-            total_missing_classes: self.unique_class_names.len(),
-            missing_classes: self.unique_class_names.iter().cloned().collect(),
         }
     }
 }
