@@ -1,30 +1,33 @@
 use std::path::{Path, PathBuf};
+use std::collections::HashMap;
 use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
-use std::collections::HashMap;
 
-use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename, ReportConfig};
-use super::mission::MissionName;
+use crate::reporting::{BaseReportWriter, ReportWriter, ReportFormat, ReportConfig};
+use crate::reporting::mission::{MissionName, MissionEquipment, MissionDependencies};
 
-/// Writer for dependency analysis reports
+/// Dependency report writer
 pub struct DependencyReportWriter {
     base: BaseReportWriter,
 }
 
 impl DependencyReportWriter {
+    /// Create a new DependencyReportWriter with default configuration
     pub fn new(output_dir: &Path) -> Self {
         Self {
-            base: BaseReportWriter::new(output_dir, ReportFormat::Json),
+            base: BaseReportWriter::new(output_dir),
         }
     }
     
+    /// Create a new DependencyReportWriter with a specific format
     pub fn with_format(output_dir: &Path, format: ReportFormat) -> Self {
         Self {
-            base: BaseReportWriter::new(output_dir, format),
+            base: BaseReportWriter::with_config(output_dir, format, ReportConfig::new()),
         }
     }
     
+    /// Create a new DependencyReportWriter with a specific configuration
     pub fn with_config(output_dir: &Path, format: ReportFormat, config: ReportConfig) -> Self {
         Self {
             base: BaseReportWriter::with_config(output_dir, format, config),
@@ -41,162 +44,150 @@ impl DependencyReportWriter {
         self.base.config_mut()
     }
     
-    /// Write dependency reports for multiple results
-    pub fn write_dependency_report<T: Serialize + MissionName>(&self, results: &[T]) -> Result<()> {
-        // Create output directory if it doesn't exist
+    /// Write dependency reports for multiple missions
+    pub fn write_dependency_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
+        if !self.base.is_report_enabled("dependency_report") {
+            debug!("Skipping dependency report (disabled in configuration)");
+            return Ok(());
+        }
+        
+        // Ensure output directory exists
         self.base.ensure_output_dir()?;
         
-        // Write individual dependency reports
+        // Write individual dependency reports for each mission
         for result in results {
             self.write_single_dependency_report(result)?;
         }
         
-        // Write summary report
-        if self.base.is_report_enabled("dependency_report") {
-            self.write_dependency_summary(results)?;
-        } else {
-            debug!("Skipping dependency summary report (disabled in configuration)");
-        }
-        
-        info!("Wrote {} dependency reports to {}", results.len(), self.base.output_dir().display());
+        info!("Wrote dependency reports to {}", self.base.output_dir().display());
         
         Ok(())
     }
     
-    /// Write a report for a single dependency analysis result
+    /// Write a dependency report for a single mission
     pub fn write_single_dependency_report<T: Serialize + MissionName>(&self, result: &T) -> Result<PathBuf> {
-        let mission_name = sanitize_filename(&result.mission_name());
-        let report_type = format!("{}_dependencies", mission_name);
-        
-        if !self.base.is_report_enabled(&report_type) {
-            debug!("Skipping dependency report for '{}' (disabled in configuration)", result.mission_name());
+        if !self.base.is_report_enabled("dependency_report") {
+            debug!("Skipping dependency report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(
-            result, 
-            &format!("{}_dependencies", mission_name)
-        )?;
+        // Create a sanitized filename from the mission name
+        let mission_name = result.mission_name();
+        let sanitized_name = crate::reporting::sanitize_filename(&mission_name);
+        let filename = format!("dependency_{}", sanitized_name);
         
-        debug!("Wrote dependency report for '{}' to {}", result.mission_name(), output_path.display());
+        let path = self.base.write_report(result, &filename)?;
+        debug!("Wrote dependency report for '{}' to {}", mission_name, path.display());
         
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a summary report for dependency analysis
-    pub fn write_dependency_summary<T: Serialize>(&self, results: &[T]) -> Result<PathBuf> {
-        if !self.base.is_report_enabled("dependency_report") {
+    /// Write a dependency summary report
+    pub fn write_dependency_summary<T: Serialize>(&self, results: &T) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("dependency_summary") {
             debug!("Skipping dependency summary report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(results, "dependency_report")?;
+        let path = self.base.write_report(results, "dependency_summary")?;
+        debug!("Wrote dependency summary report to {}", path.display());
         
-        info!("Wrote dependency summary report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for missing classes across all missions
+    /// Write a report for missing classes
     pub fn write_missing_classes_report<T: Serialize>(&self, missing_classes: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("missing_classes") {
             debug!("Skipping missing classes report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(missing_classes, "missing_classes")?;
+        let path = self.base.write_report(missing_classes, "missing_classes")?;
+        debug!("Wrote missing classes report to {}", path.display());
         
-        info!("Wrote missing classes report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for class usage frequency across missions
+    /// Write a report for class usage frequency
     pub fn write_class_usage_report<T: Serialize>(&self, usage_data: &T) -> Result<PathBuf> {
-        if !self.base.is_report_enabled("class_usage_frequency") {
-            debug!("Skipping class usage frequency report (disabled in configuration)");
+        if !self.base.is_report_enabled("class_usage") {
+            debug!("Skipping class usage report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(usage_data, "class_usage_frequency")?;
+        let path = self.base.write_report(usage_data, "class_usage")?;
+        debug!("Wrote class usage report to {}", path.display());
         
-        info!("Wrote class usage frequency report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for mission compatibility with available classes
+    /// Write a report for mission compatibility
     pub fn write_compatibility_report<T: Serialize>(&self, compatibility_data: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("mission_compatibility") {
             debug!("Skipping mission compatibility report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(compatibility_data, "mission_compatibility")?;
+        let path = self.base.write_report(compatibility_data, "mission_compatibility")?;
+        debug!("Wrote mission compatibility report to {}", path.display());
         
-        info!("Wrote mission compatibility report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for class categories needed by missions
+    /// Write a report for category needs
     pub fn write_category_needs_report<T: Serialize>(&self, category_needs: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("category_needs") {
             debug!("Skipping category needs report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(category_needs, "category_needs")?;
+        let path = self.base.write_report(category_needs, "category_needs")?;
+        debug!("Wrote category needs report to {}", path.display());
         
-        info!("Wrote category needs report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for class inheritance relationships relevant to missions
+    /// Write a report for class inheritance
     pub fn write_inheritance_report<T: Serialize>(&self, inheritance_data: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("class_inheritance") {
             debug!("Skipping class inheritance report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(inheritance_data, "class_inheritance")?;
+        let path = self.base.write_report(inheritance_data, "class_inheritance")?;
+        debug!("Wrote class inheritance report to {}", path.display());
         
-        info!("Wrote class inheritance report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
-    /// Write a report for class compatibility issues with detailed diagnostics
+    /// Write a report for compatibility diagnostics
     pub fn write_compatibility_diagnostics_report<T: Serialize>(&self, diagnostics_data: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("compatibility_diagnostics") {
             debug!("Skipping compatibility diagnostics report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(diagnostics_data, "compatibility_diagnostics")?;
+        let path = self.base.write_report(diagnostics_data, "compatibility_diagnostics")?;
+        debug!("Wrote compatibility diagnostics report to {}", path.display());
         
-        info!("Wrote compatibility diagnostics report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
     
     /// Write a report for class existence validation
     pub fn write_class_existence_report<T: Serialize>(&self, existence_data: &T) -> Result<PathBuf> {
-        if !self.base.is_report_enabled("class_existence_validation") {
-            debug!("Skipping class existence validation report (disabled in configuration)");
+        if !self.base.is_report_enabled("class_existence") {
+            debug!("Skipping class existence report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
-        let output_path = self.base.write_report(existence_data, "class_existence_validation")?;
+        let path = self.base.write_report(existence_data, "class_existence")?;
+        debug!("Wrote class existence report to {}", path.display());
         
-        info!("Wrote class existence validation report to {}", output_path.display());
-        
-        Ok(output_path)
+        Ok(path)
     }
 }
 
-/// Dependency summary item for reporting
+/// Dependency summary item
 #[derive(Serialize)]
 pub struct DependencySummaryItem {
     pub name: String,
@@ -207,7 +198,7 @@ pub struct DependencySummaryItem {
     pub inheritance_matches: usize,
 }
 
-/// Dependency summary for reporting
+/// Dependency summary report
 #[derive(Serialize)]
 pub struct DependencySummary {
     pub total_missions: usize,
@@ -222,7 +213,7 @@ pub struct MissingClassesReport {
     pub missing_classes: Vec<MissingClassDetail>,
 }
 
-/// Detail for a missing class
+/// Missing class detail
 #[derive(Serialize)]
 pub struct MissingClassDetail {
     pub class_name: String,
@@ -232,14 +223,14 @@ pub struct MissingClassDetail {
     pub inheritance_path: Option<Vec<String>>,
 }
 
-/// Class usage frequency report
+/// Class usage report
 #[derive(Serialize)]
 pub struct ClassUsageReport {
     pub total_classes: usize,
     pub class_usage: Vec<ClassUsageDetail>,
 }
 
-/// Detail for class usage
+/// Class usage detail
 #[derive(Serialize)]
 pub struct ClassUsageDetail {
     pub class_name: String,
@@ -256,7 +247,7 @@ pub struct MissionCompatibilityReport {
     pub missions: Vec<MissionCompatibility>,
 }
 
-/// Mission compatibility details
+/// Mission compatibility
 #[derive(Serialize)]
 pub struct MissionCompatibility {
     pub mission_name: String,
@@ -269,7 +260,7 @@ pub struct MissionCompatibility {
     pub compatibility_level: CompatibilityLevel,
 }
 
-/// Compatibility level enum
+/// Compatibility level
 #[derive(Serialize)]
 pub enum CompatibilityLevel {
     #[serde(rename = "high")]
@@ -288,7 +279,7 @@ pub struct CategoryNeedsReport {
     pub categories: HashMap<String, CategoryNeedDetail>,
 }
 
-/// Category need details
+/// Category need detail
 #[derive(Serialize)]
 pub struct CategoryNeedDetail {
     pub category: String,
@@ -305,7 +296,7 @@ pub struct ClassInheritanceReport {
     pub inheritance_relationships: Vec<InheritanceRelationship>,
 }
 
-/// Inheritance relationship details
+/// Inheritance relationship
 #[derive(Serialize)]
 pub struct InheritanceRelationship {
     pub class_name: String,
@@ -320,14 +311,14 @@ pub struct CompatibilityDiagnosticsReport {
     pub mission_diagnostics: Vec<MissionDiagnostics>,
 }
 
-/// Mission diagnostics details
+/// Mission diagnostics
 #[derive(Serialize)]
 pub struct MissionDiagnostics {
     pub mission_name: String,
     pub class_diagnostics: Vec<ClassDiagnostic>,
 }
 
-/// Class diagnostic details
+/// Class diagnostic
 #[derive(Serialize)]
 pub struct ClassDiagnostic {
     pub class_name: String,
@@ -340,7 +331,7 @@ pub struct ClassDiagnostic {
     pub suggested_alternatives: Vec<String>,
 }
 
-/// Class existence validation report
+/// Class existence report
 #[derive(Serialize)]
 pub struct ClassExistenceReport {
     pub total_missions: usize,
@@ -351,7 +342,7 @@ pub struct ClassExistenceReport {
     pub mission_reports: Vec<MissionClassExistenceReport>,
 }
 
-/// Mission-specific class existence report
+/// Mission class existence report
 #[derive(Serialize)]
 pub struct MissionClassExistenceReport {
     pub mission_name: String,
@@ -362,7 +353,7 @@ pub struct MissionClassExistenceReport {
     pub missing_class_list: Vec<MissingClassInfo>,
 }
 
-/// Information about a missing class
+/// Missing class info
 #[derive(Serialize)]
 pub struct MissingClassInfo {
     pub class_name: String,

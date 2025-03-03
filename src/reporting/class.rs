@@ -4,9 +4,9 @@ use log::{info, debug};
 use serde::Serialize;
 use std::collections::HashMap;
 
-use super::{BaseReportWriter, ReportWriter, ReportFormat, sanitize_filename, ReportConfig};
+use crate::reporting::{BaseReportWriter, ReportWriter, ReportFormat, ReportConfig};
 
-/// Writer for class analysis reports
+/// Class report writer
 pub struct ClassReportWriter {
     base: BaseReportWriter,
 }
@@ -14,13 +14,13 @@ pub struct ClassReportWriter {
 impl ClassReportWriter {
     pub fn new(output_dir: &Path) -> Self {
         Self {
-            base: BaseReportWriter::new(output_dir, ReportFormat::Json),
+            base: BaseReportWriter::new(output_dir),
         }
     }
     
     pub fn with_format(output_dir: &Path, format: ReportFormat) -> Self {
         Self {
-            base: BaseReportWriter::new(output_dir, format),
+            base: BaseReportWriter::with_config(output_dir, format, ReportConfig::new()),
         }
     }
     
@@ -65,20 +65,20 @@ impl ClassReportWriter {
         Ok(path)
     }
     
-    /// Write a report for classes categorized by type
+    /// Write a report for categorized classes
     pub fn write_categorized_report<T: Serialize>(&self, categorized_classes: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("classes_by_category") {
-            debug!("Skipping categorized class report (disabled in configuration)");
+            debug!("Skipping categorized classes report (disabled in configuration)");
             return Ok(PathBuf::new());
         }
         
         let path = self.base.write_report(categorized_classes, "classes_by_category")?;
-        info!("Wrote categorized class report to {}", path.display());
+        info!("Wrote categorized classes report to {}", path.display());
         
         Ok(path)
     }
     
-    /// Write a report for classes used in missions
+    /// Write a report for mission usage of classes
     pub fn write_mission_usage_report<T: Serialize>(&self, usage_data: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("class_mission_usage") {
             debug!("Skipping class mission usage report (disabled in configuration)");
@@ -91,7 +91,7 @@ impl ClassReportWriter {
         Ok(path)
     }
     
-    /// Write a report for class inheritance hierarchy
+    /// Write a report for class hierarchy
     pub fn write_hierarchy_report<T: Serialize>(&self, hierarchy: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("class_hierarchy") {
             debug!("Skipping class hierarchy report (disabled in configuration)");
@@ -104,7 +104,7 @@ impl ClassReportWriter {
         Ok(path)
     }
     
-    /// Write a report for circular dependencies in class hierarchy
+    /// Write a report for circular dependencies
     pub fn write_circular_dependencies_report<T: Serialize>(&self, circular_deps: &T) -> Result<PathBuf> {
         if !self.base.is_report_enabled("circular_dependencies") {
             debug!("Skipping circular dependencies report (disabled in configuration)");
@@ -119,21 +119,18 @@ impl ClassReportWriter {
     
     /// Write a report for a specific class category
     pub fn write_category_report<T: Serialize>(&self, category: &str, classes: &T) -> Result<PathBuf> {
-        let report_type = format!("category_{}", sanitize_filename(category));
-        if !self.base.is_report_enabled(&report_type) {
-            debug!("Skipping report for category '{}' (disabled in configuration)", category);
-            return Ok(PathBuf::new());
-        }
+        // Sanitize the category name for use in a filename
+        let sanitized_category = crate::reporting::sanitize_filename(category);
+        let filename = format!("category_{}", sanitized_category);
         
-        let filename = format!("category_{}", sanitize_filename(category));
         let path = self.base.write_report(classes, &filename)?;
-        debug!("Wrote report for category '{}' to {}", category, path.display());
+        debug!("Wrote category report for '{}' to {}", category, path.display());
         
         Ok(path)
     }
 }
 
-/// Class statistics for reporting
+/// Class statistics report
 #[derive(Serialize)]
 pub struct ClassStats {
     pub total_classes: usize,
@@ -144,20 +141,20 @@ pub struct ClassStats {
     pub class_categories: Vec<ClassCategoryCount>,
 }
 
-/// Class category count for reporting
+/// Class category count
 #[derive(Serialize)]
 pub struct ClassCategoryCount {
     pub category: String,
     pub count: usize,
 }
 
-/// Categorized classes for reporting
+/// Categorized classes report
 #[derive(Serialize)]
 pub struct CategorizedClasses {
     pub categories: HashMap<String, Vec<String>>,
 }
 
-/// Class mission usage for reporting
+/// Class mission usage report
 #[derive(Serialize)]
 pub struct ClassMissionUsage {
     pub class_name: String,
@@ -165,14 +162,14 @@ pub struct ClassMissionUsage {
     pub usage_count: usize,
 }
 
-/// Class hierarchy for reporting
+/// Class hierarchy report
 #[derive(Serialize)]
 pub struct ClassHierarchy {
     pub root_classes: Vec<ClassNode>,
 }
 
-/// Node in class hierarchy
-#[derive(Serialize, Clone)]
+/// Class node in the hierarchy
+#[derive(Serialize)]
 pub struct ClassNode {
     pub name: String,
     pub children: Vec<ClassNode>,
@@ -182,7 +179,7 @@ pub struct ClassNode {
     pub is_circular: bool,
 }
 
-/// Circular dependency information for reporting
+/// Circular dependency report
 #[derive(Serialize)]
 pub struct CircularDependency {
     pub class_name: String,

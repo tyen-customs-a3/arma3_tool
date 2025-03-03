@@ -149,7 +149,7 @@ impl<'a> MissionScanner<'a> {
             .progress_with(progress)
             .filter_map(|path| {
                 // Calculate hash for the PBO
-                let hash = match crate::scanning::pbo::calculate_file_hash(path) {
+                let hash: String = match crate::scanning::pbo::calculate_file_hash(path) {
                     Ok(h) => h,
                     Err(e) => {
                         warn!("Failed to calculate hash for {}: {}", path.display(), e);

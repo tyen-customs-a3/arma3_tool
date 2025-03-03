@@ -7,115 +7,29 @@
 $env:RUST_LOG='info'
 
 # =============================================
-# SCAN PBO EXAMPLES
+# BASIC COMMAND EXAMPLES
 # =============================================
 
-# Basic PBO scanning - extracts files from PBOs in the specified directory
-cargo run --release -- scan-pbos -i "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" -c "./cache/a3" -e "cpp,hpp" -t 8
+# Base paths for all commands
+$ARMA3_DIR="C:/Program Files (x86)/Steam/steamapps/common/Arma 3"
+$MODS_DIR="E:/pca"
+$MISSION_DIR="E:/pca_missions_quick"
+$OUTPUT_DIR="./reports"
+$CACHE_DIR="./cache"
+$THREADS=8
 
-# Scan PBOs with all common file extensions
-cargo run --release -- scan-pbos -i "C:/Path/To/Mods" -c "./cache/mods" -e "cpp,hpp,sqf,sqm,ext,bin" -t 8
+# Scan PBOs - extracts files from PBOs in the specified directory
+cargo run --release -- scan-pbos -i "$ARMA3_DIR" -c "$CACHE_DIR/a3" -e "cpp,hpp" -t $THREADS
 
-# Scan PBOs with higher parallelism for faster extraction
-cargo run --release -- scan-pbos -i "C:/Path/To/Missions" -c "./cache/missions" -e "cpp,hpp,sqf,sqm" -t 16
+# Scan classes - analyzes class definitions in extracted files
+cargo run --release -- scan-classes --input-dir "$CACHE_DIR/a3" --output-dir "$OUTPUT_DIR/a3_classes"
 
-# =============================================
-# SCAN CLASSES EXAMPLES
-# =============================================
+# Scan missions - extracts and analyzes mission PBOs
+cargo run --release -- scan-missions -i "$MISSION_DIR" -c "$CACHE_DIR/missions" -o "$OUTPUT_DIR/missions" -t $THREADS
 
-# Basic class scanning - analyzes class definitions in extracted files
-cargo run --release -- scan-classes --input-dir "./cache/a3" --output-dir "./reports/a3_classes"
+# Mission dependency analysis - analyzes mission dependencies against base game and mod classes
+cargo run --release -- mission-dependency-analysis --arma3-dir "$ARMA3_DIR" --mods-dir "$MODS_DIR" --mission-dir "$MISSION_DIR" --output-dir "$OUTPUT_DIR/dependencies" --cache-dir "$CACHE_DIR/dependency_analysis" --threads $THREADS
+cargo run --release -- mission-dependency-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "E:/pca" --mission-dir "E:/pca_missions_quick" --output-dir "./reports" --cache-dir "./cache" --threads 8
 
-# Scan classes with verbose error reporting
-cargo run --release -- scan-classes --input-dir "./cache/mods" --output-dir "./reports/mod_classes" --verbose-errors
-
-# Scan classes with a limit on files (useful for testing)
-cargo run --release -- scan-classes --input-dir "./cache/mods" --output-dir "./reports/mod_classes" --max-files 100
-
-# =============================================
-# SCAN MISSIONS EXAMPLES
-# =============================================
-
-# Basic mission scanning - extracts and analyzes mission PBOs
-cargo run --release -- scan-missions -i "C:/Path/To/Missions" -c "./cache/missions" -o "./reports/missions" -t 8
-
-# =============================================
-# ANALYZE MISSION DEPENDENCIES EXAMPLES
-# =============================================
-
-# Basic mission dependency analysis
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8
-
-# Mission dependency analysis with class existence validation using base game classes
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8 --class-db-dir "./reports/a3_classes"
-
-# Mission dependency analysis with class existence validation using combined classes (base game + mods)
-# First, merge the class databases
-mkdir -p "./reports/combined_classes"
-cp -r "./reports/a3_classes/"* "./reports/combined_classes/"
-cp -r "./reports/mod_classes/"* "./reports/combined_classes/"
-# Then run the analysis with the combined database
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8 --class-db-dir "./reports/combined_classes"
-
-# =============================================
-# FULL ANALYSIS EXAMPLES
-# =============================================
-
-# Complete analysis pipeline for Arma 3 base game, mods, and missions
-cargo run --release -- full-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "C:/Path/To/Mods" --missions-dir "C:/Path/To/Missions" -c "./cache" -o "./reports" -t 8
-
-# =============================================
-# POWERSHELL EXAMPLES
-# =============================================
-
-# Set log level in PowerShell
-$env:RUST_LOG='debug'; cargo run --release -- scan-pbos -i "C:/Path/To/Mods" -c "./cache/mods" -e "cpp,hpp,sqf,sqm" -t 8
-
-# Run with trace logging for detailed output
-$env:RUST_LOG='trace'; cargo run --release -- scan-classes --input-dir "./cache/mods" --output-dir "./reports/mod_classes"
-
-# =============================================
-# PRACTICAL WORKFLOW EXAMPLES
-# =============================================
-
-# Example 1: Extract and analyze Arma 3 base game classes
-cargo run --release -- scan-pbos -i "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" -c "./cache/a3" -e "cpp,hpp" -t 8
-cargo run --release -- scan-classes --input-dir "./cache/a3" --output-dir "./reports/a3_classes"
-
-# Example 2: Extract and analyze mod classes
-cargo run --release -- scan-pbos -i "C:/Path/To/Mods" -c "./cache/mods" -e "cpp,hpp" -t 8
-cargo run --release -- scan-classes --input-dir "./cache/mods" --output-dir "./reports/mod_classes"
-
-# Example 3: Analyze missions and validate against base game classes
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8 --class-db-dir "./reports/a3_classes"
-
-# Example 3b: Analyze missions and validate against BOTH base game AND mod classes (recommended)
-# First, create a combined class database directory
-mkdir -p "./reports/combined_classes"
-cp -r "./reports/a3_classes/"* "./reports/combined_classes/"
-cp -r "./reports/mod_classes/"* "./reports/combined_classes/"
-# Then run the analysis with the combined database
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8 --class-db-dir "./reports/combined_classes"
-
-# Example 4: Complete workflow - extract everything, analyze classes, and validate missions
-# Step 1: Extract base game files
-cargo run --release -- scan-pbos -i "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" -c "./cache/a3" -e "cpp,hpp" -t 8
-
-# Step 2: Extract mod files
-cargo run --release -- scan-pbos -i "C:/Path/To/Mods" -c "./cache/mods" -e "cpp,hpp" -t 8
-
-# Step 3: Analyze base game and mod classes
-cargo run --release -- scan-classes --input-dir "./cache/a3" --output-dir "./reports/a3_classes"
-cargo run --release -- scan-classes --input-dir "./cache/mods" --output-dir "./reports/mod_classes"
-
-# Step 4: Create a combined class database for validation
-mkdir -p "./reports/combined_classes"
-cp -r "./reports/a3_classes/"* "./reports/combined_classes/"
-cp -r "./reports/mod_classes/"* "./reports/combined_classes/"
-
-# Step 5: Analyze missions and validate against BOTH base game AND mod classes
-cargo run --release -- analyze-mission-dependencies -m "C:/Path/To/Missions" -a "C:/Path/To/Addons" -c "./cache/analysis" -o "./reports/dependencies" -t 8 --class-db-dir "./reports/combined_classes"
-
-# Or use the full-analysis command to do everything in one step
-cargo run --release -- full-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "C:/Path/To/Mods" --missions-dir "C:/Path/To/Missions" -c "./cache" -o "./reports" -t 8
-cargo run --release -- full-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "E:/pca" --missions-dir "E:/pca_missions_quick" -c "./cache" -o "./reports" -t 8
+# Full analysis - complete analysis pipeline for Arma 3 base game, mods, and missions
+cargo run --release -- full-analysis --arma3-dir "$ARMA3_DIR" --mods-dir "$MODS_DIR" --missions-dir "$MISSION_DIR" -c "$CACHE_DIR" -o "$OUTPUT_DIR" -t $THREADS

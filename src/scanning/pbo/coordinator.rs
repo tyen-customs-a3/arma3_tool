@@ -5,7 +5,8 @@ use log::{info, warn};
 use walkdir::WalkDir;
 
 use crate::commands::ScanPboArgs;
-use super::{PreScanner, PboProcessor};
+use super::prescanner::PreScanner;
+use super::processor::PboProcessor;
 use super::super::types::ScanDatabase;
 
 pub struct ScanCoordinator {

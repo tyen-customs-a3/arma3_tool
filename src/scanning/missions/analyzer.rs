@@ -38,8 +38,8 @@ pub enum ReferenceType {
     Component,
 }
 
-/// Result of mission class dependency analysis
-#[derive(Debug, Serialize)]
+/// Result of mission dependency analysis
+#[derive(Debug, Clone, Serialize)]
 pub struct MissionDependencyResult {
     pub mission_name: String,
     pub pbo_path: PathBuf,
@@ -142,7 +142,7 @@ impl<'a> DependencyAnalyzer<'a> {
             let sqm_dependencies = self.analyze_sqm_file(sqm_file)?;
             for dep in &sqm_dependencies {
                 if dep.reference_type == ReferenceType::Definition {
-                    defined_classes.insert(dep.class_name.clone());
+                    defined_classes.insert(dep.class_name.to_lowercase());
                 } else if dep.reference_type == ReferenceType::Parent {
                     parent_classes.insert(dep.class_name.clone());
                     referenced_classes.insert(dep.class_name.clone());
@@ -158,7 +158,7 @@ impl<'a> DependencyAnalyzer<'a> {
             let sqf_dependencies = self.analyze_sqf_file(sqf_file)?;
             for dep in &sqf_dependencies {
                 if dep.reference_type == ReferenceType::Definition {
-                    defined_classes.insert(dep.class_name.clone());
+                    defined_classes.insert(dep.class_name.to_lowercase());
                 } else if dep.reference_type == ReferenceType::Parent {
                     parent_classes.insert(dep.class_name.clone());
                     referenced_classes.insert(dep.class_name.clone());
@@ -174,7 +174,7 @@ impl<'a> DependencyAnalyzer<'a> {
             let cpp_dependencies = self.analyze_cpp_file(cpp_file)?;
             for dep in &cpp_dependencies {
                 if dep.reference_type == ReferenceType::Definition {
-                    defined_classes.insert(dep.class_name.clone());
+                    defined_classes.insert(dep.class_name.to_lowercase());
                 } else if dep.reference_type == ReferenceType::Parent {
                     parent_classes.insert(dep.class_name.clone());
                     referenced_classes.insert(dep.class_name.clone());
@@ -189,7 +189,7 @@ impl<'a> DependencyAnalyzer<'a> {
         // These often contain function definitions that shouldn't be considered dependencies
         let function_classes = ["common", "functions", "CfgFunctions"];
         for class_name in &function_classes {
-            if defined_classes.contains(*class_name) {
+            if defined_classes.contains(&class_name.to_lowercase()) {
                 debug!("Ignoring function class: {}", class_name);
             }
         }
@@ -320,11 +320,30 @@ impl<'a> DependencyAnalyzer<'a> {
     ) {
         for class in classes {
             // Add the class itself as a definition
+            let mut context = format!("class definition: {}", class.name);
+            
+            // Check for a 'name' property in the class
+            if let Some(name_prop) = class.properties.get("name") {
+                if let Some(name_value) = name_prop.value.as_string() {
+                    // Add the name property to the context
+                    context = format!("{} with name = \"{}\"", context, name_value);
+                    
+                    // Also add the name property as a direct reference
+                    dependencies.push(ClassDependency {
+                        class_name: name_value.to_string(),
+                        source_file: file_path.to_owned(),
+                        line_number: 0, // sqm_parser doesn't provide line numbers
+                        context: format!("name property in class {}: {}", class.name, name_value),
+                        reference_type: ReferenceType::Direct,
+                    });
+                }
+            }
+            
             dependencies.push(ClassDependency {
                 class_name: class.name.clone(),
                 source_file: file_path.to_owned(),
                 line_number: 0, // sqm_parser doesn't provide line numbers
-                context: format!("class definition: {}", class.name),
+                context,
                 reference_type: ReferenceType::Definition,
             });
             
@@ -468,11 +487,32 @@ impl<'a> DependencyAnalyzer<'a> {
             }
             
             // Add the class itself as a definition
+            let mut context = format!("class definition: {}", class.name);
+            
+            // Check for a 'name' property in the class
+            if let Some(name_prop) = class.properties.get("name") {
+                if let CppValue::String(name_value) = &name_prop.value {
+                    // Add the name property to the context
+                    context = format!("{} with name = \"{}\"", context, name_value);
+                    
+                    // Also add the name property as a direct reference
+                    if self.looks_like_classname(name_value) {
+                        dependencies.push(ClassDependency {
+                            class_name: name_value.clone(),
+                            source_file: file_path.to_owned(),
+                            line_number: 0, // cpp_parser doesn't provide line numbers currently
+                            context: format!("name property in class {}: {}", class.name, name_value),
+                            reference_type: ReferenceType::Direct,
+                        });
+                    }
+                }
+            }
+            
             dependencies.push(ClassDependency {
                 class_name: class.name.clone(),
                 source_file: file_path.to_owned(),
                 line_number: 0, // cpp_parser doesn't provide line numbers currently
-                context: format!("class definition: {}", class.name),
+                context,
                 reference_type: ReferenceType::Definition,
             });
             
