@@ -2,12 +2,13 @@ mod commands;
 mod scanning;
 mod reporting;
 mod manager;
+mod logging;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use env_logger::Builder;
 use log::{error, info, LevelFilter};
 use commands::Commands;
+use std::path::PathBuf;
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum LogLevel {
@@ -45,6 +46,8 @@ impl From<LogLevel> for LevelFilter {
 ///   scan-missions                  - Scan mission files, extract PBOs, and analyze equipment dependencies
 ///   mission-dependency-analysis    - Analyze mission dependencies against class definitions
 ///   full-analysis                  - Run a complete analysis pipeline for Arma 3 base game, mods, and missions
+///   validate-classes               - Validate class definitions
+///   missing-classes-report         - Generate a report of missing classes
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -56,6 +59,10 @@ struct Cli {
     #[arg(long)]
     exclude_reports: Option<String>,
 
+    /// Custom log configuration file path
+    #[arg(long, default_value = "config/log4rs.yaml")]
+    log_config: PathBuf,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -64,10 +71,8 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
-    // Initialize logger
-    let mut builder = Builder::new();
-    builder.filter_level(cli.log_level.into());
-    builder.init();
+    // Initialize logger with log4rs
+    logging::initialize_logger(&cli.log_config, cli.log_level.into())?;
     
     info!("Starting Arma 3 Tool");
     
@@ -153,6 +158,32 @@ async fn process_command(command: Commands, global_exclude_reports: Option<Strin
             
             // Run the full analysis pipeline
             manager.run_full_analysis(&args).await?;
+        },
+        Commands::ValidateClasses(mut args) => {
+            // Merge global and command-specific exclude reports
+            args.exclude_reports = merge_exclude_reports(args.exclude_reports);
+            
+            // Create a processing manager with the specified output directory
+            let mut manager = manager::ProcessingManager::new(
+                &args.output_dir,
+                &std::path::PathBuf::from("./cache"),
+            );
+            
+            // Process class validation
+            manager.process_class_validation(&args).await?;
+        },
+        Commands::MissingClassesReport(mut args) => {
+            // Merge global and command-specific exclude reports
+            args.exclude_reports = merge_exclude_reports(args.exclude_reports);
+            
+            // Create a processing manager with the specified output directory
+            let mut manager = manager::ProcessingManager::new(
+                &args.output_dir,
+                &args.cache_dir,
+            );
+            
+            // Process missing classes report
+            manager.process_missing_classes_report(&args).await?;
         },
     }
     

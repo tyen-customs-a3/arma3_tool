@@ -1,5 +1,5 @@
-mod scanner;
-mod extractor;
+mod mission_scanner;
+mod mission_extractor;
 mod analyzer;
 pub mod validator;
 
@@ -21,7 +21,7 @@ pub async fn scan_missions_only(args: &ScanMissionsArgs) -> Result<Vec<MissionDe
     fs::create_dir_all(&args.output_dir)?;
     
     // Create a mission scanner
-    let mission_scanner = scanner::MissionScanner::new(
+    let mission_scanner = mission_scanner::MissionScanner::new(
         &args.input_dir,
         &args.cache_dir,
         args.threads

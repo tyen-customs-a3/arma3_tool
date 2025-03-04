@@ -11,6 +11,8 @@ pub mod dependency;
 pub mod formats;
 pub mod mission_reports;
 pub mod class_reports;
+pub mod class_search;
+pub mod missing_classes_report;
 
 pub use formats::ReportFormat;
 pub use mission::MissionReportWriter;
@@ -19,6 +21,7 @@ pub use dependency::DependencyReportWriter;
 pub use mission_reports::MissionReportManager;
 pub use mission_reports::DependencyReportManager;
 pub use class_reports::ClassReportManager;
+pub use class_search::{ClassSearchResult, MatchType, find_class_parallel, search_classes_parallel};
 
 /// Report configuration
 #[derive(Debug, Clone)]

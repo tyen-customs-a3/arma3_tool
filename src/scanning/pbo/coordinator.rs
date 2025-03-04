@@ -58,10 +58,18 @@ impl ScanCoordinator {
 
         let scan_results = prescanner.scan_all(prescan_pb.clone()).await?;
         
-        let skipped_count = total_pbo_count - scan_results.len();
+        // Get stats to determine how many PBOs were skipped due to previous failures
+        let previously_failed = {
+            let db = self.db.lock().unwrap();
+            let stats = db.get_stats();
+            stats.previously_failed
+        };
+        
+        let skipped_count = total_pbo_count - scan_results.len() - previously_failed;
         info!("Hash check complete:");
         info!("  Total PBOs found: {}", total_pbo_count);
         info!("  Skipped (unchanged): {}", skipped_count);
+        info!("  Skipped (previously failed): {}", previously_failed);
         info!("  Need processing: {}", scan_results.len());
 
         let total_expected_files: usize = scan_results.iter()
@@ -103,6 +111,7 @@ impl ScanCoordinator {
         info!("  Invalid PBO format: {}", stats.invalid_format);
         info!("  Failed extractions: {}", stats.failed);
         info!("  Unchanged (cached): {}", stats.unchanged);
+        info!("  Previously failed (skipped): {}", stats.previously_failed);
 
         // Save final database state
         let db_path = self.args.cache_dir.join("scan_db.json");

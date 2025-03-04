@@ -4,3 +4,4 @@ cache/
 a3_cache/
 Cargo.lock
 reports/
+logs/

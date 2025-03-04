@@ -33,3 +33,6 @@ cargo run --release -- mission-dependency-analysis --arma3-dir "C:/Program Files
 
 # Full analysis - complete analysis pipeline for Arma 3 base game, mods, and missions
 cargo run --release -- full-analysis --arma3-dir "$ARMA3_DIR" --mods-dir "$MODS_DIR" --missions-dir "$MISSION_DIR" -c "$CACHE_DIR" -o "$OUTPUT_DIR" -t $THREADS
+
+
+cargo run --release -- validate-classes -i "./cache/mods" -c "ACE_splint,ACRE_PRC148,ACE_epinephrine,ACE_bloodIV"

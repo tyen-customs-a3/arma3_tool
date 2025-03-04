@@ -4,7 +4,7 @@ use std::fs;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum SkipReason {
     Empty,
     NoMatchingFiles,
@@ -40,6 +40,7 @@ pub struct ScanStats {
     pub empty: usize,
     pub no_matching_files: usize,
     pub invalid_format: usize,
+    pub previously_failed: usize,
 }
 
 #[derive(Debug)]
@@ -112,25 +113,32 @@ impl ScanDatabase {
             empty: 0,
             no_matching_files: 0,
             invalid_format: 0,
+            previously_failed: 0,
         };
 
         for info in self.pbos.values() {
-            match info.skip_reason {
-                SkipReason::Empty => stats.empty += 1,
-                SkipReason::NoMatchingFiles => stats.no_matching_files += 1,
-                SkipReason::InvalidFormat => stats.invalid_format += 1,
-                SkipReason::Failed => stats.failed += 1,
-                SkipReason::None => {
-                    if info.failed {
-                        stats.failed += 1;
-                    } else {
-                        stats.processed += 1;
-                    }
+            if info.failed {
+                stats.previously_failed += 1;
+                
+                match info.skip_reason {
+                    SkipReason::Empty => stats.empty += 1,
+                    SkipReason::NoMatchingFiles => stats.no_matching_files += 1,
+                    SkipReason::InvalidFormat => stats.invalid_format += 1,
+                    SkipReason::Failed => stats.failed += 1,
+                    SkipReason::None => { /* Already counted in previously_failed */ }
+                }
+            } else {
+                match info.skip_reason {
+                    SkipReason::Empty => stats.empty += 1,
+                    SkipReason::NoMatchingFiles => stats.no_matching_files += 1,
+                    SkipReason::InvalidFormat => stats.invalid_format += 1,
+                    SkipReason::Failed => stats.failed += 1,
+                    SkipReason::None => stats.processed += 1,
                 }
             }
         }
 
-        stats.unchanged = stats.total - stats.failed - stats.processed;
+        stats.unchanged = stats.total - stats.previously_failed - stats.processed - stats.empty - stats.no_matching_files - stats.invalid_format - stats.failed;
         stats
     }
 }

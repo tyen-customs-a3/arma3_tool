@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 use crate::reporting::{BaseReportWriter, ReportWriter, ReportFormat, ReportConfig};
+use crate::reporting::class_search::{MatchType, ClassSearchResult};
 
 /// Class report writer
 pub struct ClassReportWriter {
@@ -128,6 +129,19 @@ impl ClassReportWriter {
         
         Ok(path)
     }
+
+    /// Write a class validation report
+    pub fn write_validation_report(&self, report: &ClassValidationReport) -> Result<PathBuf> {
+        if !self.base.is_report_enabled("class_validation") {
+            debug!("Skipping class validation report (disabled in configuration)");
+            return Ok(PathBuf::new());
+        }
+        
+        let path = self.base.write_report(report, "class_validation")?;
+        info!("Wrote class validation report to {}", path.display());
+        
+        Ok(path)
+    }
 }
 
 /// Class statistics report
@@ -185,4 +199,25 @@ pub struct CircularDependency {
     pub class_name: String,
     pub parent_class: String,
     pub cycle_path: Vec<String>,
+}
+
+/// Class validation report
+#[derive(Serialize)]
+pub struct ClassValidationReport {
+    pub total_classes_checked: usize,
+    pub found_classes: Vec<ClassValidationResult>,
+    pub missing_classes: Vec<String>,
+}
+
+/// Class validation result
+#[derive(Serialize)]
+pub struct ClassValidationResult {
+    pub class_name: String,
+    pub found: bool,
+    pub file_path: Option<String>,
+    pub parent_class: Option<String>,
+    pub match_type: MatchType,
+    pub actual_class_name: Option<String>,  // The actual name if it differs from search (e.g. case difference)
+    pub found_in_nested: bool,
+    pub nested_parent: Option<String>,      // If found in nested class, this is the parent class
 } 

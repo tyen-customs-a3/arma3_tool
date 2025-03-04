@@ -11,7 +11,7 @@ use pbo_tools::{
 use std::collections::HashSet;
 
 use crate::scanning::types::PboScanResult;
-use super::scanner::MissionExtractionResult;
+use super::mission_scanner::MissionExtractionResult;
 
 pub struct MissionExtractor<'a> {
     cache_dir: &'a Path,
@@ -56,8 +56,15 @@ impl<'a> MissionExtractor<'a> {
     }
     
     fn extract_single_mission(&self, scan_result: &PboScanResult) -> Result<MissionExtractionResult> {
-        // Create output directory path (strip .pbo extension)
-        let output_dir = self.cache_dir.join(scan_result.path.file_name().unwrap())
+        // Create missions subfolder
+        let missions_dir = self.cache_dir.join("missions");
+        if !missions_dir.exists() {
+            fs::create_dir_all(&missions_dir)
+                .context(format!("Failed to create missions directory: {}", missions_dir.display()))?;
+        }
+
+        // Create output directory path (strip .pbo extension) in the missions subfolder
+        let output_dir = missions_dir.join(scan_result.path.file_name().unwrap())
             .with_extension("");
         
         // Delete the output directory if it exists to avoid extraction errors

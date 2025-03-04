@@ -15,6 +15,9 @@ use crate::reporting::dependency::{
     MissingClassDetail, ClassUsageDetail, MissionCompatibility, CategoryNeedDetail,
     InheritanceRelationship, MissionDiagnostics, ClassDiagnostic
 };
+use crate::scanning::classes::processor::ProcessedClass;
+use crate::reporting::class_search;
+use crate::reporting::missing_classes_report::MissingClassesReportWriter;
 
 /// Mission report manager
 pub struct MissionReportManager {
@@ -64,6 +67,7 @@ impl MissionReportManager {
 pub struct DependencyReportManager {
     output_dir: PathBuf,
     config: Option<ReportConfig>,
+    available_classes: Vec<ProcessedClass>,
 }
 
 impl DependencyReportManager {
@@ -71,6 +75,7 @@ impl DependencyReportManager {
         Self {
             output_dir: output_dir.to_owned(),
             config: None,
+            available_classes: Vec::new(),
         }
     }
     
@@ -79,7 +84,13 @@ impl DependencyReportManager {
         Self {
             output_dir: output_dir.to_owned(),
             config: Some(config),
+            available_classes: Vec::new(),
         }
+    }
+
+    /// Set the available classes for dependency checking
+    pub fn set_available_classes(&mut self, classes: Vec<ProcessedClass>) {
+        self.available_classes = classes;
     }
     
     /// Write class existence report
@@ -156,6 +167,27 @@ impl DependencyReportManager {
         Ok(())
     }
     
+    /// Write a detailed missing classes report
+    pub fn write_detailed_missing_classes_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(&self.output_dir)
+            .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
+        
+        // Use the MissingClassesReportWriter to write the report
+        let report_writer = if let Some(config) = &self.config {
+            MissingClassesReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            MissingClassesReportWriter::new(&self.output_dir)
+        };
+        
+        // Write the detailed missing classes report
+        report_writer.write_detailed_missing_classes_report(results, &self.available_classes)?;
+        
+        info!("Wrote detailed missing classes report to {}", self.output_dir.display());
+        
+        Ok(())
+    }
+    
     /// Write dependency reports
     pub fn write_dependency_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
         // Create output directory if it doesn't exist
@@ -170,10 +202,13 @@ impl DependencyReportManager {
         };
         
         // Write the dependency reports
-        report_writer.write_dependency_report(results)?;
+        report_writer.write_dependency_report(results, &self.available_classes)?;
         
         // Write additional reports
         self.write_additional_reports(results)?;
+        
+        // Write the detailed missing classes report
+        self.write_detailed_missing_classes_report(results)?;
         
         info!("Wrote dependency reports to {}", self.output_dir.display());
         
@@ -221,20 +256,40 @@ impl DependencyReportManager {
         
         for result in results {
             let mission_name = result.mission_name();
-            let dependencies = result.get_dependencies();
+            let equipment = result.get_equipment();
             
-            for missing_class in &dependencies.missing_classes {
-                let entry = missing_classes.entry(missing_class.clone())
-                    .or_insert_with(|| MissingClassDetail {
-                        class_name: missing_class.clone(),
-                        used_in_missions: Vec::new(),
-                        usage_count: 0,
-                        possible_alternatives: Vec::new(),
-                        inheritance_path: None,
-                    });
+            // Get class names for searching
+            let class_names: Vec<String> = equipment.classes.iter()
+                .map(|item| item.class_name.clone())
+                .collect();
                 
-                entry.used_in_missions.push(mission_name.clone());
-                entry.usage_count += 1;
+            // Search for classes using the class search module
+            let search_results = class_search::search_classes_parallel(&class_names, &self.available_classes);
+            
+            // Process search results
+            for search_result in search_results {
+                if !search_result.found {
+                    let entry = missing_classes.entry(search_result.class_name.clone())
+                        .or_insert_with(|| MissingClassDetail {
+                            class_name: search_result.class_name.clone(),
+                            used_in_missions: Vec::new(),
+                            usage_count: 0,
+                            possible_alternatives: Vec::new(),
+                            inheritance_path: search_result.parent_class.map(|parent| vec![parent]),
+                        });
+                    
+                    if !entry.used_in_missions.contains(&mission_name) {
+                        entry.used_in_missions.push(mission_name.clone());
+                    }
+                    entry.usage_count += 1;
+                    
+                    // If we found a case-insensitive match, add it as a possible alternative
+                    if let Some(actual_name) = search_result.actual_class_name {
+                        if !entry.possible_alternatives.contains(&actual_name) {
+                            entry.possible_alternatives.push(actual_name);
+                        }
+                    }
+                }
             }
         }
         

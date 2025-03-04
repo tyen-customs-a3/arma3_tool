@@ -4,8 +4,21 @@ use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
 
-use crate::reporting::{BaseReportWriter, ReportWriter, ReportFormat, ReportConfig};
+use crate::reporting::{BaseReportWriter, MatchType, ReportConfig, ReportFormat, ReportWriter};
 use crate::reporting::mission::{MissionName, MissionEquipment, MissionDependencies};
+use crate::reporting::class_search::{self, ClassSearchResult};
+use crate::scanning::classes::processor::ProcessedClass;
+
+/// Mission dependencies report
+#[derive(Serialize)]
+pub struct MissionDependenciesReport {
+    pub total_missing_classes: usize,
+    pub missing_classes: Vec<String>,
+    pub class_search_results: Vec<ClassSearchResult>,
+    pub total_exact_matches: usize,
+    pub total_case_insensitive_matches: usize,
+    pub total_partial_matches: usize,
+}
 
 /// Dependency report writer
 pub struct DependencyReportWriter {
@@ -45,7 +58,7 @@ impl DependencyReportWriter {
     }
     
     /// Write dependency reports for multiple missions
-    pub fn write_dependency_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
+    pub fn write_dependency_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T], available_classes: &[ProcessedClass]) -> Result<()> {
         if !self.base.is_report_enabled("dependency_report") {
             debug!("Skipping dependency report (disabled in configuration)");
             return Ok(());
@@ -56,30 +69,55 @@ impl DependencyReportWriter {
         
         // Write individual dependency reports for each mission
         for result in results {
-            self.write_single_dependency_report(result)?;
+            // Get all required classes from the mission
+            let equipment = result.get_equipment();
+            let class_names: Vec<String> = equipment.classes.iter()
+                .map(|item| item.class_name.clone())
+                .collect();
+
+            // Search for classes using our shared search functionality
+            let search_results = class_search::search_classes_parallel(&class_names, available_classes);
+
+            // Count different types of matches
+            let mut total_exact_matches = 0;
+            let mut total_case_insensitive_matches = 0;
+            let mut total_partial_matches = 0;
+
+            for result in &search_results {
+                match result.match_type {
+                    MatchType::ExactMatch => total_exact_matches += 1,
+                    MatchType::CaseInsensitiveMatch => total_case_insensitive_matches += 1,
+                    MatchType::PartialMatch => total_partial_matches += 1,
+                    _ => {}
+                }
+            }
+
+            // Create dependency report based on search results
+            let missing_classes: Vec<String> = search_results.iter()
+                .filter(|result| !result.found)
+                .map(|result| result.class_name.clone())
+                .collect();
+
+            let dependencies = MissionDependenciesReport {
+                total_missing_classes: missing_classes.len(),
+                missing_classes,
+                class_search_results: search_results,
+                total_exact_matches,
+                total_case_insensitive_matches,
+                total_partial_matches,
+            };
+
+            // Write the report for this mission
+            let mission_name = result.mission_name();
+            let sanitized_name = crate::reporting::sanitize_filename(&mission_name);
+            let filename = format!("dependency_{}", sanitized_name);
+            self.base.write_report(&dependencies, &filename)?;
+            debug!("Wrote dependency report for '{}' to {}", mission_name, self.base.output_dir().display());
         }
         
         info!("Wrote dependency reports to {}", self.base.output_dir().display());
         
         Ok(())
-    }
-    
-    /// Write a dependency report for a single mission
-    pub fn write_single_dependency_report<T: Serialize + MissionName>(&self, result: &T) -> Result<PathBuf> {
-        if !self.base.is_report_enabled("dependency_report") {
-            debug!("Skipping dependency report (disabled in configuration)");
-            return Ok(PathBuf::new());
-        }
-        
-        // Create a sanitized filename from the mission name
-        let mission_name = result.mission_name();
-        let sanitized_name = crate::reporting::sanitize_filename(&mission_name);
-        let filename = format!("dependency_{}", sanitized_name);
-        
-        let path = self.base.write_report(result, &filename)?;
-        debug!("Wrote dependency report for '{}' to {}", mission_name, path.display());
-        
-        Ok(path)
     }
     
     /// Write a dependency summary report

@@ -1,8 +1,8 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use anyhow::Result;
 use indicatif::{ProgressBar, ParallelProgressIterator};
-use log::{debug, warn};
+use log::{debug, warn, info};
 use pbo_tools::core::api::{PboApi, PboApiOps};
 use walkdir::WalkDir;
 use rayon::prelude::*;
@@ -44,6 +44,9 @@ impl<'a> PreScanner<'a> {
             .collect();
 
         progress.set_length(pbo_files.len() as u64);
+        
+        // Counter for previously failed PBOs
+        let previously_failed_count = Arc::new(AtomicUsize::new(0));
 
         // Process PBOs in parallel
         let results: Vec<PboScanResult> = pbo_files.par_iter()
@@ -58,10 +61,31 @@ impl<'a> PreScanner<'a> {
                 let needs_processing = {
                     let db = self.db.lock().unwrap();
                     match db.get_pbo_info(path) {
+                        // Skip if the PBO has the same hash and didn't fail before
                         Some(info) if info.hash == hash && !info.failed => {
                             debug!("Skipping unchanged PBO: {}", path.display());
                             false
-                        }
+                        },
+                        // Skip if the PBO previously failed to parse, regardless of hash
+                        Some(info) if info.failed => {
+                            info!("Skipping previously failed PBO: {}", path.display());
+                            
+                            // Update the hash if it changed but keep the failed status
+                            if info.hash != hash {
+                                let mut db = self.db.lock().unwrap();
+                                db.update_pbo_with_reason(
+                                    path,
+                                    &hash,
+                                    true, // Keep failed status
+                                    info.skip_reason.clone() // Keep the same skip reason
+                                );
+                            }
+                            
+                            // Increment the counter for previously failed PBOs
+                            previously_failed_count.fetch_add(1, Ordering::Relaxed);
+                            
+                            false
+                        },
                         _ => true
                     }
                 };
@@ -128,6 +152,11 @@ impl<'a> PreScanner<'a> {
                 }
             })
             .collect();
+
+        let failed_count = previously_failed_count.load(Ordering::Relaxed);
+        if failed_count > 0 {
+            info!("Skipped {} PBOs that previously failed to parse", failed_count);
+        }
 
         Ok(results)
     }

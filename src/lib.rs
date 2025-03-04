@@ -2,6 +2,7 @@ pub mod commands;
 pub mod scanning;
 pub mod reporting;
 pub mod manager;
+pub mod logging;
 
 pub use scanning::pbo::scan_pbos;
 

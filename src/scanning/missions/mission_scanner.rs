@@ -10,7 +10,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashSet;
 
 use crate::scanning::types::{ScanDatabase, PboScanResult, SkipReason};
-use super::extractor::MissionExtractor;
+use super::mission_extractor::MissionExtractor;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MissionExtractionResult {
@@ -163,7 +163,8 @@ impl<'a> MissionScanner<'a> {
                     match db.get_pbo_info(path) {
                         Some(info) if info.hash == hash && !info.failed => {
                             // Check if the extracted directory actually exists and has files
-                            let extracted_path = self.cache_dir.join(path.file_name().unwrap())
+                            let missions_dir = self.cache_dir.join("missions");
+                            let extracted_path = missions_dir.join(path.file_name().unwrap())
                                 .with_extension("");
                             
                             if extracted_path.exists() {
@@ -195,7 +196,8 @@ impl<'a> MissionScanner<'a> {
                 }
                 
                 // If we need to process this PBO, delete the target directory if it exists
-                let extracted_path = self.cache_dir.join(path.file_name().unwrap())
+                let missions_dir = self.cache_dir.join("missions");
+                let extracted_path = missions_dir.join(path.file_name().unwrap())
                     .with_extension("");
                 
                 if extracted_path.exists() {
@@ -295,13 +297,14 @@ impl<'a> MissionScanner<'a> {
     
     fn collect_cached_results(&self, mission_files: &[PathBuf]) -> Result<Vec<MissionExtractionResult>> {
         let mut results = Vec::new();
+        let missions_dir = self.cache_dir.join("missions");
         
         for path in mission_files {
             // Get the relative path for output
             let rel_path = path.strip_prefix(self.input_dir)
                 .context(format!("Failed to strip prefix from {}", path.display()))?;
             
-            let extracted_path = self.cache_dir.join(rel_path).with_extension("");
+            let extracted_path = missions_dir.join(path.file_name().unwrap()).with_extension("");
             
             if !extracted_path.exists() {
                 continue;

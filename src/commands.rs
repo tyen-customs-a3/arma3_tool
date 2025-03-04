@@ -18,6 +18,12 @@ pub enum Commands {
     /// Run a complete analysis pipeline for Arma 3 base game, mods, and missions
     #[command(name = "full-analysis")]
     FullAnalysis(FullAnalysisArgs),
+    /// Validate specific class names exist in class definitions
+    #[command(name = "validate-classes")]
+    ValidateClasses(ValidateClassesArgs),
+    /// Generate a detailed missing classes report for missions
+    #[command(name = "missing-classes-report")]
+    MissingClassesReport(MissingClassesReportArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -144,6 +150,56 @@ pub struct FullAnalysisArgs {
     pub output_dir: PathBuf,
 
     /// Number of parallel extraction threads
+    #[arg(short, long, default_value = "4")]
+    pub threads: usize,
+    
+    /// Reports to exclude (comma-separated)
+    #[arg(long)]
+    pub exclude_reports: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ValidateClassesArgs {
+    /// Input directory containing cpp files to scan
+    #[arg(short, long)]
+    pub input_dir: PathBuf,
+
+    /// Output directory for the validation report
+    #[arg(short, long, default_value = "validation_reports")]
+    pub output_dir: PathBuf,
+
+    /// Comma-separated list of class names to validate
+    #[arg(short, long)]
+    pub class_names: String,
+    
+    /// Reports to exclude (comma-separated)
+    #[arg(long)]
+    pub exclude_reports: Option<String>,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct MissingClassesReportArgs {
+    /// Arma 3 base game directory (optional if class-dir is provided)
+    #[arg(long)]
+    pub arma3_dir: Option<PathBuf>,
+
+    /// Mods directory (optional if class-dir is provided)
+    #[arg(long)]
+    pub mods_dir: Option<PathBuf>,
+
+    /// Input directory containing mission files
+    #[arg(short, long)]
+    pub mission_dir: PathBuf,
+
+    /// Output directory for the detailed missing classes report
+    #[arg(short, long, default_value = "missing_classes_report")]
+    pub output_dir: PathBuf,
+
+    /// Cache directory for extracted files
+    #[arg(short, long, default_value = "./missing_classes_cache")]
+    pub cache_dir: PathBuf,
+
+    /// Number of parallel processing threads
     #[arg(short, long, default_value = "4")]
     pub threads: usize,
     
