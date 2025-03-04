@@ -3,6 +3,7 @@ pub mod scanning;
 pub mod reporting;
 pub mod manager;
 pub mod logging;
+pub mod searching;
 
 pub use scanning::pbo::scan_pbos;
 

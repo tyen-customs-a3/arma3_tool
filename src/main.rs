@@ -3,6 +3,7 @@ mod scanning;
 mod reporting;
 mod manager;
 mod logging;
+mod searching;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};

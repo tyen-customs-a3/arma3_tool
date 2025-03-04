@@ -4,8 +4,7 @@ use log::{info, debug};
 use serde::Serialize;
 use std::collections::HashMap;
 
-use crate::reporting::{BaseReportWriter, ReportWriter, ReportFormat, ReportConfig};
-use crate::reporting::class_search::{MatchType, ClassSearchResult};
+use crate::{reporting::{BaseReportWriter, ReportConfig, ReportFormat, ReportWriter}, searching::class_search::MatchType};
 
 /// Class report writer
 pub struct ClassReportWriter {

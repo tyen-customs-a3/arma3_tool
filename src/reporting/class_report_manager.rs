@@ -6,12 +6,12 @@ use serde::Serialize;
 use rayon::prelude::*;
 
 use crate::scanning::classes::processor::{ProcessedClass, ProcessingStats};
+use crate::searching::class_search::{self, search_classes_parallel, MatchType};
 use crate::reporting::{ReportConfig, ReportFormat};
-use crate::reporting::class::{
+use crate::reporting::class_report_writer::{
     ClassReportWriter, ClassValidationReport,
     ClassValidationResult
 };
-use crate::reporting::class_search::{self, MatchType};
 
 /// Class report manager
 pub struct ClassReportManager {

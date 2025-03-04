@@ -4,25 +4,27 @@ use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
 
-use crate::reporting::{ReportConfig, ReportFormat};
-use crate::reporting::mission::{
+use crate::reporting::{ReportConfig, ReportFormat, BaseReportWriter, ReportWriter};
+use crate::reporting::mission_report_writer::{
     MissionReportWriter, MissionName, MissionEquipment, MissionDependencies,
     MissionSummary, MissionSummaryItem
 };
-use crate::reporting::dependency::{
+use crate::reporting::dependency_report_writer::{
     DependencyReportWriter, MissingClassesReport, ClassUsageReport, MissionCompatibilityReport,
     CategoryNeedsReport, ClassInheritanceReport, CompatibilityDiagnosticsReport,
     MissingClassDetail, ClassUsageDetail, MissionCompatibility, CategoryNeedDetail,
     InheritanceRelationship, MissionDiagnostics, ClassDiagnostic
 };
 use crate::scanning::classes::processor::ProcessedClass;
-use crate::reporting::class_search;
 use crate::reporting::missing_classes_report::MissingClassesReportWriter;
+use crate::reporting::class_tree_report::ClassTreeReportWriter;
+use crate::searching::class_search;
 
 /// Mission report manager
 pub struct MissionReportManager {
     output_dir: PathBuf,
     config: Option<ReportConfig>,
+    available_classes: Vec<ProcessedClass>,
 }
 
 impl MissionReportManager {
@@ -30,6 +32,7 @@ impl MissionReportManager {
         Self {
             output_dir: output_dir.to_owned(),
             config: None,
+            available_classes: Vec::new(),
         }
     }
     
@@ -38,7 +41,19 @@ impl MissionReportManager {
         Self {
             output_dir: output_dir.to_owned(),
             config: Some(config),
+            available_classes: Vec::new(),
         }
+    }
+    
+    /// Set the available classes for dependency checking
+    pub fn set_available_classes(&mut self, classes: Vec<ProcessedClass>) {
+        self.available_classes = classes;
+    }
+    
+    /// Get mission directory path
+    fn get_mission_dir(&self, mission_name: &str) -> PathBuf {
+        let sanitized_name = sanitize_mission_name(mission_name);
+        self.output_dir.join("missions").join(sanitized_name)
     }
     
     /// Write mission reports
@@ -47,19 +62,137 @@ impl MissionReportManager {
         std::fs::create_dir_all(&self.output_dir)
             .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
         
-        // Use the MissionReportWriter to write reports
-        let report_writer = if let Some(config) = &self.config {
-            MissionReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
-        } else {
-            MissionReportWriter::new(&self.output_dir)
-        };
+        // Create missions directory
+        let missions_dir = self.output_dir.join("missions");
+        std::fs::create_dir_all(&missions_dir)
+            .context(format!("Failed to create missions directory: {}", missions_dir.display()))?;
         
-        // Write all mission reports
-        report_writer.write_reports(results)?;
+        // Write summary report in the root directory
+        self.write_summary_report(results)?;
+        
+        // Write individual mission reports in their own directories
+        for result in results {
+            self.write_mission_reports(result)?;
+        }
+        
+        // Write class tree report if we have available classes
+        if !self.available_classes.is_empty() {
+            self.write_class_tree_report(results)?;
+        }
         
         info!("Wrote mission reports to {}", self.output_dir.display());
         
         Ok(())
+    }
+    
+    /// Write summary report for all missions
+    fn write_summary_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<PathBuf> {
+        // Create summary items
+        let summary_items = results.iter().map(|result| {
+            let equipment = result.get_equipment();
+            let dependencies = result.get_dependencies();
+            
+            MissionSummaryItem {
+                name: result.mission_name(),
+                class_count: equipment.classes.len(),
+                missing_dependencies_count: dependencies.missing_classes.len(),
+            }
+        }).collect::<Vec<_>>();
+        
+        let summary = MissionSummary {
+            total_missions: results.len(),
+            missions: summary_items,
+        };
+        
+        // Use the BaseReportWriter to write the summary report
+        let report_writer = if let Some(config) = &self.config {
+            BaseReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            BaseReportWriter::new(&self.output_dir)
+        };
+        
+        // Write the summary report
+        let path = report_writer.write_report(&summary, "mission_summary")?;
+        info!("Wrote mission summary report to {}", path.display());
+        
+        Ok(path)
+    }
+    
+    /// Write reports for a single mission
+    fn write_mission_reports<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, result: &T) -> Result<()> {
+        let mission_name = result.mission_name();
+        let mission_dir = self.get_mission_dir(&mission_name);
+        
+        // Create the mission directory
+        std::fs::create_dir_all(&mission_dir)
+            .context(format!("Failed to create mission directory: {}", mission_dir.display()))?;
+        
+        // Use the BaseReportWriter to write mission-specific reports
+        let report_writer = if let Some(config) = &self.config {
+            BaseReportWriter::with_config(&mission_dir, ReportFormat::Json, config.clone())
+        } else {
+            BaseReportWriter::new(&mission_dir)
+        };
+        
+        // Write mission info report
+        report_writer.write_report(result, "info")?;
+        
+        // Write equipment items report
+        let equipment = result.get_equipment();
+        report_writer.write_report(&equipment, "equipment")?;
+        
+        // Write dependencies report
+        let dependencies = result.get_dependencies();
+        report_writer.write_report(&dependencies, "dependencies")?;
+        
+        // Write class tree report if we have available classes
+        if !self.available_classes.is_empty() {
+            self.write_mission_class_tree_report(result, &mission_dir)?;
+        }
+        
+        debug!("Wrote reports for mission '{}' to {}", mission_name, mission_dir.display());
+        
+        Ok(())
+    }
+    
+    /// Write class tree report
+    pub fn write_class_tree_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(&self.output_dir)
+            .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
+        
+        // Use the ClassTreeReportWriter to write the combined report
+        let report_writer = if let Some(config) = &self.config {
+            ClassTreeReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassTreeReportWriter::new(&self.output_dir)
+        };
+        
+        // Write the combined class tree report
+        report_writer.write_class_tree_report(results, &self.available_classes)?;
+        
+        info!("Wrote combined class tree report to {}", self.output_dir.display());
+        
+        Ok(())
+    }
+    
+    /// Write class tree report for a single mission
+    fn write_mission_class_tree_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(
+        &self,
+        result: &T,
+        mission_dir: &Path,
+    ) -> Result<PathBuf> {
+        // Create a mission-specific report writer
+        let mission_report_writer = if let Some(config) = &self.config {
+            ClassTreeReportWriter::with_config(mission_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassTreeReportWriter::new(mission_dir)
+        };
+        
+        // Write the mission-specific class tree report
+        let path = mission_report_writer.write_mission_class_tree_report(result, &self.available_classes)?;
+        
+        Ok(path)
     }
 }
 
@@ -91,6 +224,12 @@ impl DependencyReportManager {
     /// Set the available classes for dependency checking
     pub fn set_available_classes(&mut self, classes: Vec<ProcessedClass>) {
         self.available_classes = classes;
+    }
+    
+    /// Get mission directory path
+    fn get_mission_dir(&self, mission_name: &str) -> PathBuf {
+        let sanitized_name = sanitize_mission_name(mission_name);
+        self.output_dir.join("missions").join(sanitized_name)
     }
     
     /// Write class existence report
@@ -188,20 +327,83 @@ impl DependencyReportManager {
         Ok(())
     }
     
+    /// Write class tree report
+    pub fn write_class_tree_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(&self.output_dir)
+            .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
+        
+        // Create missions directory
+        let missions_dir = self.output_dir.join("missions");
+        std::fs::create_dir_all(&missions_dir)
+            .context(format!("Failed to create missions directory: {}", missions_dir.display()))?;
+        
+        // Use the ClassTreeReportWriter to write the combined report
+        let report_writer = if let Some(config) = &self.config {
+            ClassTreeReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassTreeReportWriter::new(&self.output_dir)
+        };
+        
+        // Write the combined class tree report
+        report_writer.write_class_tree_report(results, &self.available_classes)?;
+        
+        // Write individual mission class tree reports
+        for result in results {
+            let mission_name = result.mission_name();
+            let mission_dir = self.get_mission_dir(&mission_name);
+            
+            // Create the directory
+            std::fs::create_dir_all(&mission_dir)
+                .context(format!("Failed to create mission directory: {}", mission_dir.display()))?;
+            
+            // Write the mission-specific class tree report
+            self.write_mission_class_tree_report(result, &mission_dir)?;
+        }
+        
+        info!("Wrote class tree reports to {}", self.output_dir.display());
+        
+        Ok(())
+    }
+    
+    /// Write class tree report for a single mission
+    fn write_mission_class_tree_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(
+        &self,
+        result: &T,
+        mission_dir: &Path,
+    ) -> Result<PathBuf> {
+        // Create a mission-specific report writer
+        let mission_report_writer = if let Some(config) = &self.config {
+            ClassTreeReportWriter::with_config(mission_dir, ReportFormat::Json, config.clone())
+        } else {
+            ClassTreeReportWriter::new(mission_dir)
+        };
+        
+        // Write the mission-specific class tree report
+        let path = mission_report_writer.write_mission_class_tree_report(result, &self.available_classes)?;
+        
+        Ok(path)
+    }
+    
     /// Write dependency reports
     pub fn write_dependency_report<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, results: &[T]) -> Result<()> {
         // Create output directory if it doesn't exist
         std::fs::create_dir_all(&self.output_dir)
             .context(format!("Failed to create output directory: {}", self.output_dir.display()))?;
         
-        // Use the DependencyReportWriter to write reports
+        // Create missions directory
+        let missions_dir = self.output_dir.join("missions");
+        std::fs::create_dir_all(&missions_dir)
+            .context(format!("Failed to create missions directory: {}", missions_dir.display()))?;
+        
+        // Use the DependencyReportWriter to write the combined reports
         let report_writer = if let Some(config) = &self.config {
             DependencyReportWriter::with_config(&self.output_dir, ReportFormat::Json, config.clone())
         } else {
             DependencyReportWriter::new(&self.output_dir)
         };
         
-        // Write the dependency reports
+        // Write the combined dependency reports
         report_writer.write_dependency_report(results, &self.available_classes)?;
         
         // Write additional reports
@@ -210,7 +412,49 @@ impl DependencyReportManager {
         // Write the detailed missing classes report
         self.write_detailed_missing_classes_report(results)?;
         
+        // Write the class tree report
+        self.write_class_tree_report(results)?;
+        
+        // Write individual mission dependency reports
+        for result in results {
+            self.write_mission_dependency_reports(result)?;
+        }
+        
         info!("Wrote dependency reports to {}", self.output_dir.display());
+        
+        Ok(())
+    }
+    
+    /// Write dependency reports for a single mission
+    fn write_mission_dependency_reports<T: Serialize + MissionName + MissionEquipment + MissionDependencies>(&self, result: &T) -> Result<()> {
+        let mission_name = result.mission_name();
+        let mission_dir = self.get_mission_dir(&mission_name);
+        
+        // Create the mission directory
+        std::fs::create_dir_all(&mission_dir)
+            .context(format!("Failed to create mission directory: {}", mission_dir.display()))?;
+        
+        // Use the DependencyReportWriter to write mission-specific reports
+        let report_writer = if let Some(config) = &self.config {
+            DependencyReportWriter::with_config(&mission_dir, ReportFormat::Json, config.clone())
+        } else {
+            DependencyReportWriter::new(&mission_dir)
+        };
+        
+        // Generate mission-specific reports
+        let equipment = result.get_equipment();
+        let dependencies = result.get_dependencies();
+        
+        // Write mission info report
+        report_writer.write_class_existence_report(result)?;
+        
+        // Write equipment items report
+        report_writer.write_class_existence_report(&equipment)?;
+        
+        // Write dependencies report
+        report_writer.write_class_existence_report(&dependencies)?;
+        
+        debug!("Wrote dependency reports for mission '{}' to {}", mission_name, mission_dir.display());
         
         Ok(())
     }
@@ -357,13 +601,13 @@ impl DependencyReportManager {
             
             // Determine compatibility level
             let compatibility_level = if compatibility_score >= 90.0 {
-                crate::reporting::dependency::CompatibilityLevel::High
+                crate::reporting::dependency_report_writer::CompatibilityLevel::High
             } else if compatibility_score >= 70.0 {
-                crate::reporting::dependency::CompatibilityLevel::Medium
+                crate::reporting::dependency_report_writer::CompatibilityLevel::Medium
             } else if compatibility_score >= 50.0 {
-                crate::reporting::dependency::CompatibilityLevel::Low
+                crate::reporting::dependency_report_writer::CompatibilityLevel::Low
             } else {
-                crate::reporting::dependency::CompatibilityLevel::Incompatible
+                crate::reporting::dependency_report_writer::CompatibilityLevel::Incompatible
             };
             
             MissionCompatibility {

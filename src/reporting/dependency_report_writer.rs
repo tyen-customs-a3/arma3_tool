@@ -4,10 +4,10 @@ use anyhow::{Result, Context};
 use log::{info, debug};
 use serde::Serialize;
 
-use crate::reporting::{BaseReportWriter, MatchType, ReportConfig, ReportFormat, ReportWriter};
-use crate::reporting::mission::{MissionName, MissionEquipment, MissionDependencies};
-use crate::reporting::class_search::{self, ClassSearchResult};
+use crate::reporting::{BaseReportWriter, ReportConfig, ReportFormat, ReportWriter};
+use crate::reporting::mission_report_writer::{MissionName, MissionEquipment, MissionDependencies};
 use crate::scanning::classes::processor::ProcessedClass;
+use crate::searching::class_search::{self, ClassSearchResult, MatchType};
 
 /// Mission dependencies report
 #[derive(Serialize)]

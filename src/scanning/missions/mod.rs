@@ -1,6 +1,7 @@
-mod mission_scanner;
-mod mission_extractor;
-mod analyzer;
+// Declare submodules
+pub mod analyzer;
+pub mod extractor;
+pub mod scanner;
 pub mod validator;
 
 use std::fs;
@@ -9,8 +10,10 @@ use log::{info, warn};
 
 use crate::commands::ScanMissionsArgs;
 use crate::scanning::classes::processor::ProcessedClass;
-pub use analyzer::MissionDependencyResult;
-pub use validator::ClassExistenceReport;
+
+// Re-export important types
+pub use analyzer::types::{MissionDependencyResult, ClassDependency, ReferenceType};
+pub use validator::types::ClassExistenceReport;
 
 /// Scan mission files without generating reports
 pub async fn scan_missions_only(args: &ScanMissionsArgs) -> Result<Vec<MissionDependencyResult>> {
@@ -21,7 +24,7 @@ pub async fn scan_missions_only(args: &ScanMissionsArgs) -> Result<Vec<MissionDe
     fs::create_dir_all(&args.output_dir)?;
     
     // Create a mission scanner
-    let mission_scanner = mission_scanner::MissionScanner::new(
+    let mission_scanner = scanner::MissionScanner::new(
         &args.input_dir,
         &args.cache_dir,
         args.threads

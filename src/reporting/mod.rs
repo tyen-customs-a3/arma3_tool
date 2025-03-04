@@ -5,23 +5,23 @@ use log::{info, debug};
 use serde::Serialize;
 use std::collections::HashSet;
 
-pub mod mission;
-pub mod class;
-pub mod dependency;
+pub mod mission_report_writer;
+pub mod class_report_writer;
+pub mod dependency_report_writer;
 pub mod formats;
 pub mod mission_reports;
-pub mod class_reports;
-pub mod class_search;
+pub mod class_report_manager;
 pub mod missing_classes_report;
+pub mod class_tree_report;
 
 pub use formats::ReportFormat;
-pub use mission::MissionReportWriter;
-pub use class::ClassReportWriter;
-pub use dependency::DependencyReportWriter;
+pub use mission_report_writer::MissionReportWriter;
+pub use class_report_writer::ClassReportWriter;
+pub use dependency_report_writer::DependencyReportWriter;
 pub use mission_reports::MissionReportManager;
 pub use mission_reports::DependencyReportManager;
-pub use class_reports::ClassReportManager;
-pub use class_search::{ClassSearchResult, MatchType, find_class_parallel, search_classes_parallel};
+pub use class_report_manager::ClassReportManager;
+pub use class_tree_report::ClassTreeReportWriter;
 
 /// Report configuration
 #[derive(Debug, Clone)]

@@ -19,7 +19,7 @@ $CACHE_DIR="./cache"
 $THREADS=8
 
 # Scan PBOs - extracts files from PBOs in the specified directory
-cargo run --release -- scan-pbos -i "$ARMA3_DIR" -c "$CACHE_DIR/a3" -e "cpp,hpp" -t $THREADS
+cargo run --release -- scan-pbos -i "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" -c "$CACHE_DIR/a3" -e "cpp,hpp" -t $THREADS
 
 # Scan classes - analyzes class definitions in extracted files
 cargo run --release -- scan-classes --input-dir "$CACHE_DIR/a3" --output-dir "$OUTPUT_DIR/a3_classes"
@@ -28,11 +28,11 @@ cargo run --release -- scan-classes --input-dir "$CACHE_DIR/a3" --output-dir "$O
 cargo run --release -- scan-missions -i "$MISSION_DIR" -c "$CACHE_DIR/missions" -o "$OUTPUT_DIR/missions" -t $THREADS
 
 # Mission dependency analysis - analyzes mission dependencies against base game and mod classes
-cargo run --release -- mission-dependency-analysis --arma3-dir "$ARMA3_DIR" --mods-dir "$MODS_DIR" --mission-dir "$MISSION_DIR" --output-dir "$OUTPUT_DIR/dependencies" --cache-dir "$CACHE_DIR/dependency_analysis" --threads $THREADS
+cargo run --release -- mission-dependency-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "$MODS_DIR" --mission-dir "$MISSION_DIR" --output-dir "$OUTPUT_DIR/dependencies" --cache-dir "$CACHE_DIR/dependency_analysis" --threads $THREADS
 cargo run --release -- mission-dependency-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "E:/pca" --mission-dir "E:/pca_missions_quick" --output-dir "./reports" --cache-dir "./cache" --threads 8
 
 # Full analysis - complete analysis pipeline for Arma 3 base game, mods, and missions
-cargo run --release -- full-analysis --arma3-dir "$ARMA3_DIR" --mods-dir "$MODS_DIR" --missions-dir "$MISSION_DIR" -c "$CACHE_DIR" -o "$OUTPUT_DIR" -t $THREADS
+cargo run --release -- full-analysis --arma3-dir "C:/Program Files (x86)/Steam/steamapps/common/Arma 3" --mods-dir "E:/pca" --missions-dir "E:/pca_missions_quick" -c "./cache" -o "./reports" -t 30
 
 
 cargo run --release -- validate-classes -i "./cache/mods" -c "ACE_splint,ACRE_PRC148,ACE_epinephrine,ACE_bloodIV"

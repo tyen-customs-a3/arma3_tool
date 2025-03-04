@@ -10,10 +10,9 @@ use crate::scanning::classes::processor::{ProcessedClass, ProcessingStats};
 use crate::scanning::missions::MissionDependencyResult;
 use crate::scanning::missions::validator::ClassExistenceReport;
 use crate::reporting::{ReportConfig, ReportFormat};
-use crate::reporting::class_reports::ClassReportManager;
+use crate::reporting::class_report_manager::ClassReportManager;
 use crate::reporting::mission_reports::{MissionReportManager, DependencyReportManager};
 use crate::reporting::missing_classes_report::MissingClassesReportWriter;
-use crate::logging::log_dependency_analysis;
 
 /// Report dependency type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -295,7 +294,7 @@ impl ProcessingManager {
         }
         
         // Create a class report manager and validate the classes
-        let mut class_report_manager = crate::reporting::class_reports::ClassReportManager::with_config(
+        let mut class_report_manager = crate::reporting::class_report_manager::ClassReportManager::with_config(
             &args.output_dir,
             self.report_config.clone(),
         );
@@ -420,7 +419,7 @@ impl ProcessingManager {
     
     /// Process mission dependency analysis
     pub async fn process_mission_dependency_analysis(&mut self, args: &crate::commands::MissionDependencyAnalysisArgs) -> Result<()> {
-        log_dependency_analysis("info", &format!("Starting mission dependency analysis from {}", args.mission_dir.display()));
+        info!("Starting mission dependency analysis from {}", args.mission_dir.display());
         
         // Configure reports with default set for dependency analysis and any exclusions
         let default_dependency_reports = [
@@ -439,7 +438,7 @@ impl ProcessingManager {
         
         // If arma3_dir is provided, scan the cache directory for class files
         if let Some(arma3_dir) = &args.arma3_dir {
-            log_dependency_analysis("info", &format!("Scanning Arma 3 base game cache directory: {}", arma3_cache_dir.display()));
+            info!("Scanning Arma 3 base game cache directory: {}", arma3_cache_dir.display());
             
             // Create the cache directory if it doesn't exist
             if !arma3_cache_dir.exists() {
@@ -447,7 +446,7 @@ impl ProcessingManager {
                     .context("Failed to create Arma 3 cache directory")?;
                 
                 // Extract PBO files from Arma 3 directory to cache
-                log_dependency_analysis("info", &format!("Extracting PBO files from Arma 3 directory: {}", arma3_dir.display()));
+                info!("Extracting PBO files from Arma 3 directory: {}", arma3_dir.display());
                 let pbo_args = crate::commands::ScanPboArgs {
                     input_dir: arma3_dir.clone(),
                     cache_dir: arma3_cache_dir.clone(),
@@ -470,13 +469,13 @@ impl ProcessingManager {
             
             // Process class files from Arma 3 base game cache
             let arma3_classes = crate::scanning::classes::scan_classes_only(&arma3_class_args).await?;
-            log_dependency_analysis("info", &format!("Found {} class definitions in Arma 3 base game", arma3_classes.len()));
+            info!("Found {} class definitions in Arma 3 base game", arma3_classes.len());
             class_files.extend(arma3_classes);
         }
         
         // If mods_dir is provided, scan the cache directory for class files
         if let Some(mods_dir) = &args.mods_dir {
-            log_dependency_analysis("info", &format!("Scanning mods cache directory: {}", mods_cache_dir.display()));
+            info!("Scanning mods cache directory: {}", mods_cache_dir.display());
             
             // Create the cache directory if it doesn't exist
             if !mods_cache_dir.exists() {
@@ -484,7 +483,7 @@ impl ProcessingManager {
                     .context("Failed to create mods cache directory")?;
                 
                 // Extract PBO files from mods directory to cache
-                log_dependency_analysis("info", &format!("Extracting PBO files from mods directory: {}", mods_dir.display()));
+                info!("Extracting PBO files from mods directory: {}", mods_dir.display());
                 let pbo_args = crate::commands::ScanPboArgs {
                     input_dir: mods_dir.clone(),
                     cache_dir: mods_cache_dir.clone(),
@@ -507,12 +506,12 @@ impl ProcessingManager {
             
             // Process class files from mods cache
             let mod_classes = crate::scanning::classes::scan_classes_only(&mods_class_args).await?;
-            log_dependency_analysis("info", &format!("Found {} class definitions in mods", mod_classes.len()));
+            info!("Found {} class definitions in mods", mod_classes.len());
             class_files.extend(mod_classes);
         }
         
         // Scan mission files
-        log_dependency_analysis("info", &format!("Scanning mission files from {}", args.mission_dir.display()));
+        info!("Scanning mission files from {}", args.mission_dir.display());
         let mission_args = crate::commands::ScanMissionsArgs {
             input_dir: args.mission_dir.clone(),
             cache_dir: args.cache_dir.clone(),
@@ -523,7 +522,7 @@ impl ProcessingManager {
         
         // Process mission files
         let mission_results = crate::scanning::missions::scan_missions_only(&mission_args).await?;
-        log_dependency_analysis("info", &format!("Found {} mission files", mission_results.len()));
+        info!("Found {} mission files", mission_results.len());
         
         // Generate dependency reports
         let dependency_report_dir = self.output_dir.join("dependency_reports");
@@ -537,7 +536,7 @@ impl ProcessingManager {
         
         // Write dependency reports
         dependency_report_manager.write_dependency_report(&mission_results)?;
-        log_dependency_analysis("info", &format!("Dependency reports generated in {}", dependency_report_dir.display()));
+        info!("Dependency reports generated in {}", dependency_report_dir.display());
         
         Ok(())
     }
