@@ -1,0 +1,14 @@
+{
+    "class_input_dirs": [
+      "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Arma 3",
+      "E:\\pca"
+    ],
+    "mission_input_dirs": [
+      "E:\\pca_missions"
+    ],
+    "output_dir": "./reports",
+    "cache_dir": "./cache",
+    "extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
+    "threads": 4,
+    "timeout": 60
+  }
