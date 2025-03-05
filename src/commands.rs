@@ -4,39 +4,8 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum Commands {
-    /// Extract files from PBO archives
-    Extract(PboExtractArgs),
-    
     /// Scan and extract class definitions from files
     ScanClasses(ClassScanArgs),
-}
-
-/// Common arguments shared across all commands
-#[derive(Args, Debug, Clone)]
-pub struct PboExtractArgs {
-    /// Input directory containing PBO files
-    #[arg(long)]
-    pub mods_dir: PathBuf,
-
-    /// Cache directory for extracted files
-    #[arg(short, long, default_value = "./cache")]
-    pub cache_dir: PathBuf,
-
-    /// Output directory for the extracted files
-    #[arg(short, long, default_value = "./results")]
-    pub output_dir: PathBuf,
-
-    /// Number of parallel processing threads
-    #[arg(short, long, default_value = "4")]
-    pub threads: usize,
-
-    /// File extensions to extract (comma-separated)
-    #[arg(short, long, default_value = "sqf,cpp,hpp,h,inc,ext")]
-    pub extensions: String,
-
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info")]
-    pub log_level: String,
 }
 
 /// Arguments for the class scanning command
