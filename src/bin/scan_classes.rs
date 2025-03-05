@@ -35,15 +35,20 @@ struct Args {
     /// Number of threads to use for processing
     #[arg(short, long, default_value_t = 4)]
     threads: usize,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    env_logger::init();
-
     // Parse command line arguments
     let args = Args::parse();
+    
+    // Initialize logging with specified log level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&args.log_level))
+        .init();
 
     // Execute the class scanning command
     info!("Starting class scanning...");
@@ -69,6 +74,7 @@ async fn main() -> Result<()> {
         max_files: args.max_files,
         timeout: args.timeout,
         threads: args.threads,
+        log_level: args.log_level,
     };
 
     match handle_scan_classes(scan_args).await {

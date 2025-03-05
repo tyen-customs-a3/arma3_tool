@@ -1,16 +1,5 @@
-pub mod extraction;
 pub mod types;
 pub mod commands;
-pub mod code_scanner;
-
-// Re-export main extraction functionality for convenience
-pub use extraction::{extract_pbos, ExtractionConfig};
-
-// Re-export main types and functions for easier access
-pub use code_scanner::class::types::{ProcessedClass, ClassScanStats};
-pub use code_scanner::class::scanner::ClassScanner;
-pub use code_scanner::class::processor::ClassProcessor;
-pub use code_scanner::database::types::{ClassDatabase, ClassDatabaseStats};
 
 // Export the class scanning command handler
 pub mod class_commands {
@@ -18,11 +7,17 @@ pub mod class_commands {
     use anyhow::{Result, Context};
     use log::{info, warn};
     use crate::commands::ClassScanArgs;
-    use crate::extraction::{extract_pbos, ExtractionConfig};
-    use crate::code_scanner::class::processor::ClassProcessor;
-    use crate::code_scanner::class::types::ClassScanOptions;
-    use crate::code_scanner::database::{DatabaseOperations, QueryOptions};
-    use crate::code_scanner::utils::file_utils;
+    
+    // Direct imports from the extraction crate
+    use extraction::ExtractionConfig;
+    use extraction::extract_pbos;
+    
+    // Direct imports from the code_scanner crate
+    use code_scanner::ClassProcessor;
+    use code_scanner::ClassScanOptions;
+    use code_scanner::DatabaseOperations;
+    use code_scanner::QueryOptions;
+    use code_scanner::file_utils;
     
     /// Handle the scan classes command
     pub async fn handle_scan_classes(args: ClassScanArgs) -> Result<()> {

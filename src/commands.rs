@@ -33,6 +33,10 @@ pub struct PboExtractArgs {
     /// File extensions to extract (comma-separated)
     #[arg(short, long, default_value = "sqf,cpp,hpp,h,inc,ext")]
     pub extensions: String,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    pub log_level: String,
 }
 
 /// Arguments for the class scanning command
@@ -65,6 +69,10 @@ pub struct ClassScanArgs {
     /// Number of threads to use for processing
     #[arg(short, long, default_value_t = 4)]
     pub threads: usize,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    pub log_level: String,
 }
 
 /// Arguments for the full scan command
@@ -73,6 +81,10 @@ pub struct FullScanArgs {
     /// Path to the JSON configuration file
     #[arg(short, long)]
     pub config: PathBuf,
+    
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    pub log_level: String,
 }
 
 /// Configuration for the full scan process
@@ -95,6 +107,9 @@ pub struct FullScanConfig {
     /// Timeout in seconds for PBO extraction operations (optional)
     #[serde(default = "default_timeout")]
     pub timeout: u32,
+    /// Log level (trace, debug, info, warn, error) (optional)
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
 }
 
 fn default_extensions() -> Vec<String> {
@@ -107,4 +122,8 @@ fn default_threads() -> usize {
 
 fn default_timeout() -> u32 {
     30
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }

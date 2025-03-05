@@ -1,18 +1,21 @@
+use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{error, info, warn};
 use serde_json;
 use std::fs;
 use std::path::Path;
+use serde::{Serialize, Deserialize};
 
-use arma3_tool::code_scanner::class::processor::ClassProcessor;
-use arma3_tool::code_scanner::class::types::ClassScanOptions;
-use arma3_tool::code_scanner::database::QueryOptions;
-use arma3_tool::code_scanner::database::operations::DatabaseOperations;
-use arma3_tool::code_scanner::utils::file_utils;
+use code_scanner::class::processor::ClassProcessor;
+use code_scanner::class::types::{ClassScanOptions, ProcessedClass};
+use code_scanner::database::QueryOptions;
+use code_scanner::database::operations::DatabaseOperations;
+use code_scanner::utils::file_utils;
+use extraction::{ExtractionConfig, extract_pbos};
+
 use arma3_tool::commands::FullScanArgs;
 use arma3_tool::commands::FullScanConfig;
-use arma3_tool::extraction::{ExtractionConfig, extract_pbos};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -23,11 +26,12 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    env_logger::init();
-
     // Parse command line arguments
     let cli = Cli::parse();
+    
+    // Initialize logging with specified log level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&cli.args.log_level))
+        .init();
 
     // Load configuration from JSON file
     let config_path = &cli.args.config;
@@ -150,6 +154,76 @@ async fn main() -> Result<()> {
         Ok(_) => info!("Successfully generated class report"),
         Err(e) => error!("Failed to generate class report: {}", e),
     }
+
+    // Process mission input directories
+    info!("Processing {} mission input directories", config.mission_input_dirs.len());
+    
+    // Get all processed classes from the database for validation
+    let all_classes = db_ops.query(&QueryOptions {
+        parent: None,
+        property_name: None,
+        property_value: None,
+        limit: None,
+        sort_by: None,
+        descending: false,
+    });
+    
+    let processed_classes = all_classes.iter()
+        .map(|entry| entry.class.clone())
+        .collect::<Vec<_>>();
+    
+    // Process each mission input directory
+    let mut all_mission_results: Vec<String> = Vec::new();
+    for mission_dir in &config.mission_input_dirs {
+        info!("Processing mission input directory: {}", mission_dir.display());
+        
+        let mission_path = Path::new(mission_dir);
+        if !mission_path.exists() {
+            warn!("Mission input directory does not exist: {}", mission_path.display());
+            continue;
+        }
+        
+        // Create a unique cache directory for this mission folder
+        let folder_name = mission_path.file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| {
+                // Fallback to a hash of the path if we can't get the folder name
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                mission_path.to_string_lossy().hash(&mut hasher);
+                format!("mission_{}", hasher.finish())
+            });
+        
+        let mission_cache_dir = config.cache_dir.join(&folder_name);
+        file_utils::ensure_dir_exists(&mission_cache_dir)?;
+        
+        info!("Using unique cache directory for missions: {}", mission_cache_dir.display());
+        
+        // Extract mission PBOs first
+        info!("Starting PBO extraction from mission directory: {}", mission_path.display());
+        let extraction_config = ExtractionConfig {
+            input_dir: mission_path,
+            cache_dir: &mission_cache_dir,
+            extensions: &config.extensions.join(","),
+            threads: config.threads,
+            timeout: config.timeout,
+        };
+
+        if let Err(e) = extract_pbos(extraction_config).await {
+            error!("Failed to extract mission PBOs from {}: {}", mission_path.display(), e);
+            continue;
+        }
+        info!("Completed mission PBO extraction from: {}", mission_path.display());
+        
+        // TODO: Implement mission scanning and analysis here
+        // For now, we'll just log that we would scan missions
+        info!("Mission scanning would be performed here for: {}", mission_path.display());
+        info!("Completed processing of mission input directory: {}", mission_path.display());
+    }
+    
+    // TODO: Implement mission validation against class database
+    info!("Mission validation would be performed here");
 
     info!("Full scan completed successfully");
     Ok(())

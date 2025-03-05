@@ -4,6 +4,8 @@ use clap::Parser;
 use pbo_tools::core::api::{PboApi, PboApiOps};
 use pbo_tools::extract::ExtractOptions;
 use pbo_tools::core::config::PboConfig;
+use log;
+use env_logger;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,11 +29,19 @@ struct Args {
     /// Number of threads to use for extraction
     #[arg(short, long, default_value_t = 4)]
     threads: usize,
+    
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 fn main() {
     // Parse command line arguments
     let args = Args::parse();
+    
+    // Initialize logging with specified log level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&args.log_level))
+        .init();
     
     let pbo_path = args.input;
     let output_dir = args.output;

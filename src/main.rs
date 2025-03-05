@@ -3,7 +3,7 @@ use clap::Parser;
 use anyhow::Result;
 use log::info;
 
-use arma3_tool::extraction::{extract_pbos, ExtractionConfig};
+use extraction::{extract_pbos, ExtractionConfig};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -23,16 +23,21 @@ struct Args {
     /// Number of parallel threads to use
     #[arg(short, long, default_value_t = 4)]
     threads: usize,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
-    env_logger::init();
-
     // Parse command line arguments
     let args = Args::parse();
-
+    
+    // Initialize logging with specified log level
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&args.log_level))
+        .init();
+    
     // Execute the appropriate command
     info!("Starting PBO extraction...");
     info!("Input directory: {}", args.input.display());

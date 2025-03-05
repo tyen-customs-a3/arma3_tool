@@ -8,6 +8,9 @@ pbo_tools = { path = "../pbo_tools" }
 cpp_parser = { path = "../cpp_parser" }
 sqm_parser = { path = "../sqm_parser" }
 sqf_parser = { path = "../sqf_parser" }
+code_scanner = { path = "../code_scanner" }
+extraction = { path = "../extraction" }
+mission_scanner = { path = "../mission_scanner" }
 clap = { version = "4.5.31", features = ["derive"] }
 tokio = { version = "1.43.0", features = ["full"] }
 futures = "0.3.31"
