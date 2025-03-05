@@ -31,6 +31,10 @@ struct Args {
     /// Timeout in seconds for PBO extraction operations
     #[arg(short, long, default_value = "30")]
     timeout: u32,
+
+    /// Number of threads to use for processing
+    #[arg(short, long, default_value_t = 4)]
+    threads: usize,
 }
 
 #[tokio::main]
@@ -64,6 +68,7 @@ async fn main() -> Result<()> {
         extensions: args.extensions,
         max_files: args.max_files,
         timeout: args.timeout,
+        threads: args.threads,
     };
 
     match handle_scan_classes(scan_args).await {

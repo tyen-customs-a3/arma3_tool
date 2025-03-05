@@ -12,6 +12,52 @@ impl PropertyProcessor {
         Self {}
     }
     
+    /// Collect properties from a class without processing them
+    pub fn collect_properties(&self, properties: &HashMap<String, Value>) -> Vec<(String, String)> {
+        // Pre-allocate properties vector with estimated capacity
+        let mut collected_properties = Vec::with_capacity(properties.len());
+        
+        // Collect properties without complex processing
+        for (key, value) in properties {
+            match value {
+                Value::String(s) => {
+                    trace!("Collecting string property: {} = {}", key, s);
+                    collected_properties.push((key.clone(), s.clone()));
+                }
+                Value::Number(n) => {
+                    trace!("Collecting number property: {} = {}", key, n);
+                    collected_properties.push((key.clone(), n.to_string()));
+                }
+                Value::Integer(i) => {
+                    trace!("Collecting integer property: {} = {}", key, i);
+                    collected_properties.push((key.clone(), i.to_string()));
+                }
+                Value::Array(_) => {
+                    trace!("Collecting array property: {}", key);
+                    collected_properties.push((key.clone(), "[array]".to_string()));
+                }
+                Value::Expression(expr) => {
+                    trace!("Collecting expression property: {} = {}", key, expr);
+                    collected_properties.push((key.clone(), expr.clone()));
+                }
+                Value::Reference(ref_name) => {
+                    trace!("Collecting reference property: {} = {}", key, ref_name);
+                    collected_properties.push((key.clone(), ref_name.clone()));
+                }
+                Value::ListMacro(count, name) => {
+                    trace!("Collecting list macro property: {} = {}:{}", key, count, name);
+                    collected_properties.push((key.clone(), format!("{}:{}", count, name)));
+                }
+                Value::Class(_) => {
+                    // Skip nested classes, they're collected separately
+                    trace!("Skipping nested class property: {}", key);
+                }
+            }
+        }
+        
+        collected_properties
+    }
+    
     /// Process properties from a class
     pub fn process_properties(&self, properties: &HashMap<String, Value>) -> Vec<(String, String)> {
         // Pre-allocate properties vector with estimated capacity

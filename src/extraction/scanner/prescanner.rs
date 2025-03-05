@@ -38,6 +38,8 @@ impl<'a> PreScanner<'a> {
     }
 
     pub async fn scan_all(&self, progress: ProgressBar) -> Result<Vec<PboHashResult>> {
+        // Find all PBO files in the input directory
+        debug!("Finding all PBO files in {}", self.input_dir.display());
         let pbo_paths: Vec<_> = WalkDir::new(self.input_dir)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -49,8 +51,10 @@ impl<'a> PreScanner<'a> {
             .map(|e| e.path().to_owned())
             .collect();
 
+        debug!("Found {} PBO files", pbo_paths.len());
         progress.set_length(pbo_paths.len() as u64);
 
+        // Process PBOs in chunks to limit concurrency
         let mut results = Vec::new();
         let chunks = stream::iter(pbo_paths)
             .chunks(self.threads);
@@ -59,26 +63,31 @@ impl<'a> PreScanner<'a> {
             let db = Arc::clone(&self.db);
             let extensions = self.extensions.to_string();
             let timeout = self.timeout;
+            let chunk_size = chunk.len();
             
             tokio::spawn(async move {
                 let mut chunk_results = Vec::new();
                 for path in chunk {
+                    debug!("Checking PBO hash in thread: {}", path.display());
                     if let Ok(result) = Self::check_pbo_hash(&path, &db) {
                         chunk_results.push(result);
                     }
                 }
-                chunk_results
+                (chunk_results, chunk_size)
             })
         });
 
+        // Collect results from all threads
         while let Some(chunk_handle) = stream.next().await {
-            if let Ok(chunk_results) = chunk_handle.await {
+            if let Ok((chunk_results, chunk_size)) = chunk_handle.await {
+                debug!("Thread completed processing {} PBOs", chunk_size);
                 results.extend(chunk_results);
-                progress.inc(self.threads as u64);
+                progress.inc(chunk_size as u64);
             }
         }
 
         progress.finish_with_message("Hash check complete");
+        debug!("Hash check complete, found {} PBOs needing processing", results.len());
         Ok(results)
     }
 
@@ -86,7 +95,7 @@ impl<'a> PreScanner<'a> {
         path: &Path,
         db: &Arc<Mutex<ScanDatabase>>,
     ) -> Result<PboHashResult> {
-        info!("Checking PBO hash: {}", path.display());
+        debug!("Checking PBO hash: {}", path.display());
 
         let hash = utils::calculate_file_hash(path)?;
         
@@ -100,10 +109,11 @@ impl<'a> PreScanner<'a> {
         };
 
         if !needs_processing {
-            debug!("PBO unchanged, skipping");
+            debug!("PBO unchanged, skipping: {}", path.display());
             return Err(anyhow::anyhow!("PBO unchanged"));
         }
 
+        debug!("PBO needs processing: {}", path.display());
         Ok(PboHashResult {
             path: path.to_owned(),
             hash,
@@ -119,22 +129,10 @@ impl<'a> PreScanner<'a> {
         info!("Scanning PBO: {}", path.display());
         debug!("Looking for extensions: {}", extensions);
 
-        let hash = utils::calculate_file_hash(path)?;
+        // First check if we need to process this PBO
+        let hash_result = Self::check_pbo_hash(path, db)?;
+        let hash = hash_result.hash;
         
-        // Check if we've seen this PBO before
-        let needs_processing = {
-            let db = db.lock().unwrap();
-            match db.get_pbo_info(path) {
-                Some(info) if !info.failed && info.hash == hash => false,
-                _ => true
-            }
-        };
-
-        if !needs_processing {
-            debug!("PBO unchanged, skipping");
-            return Err(anyhow::anyhow!("PBO unchanged"));
-        }
-
         // For testing purposes, if the file is empty, still process it but with no files
         if std::fs::metadata(path)?.len() == 0 {
             debug!("Empty PBO file, returning empty file list");

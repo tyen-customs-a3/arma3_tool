@@ -8,7 +8,7 @@ use crate::code_scanner::class::types::{ProcessedClass, ClassScanStats, ClassSca
 use crate::code_scanner::class::scanner::ClassScanner;
 use super::property_processor::PropertyProcessor;
 
-/// Class processor responsible for processing parsed classes
+/// Class processor responsible for collecting parsed classes
 #[derive(Debug)]
 pub struct ClassProcessor {
     /// Configuration options for processing
@@ -36,7 +36,7 @@ impl ClassProcessor {
         Self::new(ClassScanOptions::default(), output_dir)
     }
     
-    /// Process a list of files and return the processed classes and statistics
+    /// Process a list of files and return the collected classes and statistics
     pub fn process_files(&self, files: &[PathBuf]) -> Result<ClassScanResult> {
         // Create output directory if it doesn't exist
         std::fs::create_dir_all(&self.output_dir)
@@ -63,14 +63,14 @@ impl ClassProcessor {
         stats.timeout_file_paths = timeout_files;
         stats.empty_files = files.len() - scanned_files.len() - stats.error_files - stats.timeout_files;
         
-        // Second phase: Process the collected classes
-        info!("Phase 2: Processing {} files with classes", scanned_files.len());
-        let (processed_classes, processing_stats) = self.process_scanned_classes(scanned_files)?;
+        // Second phase: Collect the classes without processing
+        info!("Phase 2: Collecting classes from {} files", scanned_files.len());
+        let (collected_classes, collection_stats) = self.collect_scanned_classes(scanned_files)?;
         
         // Combine stats
-        stats.total_classes = processing_stats.total_classes;
+        stats.total_classes = collection_stats.total_classes;
         
-        info!("Processing complete:");
+        info!("Collection complete:");
         info!("- Total files processed: {}", stats.total_files);
         info!("- Files containing classes: {}", stats.files_with_classes);
         info!("- Empty files: {}", stats.empty_files);
@@ -79,17 +79,17 @@ impl ClassProcessor {
         info!("- Total classes found: {}", stats.total_classes);
         
         Ok(ClassScanResult {
-            classes: processed_classes,
+            classes: collected_classes,
             stats,
         })
     }
     
-    /// Process pre-scanned classes from files
-    pub fn process_scanned_classes(
+    /// Collect pre-scanned classes from files without processing
+    pub fn collect_scanned_classes(
         &self,
         scanned_files: Vec<(PathBuf, Vec<cpp_parser::Class>)>,
     ) -> Result<(Vec<ProcessedClass>, ClassScanStats)> {
-        let mut final_processed_classes = Vec::with_capacity(scanned_files.len() * 5); // Pre-allocate with estimated capacity
+        let mut final_collected_classes = Vec::with_capacity(scanned_files.len() * 5); // Pre-allocate with estimated capacity
         let mut final_stats = ClassScanStats::default();
         final_stats.total_files = scanned_files.len();
         
@@ -101,77 +101,86 @@ impl ClassProcessor {
                 .unwrap_or_else(|e| warn!("Failed to configure thread pool: {}", e));
         }
         
-        info!("Processing {} files with classes", scanned_files.len());
+        info!("Collecting classes from {} files", scanned_files.len());
         
-        // Process all scanned files in parallel
-        let processed_results: Vec<Vec<ProcessedClass>> = scanned_files.par_iter()
+        // Collect all classes from scanned files in parallel
+        let collected_results: Vec<Vec<ProcessedClass>> = scanned_files.par_iter()
             .map(|(file_path, classes)| {
-                // Process classes for this file
-                let mut file_processed_classes = Vec::with_capacity(classes.len() * 2); // Pre-allocate with estimated capacity
-                self.process_top_level_classes(classes, file_path, &mut file_processed_classes);
-                file_processed_classes
+                // Collect classes for this file
+                let mut file_collected_classes = Vec::with_capacity(classes.len()); // Pre-allocate with estimated capacity
+                self.collect_classes(classes, file_path, &mut file_collected_classes);
+                file_collected_classes
             })
             .collect();
         
-        // Combine all processed classes
-        for processed in processed_results {
-            final_processed_classes.extend(processed);
+        // Combine all collected classes
+        for collected in collected_results {
+            final_collected_classes.extend(collected);
         }
         
         final_stats.files_with_classes = scanned_files.len();
-        final_stats.total_classes = final_processed_classes.len();
+        final_stats.total_classes = final_collected_classes.len();
         
-        // Validate processing results
+        // Validate collection results
         if final_stats.total_classes == 0 {
             warn!("No classes were found in any of the files!");
         }
         
-        info!("Processing stats:");
+        info!("Collection stats:");
         info!("- Files containing classes: {}", final_stats.files_with_classes);
         info!("- Total classes found: {}", final_stats.total_classes);
         
-        Ok((final_processed_classes, final_stats))
+        Ok((final_collected_classes, final_stats))
     }
     
-    /// Process top-level classes from a file
-    fn process_top_level_classes(&self, classes: &[cpp_parser::Class], file_path: &Path, processed_classes: &mut Vec<ProcessedClass>) {
+    /// Collect classes from a file without processing
+    fn collect_classes(&self, classes: &[cpp_parser::Class], file_path: &Path, collected_classes: &mut Vec<ProcessedClass>) {
         for class in classes {
-            debug!("Processing top-level class: {:?} from {}", class.name, file_path.display());
-            self.process_class(class, file_path, processed_classes);
-        }
-    }
-    
-    /// Process a single class and its nested classes
-    fn process_class(&self, class: &cpp_parser::Class, file_path: &Path, classes: &mut Vec<ProcessedClass>) {
-        // Process properties
-        let properties = self.property_processor.process_properties(&class.properties);
-        
-        // Create processed class
-        if let Some(name) = &class.name {
-            let processed_class = ProcessedClass {
-                name: name.clone(),
-                parent: class.parent.clone(),
-                properties,
-                file_path: Some(file_path.to_path_buf()),
-            };
+            debug!("Collecting class: {:?} from {}", class.name, file_path.display());
             
-            classes.push(processed_class);
-        } else {
-            debug!("Skipping unnamed class in {}", file_path.display());
-        }
-        
-        // Process nested classes
-        for (_, value) in &class.properties {
-            if let cpp_parser::Value::Class(nested_class) = value {
-                if let Some(name) = &nested_class.name {
-                    debug!("Processing nested class: {} in {}", name, file_path.display());
-                    self.process_class(nested_class, file_path, classes);
+            // Only collect top-level classes with names
+            if let Some(name) = &class.name {
+                // Store raw properties without processing
+                let properties = self.property_processor.collect_properties(&class.properties);
+                
+                // Create processed class without evaluating hierarchy
+                let processed_class = ProcessedClass {
+                    name: name.clone(),
+                    parent: class.parent.clone(), // Just store the parent name without evaluating
+                    properties,
+                    file_path: Some(file_path.to_path_buf()),
+                };
+                
+                collected_classes.push(processed_class);
+            } else {
+                debug!("Skipping unnamed class in {}", file_path.display());
+            }
+            
+            // Collect nested classes as separate top-level entries
+            for (_, value) in &class.properties {
+                if let cpp_parser::Value::Class(nested_class) = value {
+                    if let Some(nested_name) = &nested_class.name {
+                        debug!("Collecting nested class: {} in {}", nested_name, file_path.display());
+                        
+                        // Store raw properties without processing
+                        let properties = self.property_processor.collect_properties(&nested_class.properties);
+                        
+                        // Create processed class for nested class without evaluating hierarchy
+                        let processed_class = ProcessedClass {
+                            name: nested_name.clone(),
+                            parent: nested_class.parent.clone(), // Just store the parent name without evaluating
+                            properties,
+                            file_path: Some(file_path.to_path_buf()),
+                        };
+                        
+                        collected_classes.push(processed_class);
+                    }
                 }
             }
         }
     }
     
-    /// Scan a directory for class files and process them
+    /// Scan a directory for class files and collect them
     pub fn scan_directory(&self, input_dir: impl AsRef<Path>) -> Result<ClassScanResult> {
         let input_dir = input_dir.as_ref();
         info!("Scanning class files in {}", input_dir.display());
@@ -188,7 +197,7 @@ impl ClassProcessor {
         self.process_files(&files)
     }
     
-    /// Scan specific class files and process them
+    /// Scan specific class files and collect them
     pub fn scan_specific_files(&self, file_paths: &[PathBuf]) -> Result<ClassScanResult> {
         info!("Scanning {} specific class files", file_paths.len());
         

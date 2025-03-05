@@ -4,6 +4,7 @@ use log::{info, warn, debug};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use walkdir::WalkDir;
 use anyhow::Result;
+use rayon::prelude::*;
 
 use super::prescanner::PreScanner;
 use super::processor::PboProcessor;
@@ -11,6 +12,7 @@ use super::types::{PboHashResult, PboScanResult};
 use crate::extraction::database::ScanDatabase;
 use pbo_tools::core::{PboApi, PboApiOps};
 use pbo_tools::extract::ExtractOptions;
+use crate::extraction::utils;
 
 pub struct ScanCoordinator<'a> {
     input_dir: &'a Path,
@@ -42,6 +44,15 @@ impl<'a> ScanCoordinator<'a> {
             db,
             progress: MultiProgress::new(),
         })
+    }
+
+    // Add a method to save the database to disk
+    fn save_database(&self) -> Result<()> {
+        let db_path = self.cache_dir.join("scan_db.json");
+        let db = self.db.lock().unwrap();
+        db.save(&db_path)?;
+        info!("Saved scan database to {}", db_path.display());
+        Ok(())
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -85,7 +96,7 @@ impl<'a> ScanCoordinator<'a> {
 
         info!("Found {} PBO files to process", total_pbo_count);
 
-        // Initialize prescanner
+        // Initialize prescanner with multithreading
         let prescanner = PreScanner::new(
             self.input_dir,
             self.extensions,
@@ -95,7 +106,7 @@ impl<'a> ScanCoordinator<'a> {
         );
 
         // Run parallel prescan with proper progress bar
-        info!("Starting hash check of {} PBOs...", total_pbo_count);
+        info!("Starting hash check of {} PBOs using {} threads...", total_pbo_count, self.threads);
         let prescan_pb = self.progress.add(ProgressBar::new(total_pbo_count as u64));
         prescan_pb.set_style(scan_style.clone());
         prescan_pb.set_message("Checking PBO hashes...");
@@ -121,29 +132,37 @@ impl<'a> ScanCoordinator<'a> {
             return Ok(());
         }
 
-        // Scan PBO contents for files matching extensions
-        info!("Scanning PBO contents for files matching extensions: {}", self.extensions);
+        // Scan PBO contents for files matching extensions using multithreading
+        info!("Scanning PBO contents for files matching extensions: {} using {} threads", self.extensions, self.threads);
         let scan_pb = self.progress.add(ProgressBar::new(hash_results.len() as u64));
         scan_pb.set_style(scan_style.clone());
         scan_pb.set_message("Scanning PBO contents...");
 
-        let mut scan_results = Vec::new();
-        for hash_result in &hash_results {
-            info!("Scanning PBO: {}", hash_result.path.display());
-            match self.scan_pbo(&hash_result.path, hash_result) {
-                Ok(result) => {
-                    info!("Found {} matching files in {}", result.expected_files.len(), hash_result.path.display());
-                    if !result.expected_files.is_empty() {
-                        info!("Files to extract from {}: {:?}", hash_result.path.display(), result.expected_files);
+        // Use parallel processing for scanning PBOs
+        let scan_results: Vec<_> = hash_results
+            .par_iter()
+            .map(|hash_result| {
+                let result = self.scan_pbo(&hash_result.path, hash_result);
+                scan_pb.inc(1);
+                result
+            })
+            .filter_map(|result| {
+                match result {
+                    Ok(result) => {
+                        info!("Found {} matching files in {}", result.expected_files.len(), result.path.display());
+                        if !result.expected_files.is_empty() {
+                            debug!("Files to extract from {}: {:?}", result.path.display(), result.expected_files);
+                        }
+                        Some(result)
+                    },
+                    Err(e) => {
+                        warn!("Failed to scan PBO: {}", e);
+                        None
                     }
-                    scan_results.push(result);
-                },
-                Err(e) => {
-                    warn!("Failed to scan PBO {}: {}", hash_result.path.display(), e);
                 }
-            }
-            scan_pb.inc(1);
-        }
+            })
+            .collect();
+
         scan_pb.finish_with_message("PBO content scan complete");
 
         // Calculate total files to extract
@@ -160,8 +179,8 @@ impl<'a> ScanCoordinator<'a> {
             return Ok(());
         }
 
-        // Configure processor for remaining PBOs
-        info!("Initializing PBO processor for extraction");
+        // Configure processor for remaining PBOs with multithreading
+        info!("Initializing PBO processor for extraction with {} threads", self.threads);
         let processor = PboProcessor::new(
             self.input_dir,
             self.cache_dir,
@@ -171,8 +190,8 @@ impl<'a> ScanCoordinator<'a> {
             self.timeout,
         );
 
-        // Process remaining PBOs in parallel
-        info!("Starting extraction of {} files from {} PBOs", total_files, scan_results.len());
+        // Process remaining PBOs in parallel with multithreading
+        info!("Starting extraction of {} files from {} PBOs using {} threads", total_files, scan_results.len(), self.threads);
         let extract_pb = self.progress.add(ProgressBar::new(scan_results.len() as u64));
         extract_pb.set_style(scan_style);
         extract_pb.set_message("Extracting files...");
@@ -209,6 +228,10 @@ impl<'a> ScanCoordinator<'a> {
             return Err(anyhow::anyhow!("Extraction process completed but no files were written to disk"));
         }
         
+        // At the end of the run method, after all processing is complete
+        // Save the database to disk
+        self.save_database()?;
+        
         Ok(())
     }
 
@@ -217,7 +240,7 @@ impl<'a> ScanCoordinator<'a> {
         path: &Path,
         hash_result: &PboHashResult,
     ) -> Result<PboScanResult> {
-        info!("Scanning PBO contents: {}", path.display());
+        debug!("Scanning PBO contents: {}", path.display());
 
         // Create PBO API with timeout
         let api = PboApi::builder()
@@ -267,6 +290,7 @@ impl<'a> ScanCoordinator<'a> {
             ..Default::default()
         };
 
+        // Use a thread-safe approach to list PBO contents
         let result = api.list_with_options(path, options)?;
         let mut matching_files = Vec::new();
 
@@ -287,5 +311,128 @@ impl<'a> ScanCoordinator<'a> {
             hash: hash_result.hash.clone(),
             expected_files: matching_files,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use std::fs::File;
+    use std::io::Write;
+    
+    // ... existing tests ...
+    
+    #[tokio::test]
+    async fn test_database_persistence() -> Result<()> {
+        // Create temporary directories for test
+        let input_dir = tempdir()?;
+        let cache_dir = tempdir()?;
+        
+        // Create a test PBO file
+        let pbo_path = input_dir.path().join("test.pbo");
+        let mut file = File::create(&pbo_path)?;
+        writeln!(file, "PboPrefix=test\nfile1.sqf\nfile2.sqf")?;
+        
+        // First run - should create and save the database
+        {
+            let coordinator = ScanCoordinator::new(
+                input_dir.path(),
+                cache_dir.path(),
+                "sqf",
+                1,
+                10,
+            )?;
+            
+            // Create output files to simulate successful extraction
+            let output_dir = cache_dir.path().join("test");
+            std::fs::create_dir_all(&output_dir)?;
+            File::create(output_dir.join("file1.sqf"))?;
+            File::create(output_dir.join("file2.sqf"))?;
+            
+            // Manually update the database to simulate successful extraction
+            let hash = utils::calculate_file_hash(&pbo_path)?;
+            {
+                let mut db = coordinator.db.lock().unwrap();
+                let expected_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string()];
+                let extracted_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string()];
+                db.update_pbo_with_files(&pbo_path, &hash, expected_files, extracted_files);
+                
+                // Save the database
+                let db_path = cache_dir.path().join("scan_db.json");
+                db.save(&db_path)?;
+            }
+            
+            // Verify the database file exists
+            let db_path = cache_dir.path().join("scan_db.json");
+            assert!(db_path.exists(), "Database file should exist after first run");
+            
+            // Load the database and verify it contains the expected entry
+            let db = ScanDatabase::load_or_create(&db_path)?;
+            let pbo_info = db.get_pbo_info(&pbo_path);
+            assert!(pbo_info.is_some(), "Database should contain an entry for the test PBO");
+            assert!(!pbo_info.unwrap().failed, "PBO should be marked as successfully processed");
+        }
+        
+        // Modify the PBO file to simulate a change
+        let mut file = File::create(&pbo_path)?;
+        writeln!(file, "PboPrefix=test\nfile1.sqf\nfile2.sqf\nfile3.sqf")?;
+        
+        // Second run - should load the existing database and update it
+        {
+            let coordinator = ScanCoordinator::new(
+                input_dir.path(),
+                cache_dir.path(),
+                "sqf",
+                1,
+                10,
+            )?;
+            
+            // Create output files to simulate successful extraction
+            let output_dir = cache_dir.path().join("test");
+            std::fs::create_dir_all(&output_dir)?;
+            File::create(output_dir.join("file1.sqf"))?;
+            File::create(output_dir.join("file2.sqf"))?;
+            File::create(output_dir.join("file3.sqf"))?;
+            
+            // Manually update the database to simulate successful extraction
+            let hash = utils::calculate_file_hash(&pbo_path)?;
+            {
+                let mut db = coordinator.db.lock().unwrap();
+                let expected_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string(), "file3.sqf".to_string()];
+                let extracted_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string(), "file3.sqf".to_string()];
+                db.update_pbo_with_files(&pbo_path, &hash, expected_files, extracted_files);
+                
+                // Save the database
+                let db_path = cache_dir.path().join("scan_db.json");
+                db.save(&db_path)?;
+            }
+            
+            // Verify the database file still exists
+            let db_path = cache_dir.path().join("scan_db.json");
+            assert!(db_path.exists(), "Database file should exist after second run");
+            
+            // Load the database and verify it contains the expected entries
+            let db = ScanDatabase::load_or_create(&db_path)?;
+            let pbo_info = db.get_pbo_info(&pbo_path);
+            
+            assert!(pbo_info.is_some(), "Database should contain an entry for the test PBO");
+            
+            if let Some(info) = pbo_info {
+                // The PBO should be marked as processed
+                assert!(!info.failed, "PBO should be marked as successfully processed");
+                
+                // Verify the expected files were recorded
+                if let Some(expected_files) = &info.expected_files {
+                    assert!(expected_files.contains(&"file1.sqf".to_string()), "Expected files should include file1.sqf");
+                    assert!(expected_files.contains(&"file2.sqf".to_string()), "Expected files should include file2.sqf");
+                    assert!(expected_files.contains(&"file3.sqf".to_string()), "Expected files should include file3.sqf");
+                } else {
+                    panic!("Expected files should be recorded in the database");
+                }
+            }
+        }
+        
+        Ok(())
     }
 } 

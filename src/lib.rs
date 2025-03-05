@@ -42,7 +42,7 @@ pub mod class_commands {
             input_dir: &args.input_dir,
             cache_dir: &args.cache_dir,
             extensions: &args.extensions,
-            threads: 4,
+            threads: args.threads,
             timeout: args.timeout,
         };
         

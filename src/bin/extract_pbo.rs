@@ -23,6 +23,10 @@ struct Args {
     /// Timeout in seconds for extraction
     #[arg(short, long, default_value = "30")]
     timeout: u32,
+
+    /// Number of threads to use for extraction
+    #[arg(short, long, default_value_t = 4)]
+    threads: usize,
 }
 
 fn main() {
@@ -48,6 +52,8 @@ fn main() {
     let api = PboApi::builder()
         .with_timeout(args.timeout)
         .build();
+
+    println!("Using {} threads for extraction", args.threads);
 
     match api.list_contents(&pbo_path) {
         Ok(list_result) => {

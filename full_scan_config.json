@@ -1,10 +1,9 @@
 {
     "class_input_dirs": [
-      "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Arma 3",
-      "E:\\pca"
+      "E:\\pca_quick"
     ],
     "mission_input_dirs": [
-      "E:\\pca_missions"
+      "E:\\pca_missions_quick"
     ],
     "output_dir": "./reports",
     "cache_dir": "./cache",

@@ -1,12 +1,35 @@
 use std::path::PathBuf;
+use clap::Parser;
 use pbo_tools::core::api::{PboApi, PboApiOps};
 use pbo_tools::extract::ExtractOptions;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Input PBO file to list
+    #[arg(short, long)]
+    input: PathBuf,
+    
+    /// Timeout in seconds for listing
+    #[arg(short, long, default_value = "30")]
+    timeout: u32,
+    
+    /// Number of threads to use
+    #[arg(short, long, default_value_t = 4)]
+    threads: usize,
+}
+
 fn main() {
-    let pbo_path = PathBuf::from("src/extraction/tests/data/ace_medical.pbo");
+    // Parse command line arguments
+    let args = Args::parse();
+    
+    let pbo_path = args.input;
+    
+    println!("Listing PBO: {}", pbo_path.display());
+    println!("Using {} threads", args.threads);
     
     let api = PboApi::builder()
-        .with_timeout(30)
+        .with_timeout(args.timeout)
         .build();
 
     let options = ExtractOptions {

@@ -61,6 +61,10 @@ pub struct ClassScanArgs {
     /// Timeout in seconds for PBO extraction operations
     #[arg(short, long, default_value_t = 30)]
     pub timeout: u32,
+    
+    /// Number of threads to use for processing
+    #[arg(short, long, default_value_t = 4)]
+    pub threads: usize,
 }
 
 /// Arguments for the full scan command

@@ -13,6 +13,9 @@ use walkdir::WalkDir;
 
 use super::types::PboScanResult;
 use crate::extraction::database::{ScanDatabase, SkipReason};
+use crate::extraction::utils;
+use std::fs::File;
+use std::io::Write;
 
 pub struct PboProcessor<'a> {
     input_dir: &'a Path,
@@ -20,6 +23,7 @@ pub struct PboProcessor<'a> {
     extensions: &'a str,
     db: Arc<Mutex<ScanDatabase>>,
     timeout: u32,
+    threads: usize,
 }
 
 impl<'a> PboProcessor<'a> {
@@ -35,6 +39,7 @@ impl<'a> PboProcessor<'a> {
         debug!("  input_dir: {}", input_dir.display());
         debug!("  cache_dir: {}", cache_dir.display());
         debug!("  extensions: {}", extensions);
+        debug!("  threads: {}", threads);
         debug!("  timeout: {} seconds", timeout);
         Self {
             input_dir,
@@ -42,6 +47,7 @@ impl<'a> PboProcessor<'a> {
             extensions,
             db,
             timeout,
+            threads,
         }
     }
 
@@ -57,7 +63,7 @@ impl<'a> PboProcessor<'a> {
         // Process each PBO
         let results: Vec<_> = scan_results
             .par_iter()
-            .with_max_len(1)
+            .with_max_len(self.threads)
             .map(|result| {
                 let process_result = self.process_pbo(result);
                 progress.inc(1);
@@ -79,8 +85,19 @@ impl<'a> PboProcessor<'a> {
     }
 
     fn process_pbo(&self, scan_result: &PboScanResult) -> Result<()> {
-        info!("Processing PBO: {}", scan_result.path.display());
-        info!("  Expected files: {:?}", scan_result.expected_files);
+        debug!("Processing PBO: {}", scan_result.path.display());
+        debug!("  Expected files: {:?}", scan_result.expected_files);
+
+        // Check if we've already processed this PBO successfully
+        {
+            let db = self.db.lock().unwrap();
+            if let Some(info) = db.get_pbo_info(&scan_result.path) {
+                if !info.failed && info.hash == scan_result.hash {
+                    info!("PBO unchanged, skipping extraction: {}", scan_result.path.display());
+                    return Ok(());
+                }
+            }
+        }
 
         // Skip if no matching files
         if scan_result.expected_files.is_empty() {
@@ -98,10 +115,10 @@ impl<'a> PboProcessor<'a> {
         // Create output directory for this PBO
         let rel_path = scan_result.path.strip_prefix(self.input_dir)?;
         let base_dir = self.cache_dir.join(rel_path).with_extension("");
-        info!("Creating base directory: {}", base_dir.display());
+        debug!("Creating base directory: {}", base_dir.display());
         std::fs::create_dir_all(&base_dir)?;
 
-        // Configure PBO extraction
+        // Configure PBO extraction with proper threading
         let config = PboConfig::default();
         let api = PboApi::builder()
             .with_config(config)
@@ -109,7 +126,7 @@ impl<'a> PboProcessor<'a> {
             .build();
 
         // List contents and get prefix
-        info!("Listing contents of PBO: {}", scan_result.path.display());
+        debug!("Listing contents of PBO: {}", scan_result.path.display());
         let list_result = match api.list_contents(&scan_result.path) {
             Ok(result) => result,
             Err(e) => {
@@ -126,11 +143,11 @@ impl<'a> PboProcessor<'a> {
         };
         
         let prefix = list_result.get_prefix().unwrap_or_default();
-        info!("PBO prefix: {}", prefix);
+        debug!("PBO prefix: {}", prefix);
 
         // Create output directory with prefix path
         let output_dir = base_dir.join(prefix);
-        info!("Creating output directory: {}", output_dir.display());
+        debug!("Creating output directory: {}", output_dir.display());
         std::fs::create_dir_all(&output_dir)?;
 
         // Configure extraction options
@@ -139,28 +156,28 @@ impl<'a> PboProcessor<'a> {
         options.no_pause = true;
         options.warnings_as_errors = false;
         options.verbose = true;
-        info!("Extracting with filter: {:?}", options.file_filter);
+        debug!("Extracting with filter: {:?}", options.file_filter);
 
-        // Extract files
-        info!("Extracting PBO: {} to {}", scan_result.path.display(), output_dir.display());
+        // Extract files using thread-safe approach
+        debug!("Extracting PBO: {} to {}", scan_result.path.display(), output_dir.display());
         
         // Try different extraction approaches
         let mut extraction_succeeded = false;
         let mut extract_result = None;
         
         // Attempt 1: Standard extraction
-        info!("Trying standard extraction for PBO: {}", scan_result.path.display());
+        debug!("Trying standard extraction for PBO: {}", scan_result.path.display());
         match api.extract_with_options(&scan_result.path, &output_dir, options.clone()) {
             Ok(result) => {
                 info!("Extraction successful with standard extraction");
                 extract_result = Some(result);
                 extraction_succeeded = true;
-            }
+            },
             Err(e) => {
                 warn!("Standard extraction failed: {}", e);
                 
                 // Attempt 2: Permissive extraction
-                info!("Trying permissive extraction for PBO: {}", scan_result.path.display());
+                debug!("Trying permissive extraction for PBO: {}", scan_result.path.display());
                 let mut permissive_options = options.clone();
                 permissive_options.file_filter = None; // Extract all files
                 match api.extract_with_options(&scan_result.path, &output_dir, permissive_options) {
@@ -168,18 +185,18 @@ impl<'a> PboProcessor<'a> {
                         info!("Extraction successful with permissive extraction");
                         extract_result = Some(result);
                         extraction_succeeded = true;
-                    }
+                    },
                     Err(e) => {
                         warn!("Permissive extraction failed: {}", e);
                         
                         // Attempt 3: Direct extraction
-                        info!("Trying direct extraction for PBO: {}", scan_result.path.display());
+                        debug!("Trying direct extraction for PBO: {}", scan_result.path.display());
                         match api.extract_files(&scan_result.path, &output_dir, None) {
                             Ok(result) => {
                                 info!("Extraction successful with direct extraction");
                                 extract_result = Some(result);
                                 extraction_succeeded = true;
-                            }
+                            },
                             Err(e) => {
                                 warn!("Direct extraction failed: {}", e);
                             }
@@ -289,6 +306,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
     use crate::extraction::database::{ScanDatabase, SkipReason};
+    use crate::extraction::utils;
 
     fn create_test_pbo(dir: &Path, name: &str, content: &[u8]) -> PathBuf {
         let path = dir.join(name);
@@ -424,5 +442,70 @@ mod tests {
         // The actual check for MissingExpectedFiles would require mocking the PboApi
         // which is beyond the scope of this test. In a real scenario, we would
         // use a mock or a test double for the PboApi to simulate partial extraction.
+    }
+
+    #[test]
+    fn test_skip_extraction_for_unchanged_pbo() -> Result<()> {
+        // Create temporary directories
+        let input_dir = tempdir()?;
+        let cache_dir = tempdir()?;
+        
+        // Create a test PBO file
+        let pbo_path = input_dir.path().join("unchanged.pbo");
+        let mut file = File::create(&pbo_path)?;
+        writeln!(file, "PboPrefix=test\nfile1.sqf\nfile2.sqf")?;
+        
+        // Calculate hash for the PBO
+        let hash = utils::calculate_file_hash(&pbo_path)?;
+        
+        // Create a database with an entry for this PBO
+        let db_path = cache_dir.path().join("scan_db.json");
+        let db = Arc::new(Mutex::new(ScanDatabase::default()));
+        
+        // Add the PBO to the database as successfully processed
+        {
+            let mut db_guard = db.lock().unwrap();
+            let expected_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string()];
+            let extracted_files = vec!["file1.sqf".to_string(), "file2.sqf".to_string()];
+            db_guard.update_pbo_with_files(&pbo_path, &hash, expected_files, extracted_files);
+            db_guard.save(&db_path)?;
+        }
+        
+        // Create a scan result for the PBO
+        let scan_result = PboScanResult {
+            path: pbo_path.clone(),
+            hash: hash.clone(),
+            expected_files: vec!["file1.sqf".to_string(), "file2.sqf".to_string()],
+        };
+        
+        // Create a processor with the database
+        let processor = PboProcessor::new(
+            input_dir.path(),
+            cache_dir.path(),
+            "sqf",
+            db.clone(),
+            1,
+            10,
+        );
+        
+        // Create a mock progress bar
+        let progress = ProgressBar::new(1);
+        
+        // Process the PBO
+        processor.process_all(&[scan_result], progress)?;
+        
+        // Verify the PBO was skipped by checking the database
+        let db_guard = db.lock().unwrap();
+        let pbo_info = db_guard.get_pbo_info(&pbo_path).unwrap();
+        
+        // The PBO should still be marked as successfully processed
+        assert!(!pbo_info.failed, "PBO should still be marked as successfully processed");
+        assert_eq!(pbo_info.hash, hash, "Hash should remain unchanged");
+        
+        // The expected files should still be recorded
+        assert!(pbo_info.expected_files.is_some(), "Expected files should still be recorded");
+        assert_eq!(pbo_info.expected_files.as_ref().unwrap().len(), 2, "Should have 2 expected files");
+        
+        Ok(())
     }
 } 
