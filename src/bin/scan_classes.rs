@@ -29,7 +29,7 @@ struct Args {
     max_files: Option<usize>,
 
     /// Timeout in seconds for PBO extraction operations
-    #[arg(short, long, default_value = "30")]
+    #[arg(short = 'T', long, default_value = "30")]
     timeout: u32,
 
     /// Number of threads to use for processing
