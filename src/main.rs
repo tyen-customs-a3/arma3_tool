@@ -57,19 +57,19 @@ fn main() -> Result<()> {
     debug!("Configuration: {:?}", config);
     
     // Initialize cache manager
-    let cache_manager = cache::CacheManager::new(config.cache_dir.clone());
+    let mut cache_manager = cache::CacheManager::new(config.cache_dir.clone());
     
     // Process command
     match &cli.command {
         Commands::ScanGameData { dirs } => {
             info!("Scanning game data...");
-            let scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager);
+            let mut scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager);
             let game_data = scanner.scan(dirs.clone())?;
             info!("Game data scanning completed successfully");
         },
         Commands::ScanMissions { dirs } => {
             info!("Scanning missions...");
-            let scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
+            let mut scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
             let mission_results = scanner.scan(dirs.clone())?;
             info!("Mission scanning completed successfully");
         },
@@ -84,13 +84,13 @@ fn main() -> Result<()> {
             
             // Scan game data
             info!("Scanning game data...");
-            let game_data_scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
+            let mut game_data_scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
             let game_data = game_data_scanner.scan(None)?;
             info!("Game data scanning completed successfully");
             
             // Scan missions
             info!("Scanning missions...");
-            let mission_scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
+            let mut mission_scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
             let mission_results = mission_scanner.scan(None)?;
             info!("Mission scanning completed successfully");
             

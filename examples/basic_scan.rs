@@ -21,11 +21,11 @@ fn main() {
     };
     
     // Initialize cache manager
-    let cache_manager = CacheManager::new(config.cache_dir.clone());
+    let mut cache_manager = CacheManager::new(config.cache_dir.clone());
     
     // Scan game data
     info!("Scanning game data...");
-    let game_data_scanner = GameDataScanner::new(config.clone(), cache_manager.clone());
+    let mut game_data_scanner = GameDataScanner::new(config.clone(), cache_manager.clone());
     let game_data = match game_data_scanner.scan(None) {
         Ok(data) => data,
         Err(e) => {
@@ -37,7 +37,7 @@ fn main() {
     
     // Scan missions
     info!("Scanning missions...");
-    let mission_scanner = MissionScanner::new(config.clone(), cache_manager);
+    let mut mission_scanner = MissionScanner::new(config.clone(), cache_manager);
     let mission_results = match mission_scanner.scan(None) {
         Ok(results) => results,
         Err(e) => {

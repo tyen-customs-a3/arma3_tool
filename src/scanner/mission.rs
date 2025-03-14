@@ -30,7 +30,7 @@ impl MissionScanner {
     }
     
     /// Scan missions
-    pub fn scan(&self, dirs: Option<Vec<String>>) -> Result<Vec<MissionResults>> {
+    pub fn scan(&mut self, dirs: Option<Vec<String>>) -> Result<Vec<MissionResults>> {
         // Discover PBOs
         let pbo_paths = self.discover_pbos(dirs)?;
         info!("Found {} mission PBO files", pbo_paths.len());
@@ -80,26 +80,66 @@ impl MissionScanner {
     }
     
     /// Extract mission PBO files to cache
-    fn extract_pbos(&self, pbo_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    fn extract_pbos(&mut self, pbo_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         let mut extracted_paths = Vec::new();
         
+        // Define a custom result type for the parallel extraction
+        type ExtractionResult = std::result::Result<(PathBuf, Vec<String>, Option<String>), (String, Vec<String>, Option<String>)>;
+        
         // Process each PBO in parallel
-        let results: Vec<_> = pbo_paths.par_iter()
+        let results: Vec<ExtractionResult> = pbo_paths.par_iter()
             .map(|pbo_path| {
                 let cache_path = self.cache_manager.get_mission_cache_path(pbo_path);
                 
-                // Check if already cached
-                if self.cache_manager.is_cached(pbo_path, &cache_path) {
+                // Create file filter if extensions are specified
+                let extensions = self.config.mission_extensions.clone();
+                let file_filter = if !extensions.is_empty() {
+                    let filter = extensions.iter()
+                        .map(|ext| format!("*.{}", ext))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    Some(filter)
+                } else {
+                    None
+                };
+                
+                // Check if PBO has a permanent error (like bad SHA)
+                if self.cache_manager.has_mission_permanent_error(pbo_path) {
+                    debug!("Skipping mission PBO with permanent error: {}", pbo_path.display());
+                    return Err(("Skipping mission PBO with permanent error".to_string(), extensions, file_filter));
+                }
+                
+                // Check if PBO has previously had an error but patterns have changed
+                if self.cache_manager.has_mission_error(pbo_path) && 
+                   self.cache_manager.has_mission_pattern_changed(pbo_path, &extensions, file_filter.as_deref()) {
+                    debug!("Extraction patterns changed for mission PBO with previous error, retrying: {}", pbo_path.display());
+                    // Continue with extraction since patterns changed
+                } else if self.cache_manager.has_mission_error(pbo_path) {
+                    // Skip if it had an error and patterns haven't changed
+                    let error_msg = self.cache_manager.get_mission_error_message(pbo_path)
+                        .unwrap_or_else(|| "Unknown error".to_string());
+                    warn!("Skipping mission PBO that previously had an error: {} - {}", pbo_path.display(), error_msg);
+                    return Err((format!("Skipping mission PBO that previously had an error: {}", error_msg), extensions, file_filter));
+                }
+                
+                // Check if already cached and patterns haven't changed
+                if self.cache_manager.is_mission_cached(pbo_path, &cache_path) && 
+                   !self.cache_manager.has_mission_pattern_changed(pbo_path, &extensions, file_filter.as_deref()) {
                     debug!("Using cached extraction for {}", pbo_path.display());
-                    return Ok(cache_path);
+                    return Ok((cache_path, extensions, file_filter));
                 }
                 
                 // Create cache directory if it doesn't exist
                 if !cache_path.exists() {
                     fs::create_dir_all(&cache_path)
-                        .map_err(|e| ToolError::CacheError(
-                            format!("Failed to create cache directory: {}", e)
-                        ))?;
+                        .map_err(|e| (format!("Failed to create cache directory: {}", e), extensions.clone(), file_filter.clone()))?;
+                } else if self.cache_manager.has_mission_pattern_changed(pbo_path, &extensions, file_filter.as_deref()) {
+                    // If patterns changed, clear the cache directory and recreate it
+                    debug!("Extraction patterns changed, clearing cache for: {}", pbo_path.display());
+                    fs::remove_dir_all(&cache_path)
+                        .map_err(|e| (format!("Failed to clear cache directory: {}", e), extensions.clone(), file_filter.clone()))?;
+                    fs::create_dir_all(&cache_path)
+                        .map_err(|e| (format!("Failed to recreate cache directory: {}", e), extensions.clone(), file_filter.clone()))?;
                 }
                 
                 // Extract PBO
@@ -109,32 +149,71 @@ impl MissionScanner {
                 let mut options = ExtractOptions::default();
                 
                 // Set file filter if extensions are specified
-                if !self.config.mission_extensions.is_empty() {
-                    let filter = self.config.mission_extensions.iter()
-                        .map(|ext| format!("*.{}", ext))
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    options.file_filter = Some(filter);
+                if let Some(filter) = &file_filter {
+                    options.file_filter = Some(filter.clone());
                 }
                 
                 // Extract PBO
                 match extract_pbo_with_options(pbo_path, &cache_path, options) {
-                    Ok(_) => {},
-                    Err(e) => return Err(ToolError::ExtractionError(e.to_string())),
+                    Ok(_) => {
+                        // Note: We can't update the cache here because we're in a parallel context
+                        // and cache_manager is borrowed immutably. We'll handle this after collecting results.
+                        Ok((cache_path, extensions, file_filter))
+                    },
+                    Err(e) => {
+                        let error_msg = e.to_string();
+                        
+                        // Check if this is error code 11 (no files to extract)
+                        if error_msg.contains("return code 11") || 
+                           error_msg.contains("no file(s) to extract") {
+                            debug!("No files to extract (error code 11), treating as success: {}", pbo_path.display());
+                            return Ok((cache_path, extensions, file_filter));
+                        }
+                        
+                        error!("Failed to extract mission PBO {}: {}", pbo_path.display(), error_msg);
+                        Err((error_msg, extensions, file_filter))
+                    },
                 }
-                
-                // Update cache
-                self.cache_manager.update_cache(pbo_path, &cache_path)?;
-                
-                Ok(cache_path)
             })
             .collect();
         
-        // Collect results
-        for result in results {
-            match result {
-                Ok(path) => extracted_paths.push(path),
-                Err(e) => error!("Failed to extract mission PBO: {}", e),
+        // Process results and update cache
+        for (i, result) in results.into_iter().enumerate() {
+            if let Some(pbo_path) = pbo_paths.get(i) {
+                match result {
+                    Ok((path, extensions, file_filter)) => {
+                        // Update cache for successful extractions
+                        if let Err(e) = self.cache_manager.update_mission_cache(
+                            pbo_path, 
+                            &path, 
+                            &extensions, 
+                            file_filter.as_deref()
+                        ) {
+                            warn!("Failed to update cache for {}: {}", pbo_path.display(), e);
+                        }
+                        extracted_paths.push(path);
+                    },
+                    Err((error_msg, extensions, file_filter)) => {
+                        // Check if this is a bad SHA error
+                        if self.cache_manager.is_bad_sha_error(&error_msg) {
+                            warn!("Mission PBO has bad SHA, marking as permanent error: {}", pbo_path.display());
+                            if let Err(e) = self.cache_manager.mark_mission_permanent_error(pbo_path, &error_msg) {
+                                warn!("Failed to mark permanent error in cache for {}: {}", pbo_path.display(), e);
+                            }
+                        } else {
+                            // Mark regular error in cache
+                            if let Err(cache_err) = self.cache_manager.mark_mission_error(
+                                pbo_path, 
+                                &error_msg, 
+                                &extensions, 
+                                file_filter.as_deref()
+                            ) {
+                                warn!("Failed to mark error in cache for {}: {}", pbo_path.display(), cache_err);
+                            }
+                        }
+                        error!("Failed to extract mission PBO: {}", error_msg);
+                    },
+                }
             }
         }
         

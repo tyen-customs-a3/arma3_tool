@@ -1,7 +1,7 @@
 {
     "game_data_dirs": [
       "C:/Program Files (x86)/Steam/steamapps/common/Arma 3",
-      "E:/pca_quick"
+      "E:/pca"
     ],
     "game_data_extensions": ["hpp", "cpp"],
     "mission_dirs": [
