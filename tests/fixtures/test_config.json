@@ -1,0 +1,11 @@
+{
+    "game_data_dirs": ["tests/fixtures/gamedata"],
+    "game_data_extensions": ["hpp", "cpp"],
+    "mission_dirs": ["tests/fixtures/missions"],
+    "mission_extensions": ["hpp", "cpp", "sqf", "sqm"],
+    "cache_dir": "tests/fixtures/cache",
+    "report_dir": "tests/fixtures/reports",
+    "threads": 2,
+    "timeout": 30,
+    "process_base_game": false
+} 

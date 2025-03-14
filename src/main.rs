@@ -1,60 +1,108 @@
-use std::path::PathBuf;
-use clap::Parser;
 use anyhow::Result;
-use log::info;
+use clap::{Parser, Subcommand};
+use log::{debug, info, warn, error};
 
-use extraction::{extract_pbos, ExtractionConfig};
+mod config;
+mod cache;
+mod error;
+mod scanner;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-struct Args {
-    /// Input directory containing PBO files
-    #[arg(short, long)]
-    input: PathBuf,
+struct Cli {
+    /// Path to the configuration file
+    #[arg(short, long, default_value = "scan_config.json")]
+    config: String,
 
-    /// Output directory for extracted files
-    #[arg(short, long)]
-    output: PathBuf,
-
-    /// File extensions to extract (comma-separated)
-    #[arg(short, long, default_value = "")]
-    extensions: String,
-
-    /// Number of parallel threads to use
-    #[arg(short, long, default_value_t = 4)]
-    threads: usize,
-
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info")]
-    log_level: String,
+    #[command(subcommand)]
+    command: Commands,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+#[derive(Subcommand)]
+enum Commands {
+    /// Scan game data for class definitions
+    ScanGameData {
+        /// Only scan specific directories
+        #[arg(short, long)]
+        dirs: Option<Vec<String>>,
+    },
+    /// Scan missions for dependencies
+    ScanMissions {
+        /// Only scan specific directories
+        #[arg(short, long)]
+        dirs: Option<Vec<String>>,
+    },
+    /// Generate reports from scanned data
+    GenerateReports {
+        /// Only generate reports for specific missions
+        #[arg(short, long)]
+        missions: Option<Vec<String>>,
+    },
+    /// Run the full pipeline: scan game data, scan missions, and generate reports
+    RunAll,
+}
+
+fn main() -> Result<()> {
+    // Initialize logger
+    env_logger::init();
+    
     // Parse command line arguments
-    let args = Args::parse();
+    let cli = Cli::parse();
     
-    // Initialize logging with specified log level
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&args.log_level))
-        .init();
+    // Load configuration
+    let config_path = std::path::PathBuf::from(&cli.config);
+    let config = config::ToolConfig::from_file(&config_path)?;
     
-    // Execute the appropriate command
-    info!("Starting PBO extraction...");
-    info!("Input directory: {}", args.input.display());
-    info!("Output directory: {}", args.output.display());
-    info!("Extensions filter: {}", args.extensions);
-    info!("Using {} threads", args.threads);
-
-    let config = ExtractionConfig {
-        input_dir: &args.input,
-        cache_dir: &args.output,
-        extensions: &args.extensions,
-        threads: args.threads,
-        timeout: 30, // Default timeout of 30 seconds
-    };
-
-    extract_pbos(config).await?;
-    info!("Extraction complete!");
-
+    info!("Arma 3 Tool started with configuration from {}", cli.config);
+    debug!("Configuration: {:?}", config);
+    
+    // Initialize cache manager
+    let cache_manager = cache::CacheManager::new(config.cache_dir.clone());
+    
+    // Process command
+    match &cli.command {
+        Commands::ScanGameData { dirs } => {
+            info!("Scanning game data...");
+            let scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager);
+            let game_data = scanner.scan(dirs.clone())?;
+            info!("Game data scanning completed successfully");
+        },
+        Commands::ScanMissions { dirs } => {
+            info!("Scanning missions...");
+            let scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
+            let mission_results = scanner.scan(dirs.clone())?;
+            info!("Mission scanning completed successfully");
+        },
+        Commands::GenerateReports { missions } => {
+            info!("Generating reports...");
+            let report_generator = scanner::report::ReportGenerator::new(config.report_dir.clone());
+            report_generator.generate(missions.clone())?;
+            info!("Report generation completed successfully");
+        },
+        Commands::RunAll => {
+            info!("Running full pipeline...");
+            
+            // Scan game data
+            info!("Scanning game data...");
+            let game_data_scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
+            let game_data = game_data_scanner.scan(None)?;
+            info!("Game data scanning completed successfully");
+            
+            // Scan missions
+            info!("Scanning missions...");
+            let mission_scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
+            let mission_results = mission_scanner.scan(None)?;
+            info!("Mission scanning completed successfully");
+            
+            // Generate reports
+            info!("Generating reports...");
+            let report_generator = scanner::report::ReportGenerator::new(config.report_dir.clone());
+            report_generator.generate_from_results(&game_data, &mission_results)?;
+            info!("Report generation completed successfully");
+            
+            info!("Full pipeline completed successfully");
+        },
+    }
+    
     Ok(())
-}
+} 

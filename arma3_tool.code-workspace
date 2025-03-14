@@ -1,7 +1,24 @@
 {
 	"folders": [
 		{
+			"name": "arma3_tool",
 			"path": "."
+		},
+		{
+			"name": "mission_scanner",
+			"path": "../mission_scanner"
+		},
+		{
+			"name": "gamedata_scanner",
+			"path": "../gamedata_scanner"
+		},
+		{
+			"name": "pbo_tools",
+			"path": "../pbo_tools"
+		},
+		{
+			"name": "extraction",
+			"path": "../extraction"
 		}
 	],
 	"settings": {}
