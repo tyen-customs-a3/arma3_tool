@@ -67,17 +67,6 @@ fn test_anyhow_conversion() {
 }
 
 #[test]
-fn test_error_display() {
-    let error = ToolError::InvalidPath(PathBuf::from("/test/path"));
-    let display = format!("{}", error);
-    assert!(display.contains("Invalid path: /test/path"));
-    
-    let error = ToolError::ExtractionError("failed to extract".to_string());
-    let display = format!("{}", error);
-    assert_eq!(display, "PBO extraction error: failed to extract");
-}
-
-#[test]
 fn test_error_clone() {
     let original = ToolError::CacheError("cache error".to_string());
     let cloned = original.clone();

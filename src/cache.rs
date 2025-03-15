@@ -1,13 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::Read;
 use sha2::{Sha256, Digest};
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
-use log::{debug, info, warn, error};
+use log::{debug, warn};
 use crate::error::{Result, ToolError};
 use walkdir::WalkDir;
 use std::time::SystemTime;
+use crate::scanner::models::{GameDataClasses, MissionData};
 
 /// Database entry for a cached PBO
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,9 +69,6 @@ impl Default for CacheDatabase {
 /// Manages caching of extracted files
 #[derive(Clone)]
 pub struct CacheManager {
-    /// Root directory for cache
-    cache_dir: PathBuf,
-    
     /// Directory for game data cache
     game_data_cache_dir: PathBuf,
     
@@ -88,6 +86,12 @@ pub struct CacheManager {
     
     /// In-memory mission cache database
     mission_database: CacheDatabase,
+
+    /// Flag to track if game data database has been modified
+    game_data_modified: bool,
+
+    /// Flag to track if mission database has been modified
+    mission_modified: bool,
 }
 
 impl CacheManager {
@@ -158,50 +162,70 @@ impl CacheManager {
         };
         
         Self {
-            cache_dir,
             game_data_cache_dir,
             mission_cache_dir,
             game_data_database_path,
             mission_database_path,
             game_data_database,
             mission_database,
+            game_data_modified: false,
+            mission_modified: false,
         }
     }
     
-    /// Save the game data cache database to disk
+    /// Save the game data cache database to disk if modified
     fn save_game_data_database(&mut self) -> Result<()> {
+        if !self.game_data_modified {
+            return Ok(());
+        }
+
         let json = serde_json::to_string_pretty(&self.game_data_database)
             .map_err(|e| ToolError::CacheError(format!("Failed to serialize game data cache database: {}", e)))?;
             
-        fs::write(&self.game_data_database_path, json)
+        // Write to a temporary file first
+        let temp_path = self.game_data_database_path.with_extension("tmp");
+        fs::write(&temp_path, &json)
             .map_err(|e| ToolError::CacheError(format!("Failed to write game data cache database: {}", e)))?;
             
+        // Atomically rename the temporary file to the actual database file
+        fs::rename(&temp_path, &self.game_data_database_path)
+            .map_err(|e| ToolError::CacheError(format!("Failed to rename temporary database file: {}", e)))?;
+            
         debug!("Saved game data cache database with {} entries", self.game_data_database.entries.len());
+        self.game_data_modified = false;
         
         Ok(())
     }
     
-    /// Save the mission cache database to disk
+    /// Save the mission cache database to disk if modified
     fn save_mission_database(&mut self) -> Result<()> {
+        if !self.mission_modified {
+            return Ok(());
+        }
+
         let json = serde_json::to_string_pretty(&self.mission_database)
             .map_err(|e| ToolError::CacheError(format!("Failed to serialize mission cache database: {}", e)))?;
             
-        fs::write(&self.mission_database_path, json)
+        // Write to a temporary file first
+        let temp_path = self.mission_database_path.with_extension("tmp");
+        fs::write(&temp_path, &json)
             .map_err(|e| ToolError::CacheError(format!("Failed to write mission cache database: {}", e)))?;
             
+        // Atomically rename the temporary file to the actual database file
+        fs::rename(&temp_path, &self.mission_database_path)
+            .map_err(|e| ToolError::CacheError(format!("Failed to rename temporary database file: {}", e)))?;
+            
         debug!("Saved mission cache database with {} entries", self.mission_database.entries.len());
+        self.mission_modified = false;
         
         Ok(())
     }
-    
-    /// Get the cache directory for game data
-    pub fn game_data_cache_dir(&self) -> &Path {
-        &self.game_data_cache_dir
-    }
-    
-    /// Get the cache directory for missions
-    pub fn mission_cache_dir(&self) -> &Path {
-        &self.mission_cache_dir
+
+    /// Save all modified databases to disk
+    pub fn save_all(&mut self) -> Result<()> {
+        self.save_game_data_database()?;
+        self.save_mission_database()?;
+        Ok(())
     }
     
     /// Get the cache path for a game data PBO
@@ -352,9 +376,9 @@ impl CacheManager {
         
         // Update database
         self.game_data_database.entries.insert(path_key, entry);
+        self.game_data_modified = true;
         
-        // Save database
-        self.save_game_data_database()
+        Ok(())
     }
     
     /// Update the mission cache for a PBO
@@ -388,9 +412,9 @@ impl CacheManager {
         
         // Update database
         self.mission_database.entries.insert(path_key, entry);
+        self.mission_modified = true;
         
-        // Save database
-        self.save_mission_database()
+        Ok(())
     }
     
     /// Update the cache for a PBO in the specified database
@@ -469,9 +493,9 @@ impl CacheManager {
         
         // Update database
         self.game_data_database.entries.insert(path_key, entry);
+        self.game_data_modified = true;
         
-        // Save database
-        self.save_game_data_database()
+        Ok(())
     }
     
     /// Mark a mission PBO as having an error
@@ -517,9 +541,9 @@ impl CacheManager {
         
         // Update database
         self.mission_database.entries.insert(path_key, entry);
+        self.mission_modified = true;
         
-        // Save database
-        self.save_mission_database()
+        Ok(())
     }
     
     /// Mark a PBO as having an error in the specified database
@@ -683,65 +707,6 @@ impl CacheManager {
         Ok(format!("{:x}", hasher.finalize()))
     }
     
-    /// Clear the cache
-    pub fn clear_cache(&mut self) -> Result<()> {
-        // Clear game data cache
-        if self.game_data_cache_dir.exists() {
-            fs::remove_dir_all(&self.game_data_cache_dir)
-                .map_err(|e| ToolError::CacheError(format!("Failed to clear game data cache: {}", e)))?;
-            fs::create_dir_all(&self.game_data_cache_dir)
-                .map_err(|e| ToolError::CacheError(format!("Failed to recreate game data cache directory: {}", e)))?;
-        }
-        
-        // Clear mission cache
-        if self.mission_cache_dir.exists() {
-            fs::remove_dir_all(&self.mission_cache_dir)
-                .map_err(|e| ToolError::CacheError(format!("Failed to clear mission cache: {}", e)))?;
-            fs::create_dir_all(&self.mission_cache_dir)
-                .map_err(|e| ToolError::CacheError(format!("Failed to recreate mission cache directory: {}", e)))?;
-        }
-        
-        // Clear databases
-        self.game_data_database = CacheDatabase::default();
-        self.mission_database = CacheDatabase::default();
-        self.save_game_data_database()?;
-        self.save_mission_database()?;
-        
-        Ok(())
-    }
-    
-    // For backward compatibility with existing code
-    
-    /// Check if a PBO is cached and up to date (defaults to game data)
-    pub fn is_cached(&self, pbo_path: &Path, cache_path: &Path) -> bool {
-        self.is_game_data_cached(pbo_path, cache_path)
-    }
-    
-    /// Check if extraction patterns have changed (defaults to game data)
-    pub fn has_pattern_changed(&self, pbo_path: &Path, extensions: &[String], file_filter: Option<&str>) -> bool {
-        self.has_game_data_pattern_changed(pbo_path, extensions, file_filter)
-    }
-    
-    /// Update the cache for a PBO (defaults to game data)
-    pub fn update_cache(&mut self, pbo_path: &Path, cache_path: &Path, extensions: &[String], file_filter: Option<&str>) -> Result<()> {
-        self.update_game_data_cache(pbo_path, cache_path, extensions, file_filter)
-    }
-    
-    /// Mark a PBO as having an error (defaults to game data)
-    pub fn mark_error(&mut self, pbo_path: &Path, error_message: &str, extensions: &[String], file_filter: Option<&str>) -> Result<()> {
-        self.mark_game_data_error(pbo_path, error_message, extensions, file_filter)
-    }
-    
-    /// Check if a PBO has previously had an error (defaults to game data)
-    pub fn has_error(&self, pbo_path: &Path) -> bool {
-        self.has_game_data_error(pbo_path)
-    }
-    
-    /// Get error message for a PBO (defaults to game data)
-    pub fn get_error_message(&self, pbo_path: &Path) -> Option<String> {
-        self.get_game_data_error_message(pbo_path)
-    }
-    
     /// Check if an error message indicates "no files to extract" (error code 11)
     /// This is not a real error, but rather an indication that the PBO doesn't contain
     /// any files matching our filter criteria.
@@ -790,9 +755,9 @@ impl CacheManager {
         
         // Update database
         self.game_data_database.entries.insert(path_key, entry);
+        self.game_data_modified = true;
         
-        // Save database
-        self.save_game_data_database()
+        Ok(())
     }
     
     /// Mark a mission PBO as having a permanent error (like bad SHA)
@@ -826,9 +791,9 @@ impl CacheManager {
         
         // Update database
         self.mission_database.entries.insert(path_key, entry);
+        self.mission_modified = true;
         
-        // Save database
-        self.save_mission_database()
+        Ok(())
     }
     
     /// Check if a game data PBO has a permanent error
@@ -855,6 +820,39 @@ impl CacheManager {
         
         false
     }
+
+    /// Load cached game data
+    pub fn load_game_data(&self) -> Result<GameDataClasses> {
+        let cache_file = self.game_data_cache_dir.join("game_data.json");
+        if !cache_file.exists() {
+            return Err(ToolError::CacheError("Game data cache not found".to_string()));
+        }
+
+        let content = fs::read_to_string(&cache_file)
+            .map_err(|e| ToolError::CacheError(format!("Failed to read game data cache: {}", e)))?;
+
+        serde_json::from_str(&content)
+            .map_err(|e| ToolError::CacheError(format!("Failed to parse game data cache: {}", e)))
+    }
+
+    /// Load cached mission data
+    pub fn load_mission_data(&self) -> Result<MissionData> {
+        let cache_file = self.mission_cache_dir.join("mission_data.json");
+        if !cache_file.exists() {
+            return Err(ToolError::CacheError("Mission data cache not found".to_string()));
+        }
+
+        let content = fs::read_to_string(&cache_file)
+            .map_err(|e| ToolError::CacheError(format!("Failed to read mission data cache: {}", e)))?;
+
+        serde_json::from_str(&content)
+            .map_err(|e| ToolError::CacheError(format!("Failed to parse mission data cache: {}", e)))
+    }
+
+    /// Get the cache directory path
+    pub fn get_cache_dir(&self) -> &Path {
+        self.game_data_cache_dir.parent().unwrap_or(&self.game_data_cache_dir)
+    }
 }
 
 #[cfg(test)]
@@ -862,21 +860,8 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::{NamedTempFile, TempDir};
-    use walkdir::WalkDir;
     use std::thread::sleep;
     use std::time::Duration;
-    
-    #[test]
-    fn test_cache_path_generation() {
-        let temp_dir = TempDir::new().unwrap();
-        let cache_manager = CacheManager::new(temp_dir.path().to_path_buf());
-        
-        let pbo_path = Path::new("/path/to/test.pbo");
-        let cache_path = cache_manager.get_game_data_cache_path(pbo_path);
-        
-        assert!(cache_path.starts_with(cache_manager.game_data_cache_dir()));
-        assert!(cache_path.to_string_lossy().contains("test_"));
-    }
     
     #[test]
     fn test_quick_hash_calculation() {

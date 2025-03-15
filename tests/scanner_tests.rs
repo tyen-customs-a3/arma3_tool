@@ -45,13 +45,17 @@ fn test_scanner_creation() {
 #[test]
 fn test_report_generator_creation() {
     let temp_dir = TempDir::new().unwrap();
-    let report_dir = temp_dir.path().join("reports");
-    fs::create_dir_all(&report_dir).unwrap();
+    let config = create_test_config(&temp_dir);
+    let cache_manager = CacheManager::new(config.cache_dir.clone());
+    
+    // Create directories
+    fs::create_dir_all(&config.report_dir).unwrap();
+    fs::create_dir_all(&config.cache_dir).unwrap();
     
     // Create report generator
-    let report_generator = ReportGenerator::new(report_dir.clone());
+    let mut report_generator = ReportGenerator::new(config.report_dir, cache_manager);
     
-    // Test generate method (should succeed even with no data)
+    // Test generate method (should return error when no cache exists)
     let result = report_generator.generate(None);
-    assert!(result.is_ok());
+    assert!(result.is_err(), "Should fail when no cache exists");
 } 

@@ -46,10 +46,10 @@ fn test_full_pipeline_setup() {
     
     // Create scanners
     let game_data_scanner = GameDataScanner::new(config.clone(), cache_manager.clone());
-    let mission_scanner = MissionScanner::new(config.clone(), cache_manager);
+    let mission_scanner = MissionScanner::new(config.clone(), cache_manager.clone());
     
     // Create report generator
-    let report_generator = ReportGenerator::new(config.report_dir.clone());
+    let report_generator = ReportGenerator::new(config.report_dir.clone(), cache_manager);
     
     // Test that all components were created successfully
     assert!(true, "Full pipeline setup successful");

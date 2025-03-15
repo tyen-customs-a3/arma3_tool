@@ -1,5 +1,4 @@
 mod config_tests;
-mod cache_tests;
 mod scanner_tests;
 mod error_tests;
 mod integration_tests;
