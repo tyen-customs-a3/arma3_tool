@@ -1,0 +1,45 @@
+[package]
+name = "pbo_cache"
+version = "0.1.0"
+edition = "2021"
+description = "PBO extraction and caching system for Arma 3 tools"
+
+[dependencies]
+anyhow = "1.0.97"
+log = "0.4.26"
+env_logger = "0.11.7"
+pbo_tools = { path = "../../pbo_tools" }
+tokio = { version = "1.44.1", features = ["full"] }
+walkdir = "2.5.0"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tempfile = "3.19.0"
+indicatif = { version = "0.17.11", features = ["rayon"] }
+num_cpus = "1.16.0"
+thiserror = "2.0.12"
+chrono = "0.4.40"
+rayon = "1.10.0"
+clap = { version = "4.5.32", features = ["derive"], optional = true }
+
+[dev-dependencies]
+tempfile = "3.19.0"
+criterion = "0.5.1"
+tokio-test = "0.4.4"
+tokio = { version = "1", features = ["full"] }
+walkdir = "2.3"
+
+[features]
+default = []
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "advanced_usage"
+path = "examples/advanced_usage.rs"
+required-features = ["clap"]
+
+[[example]]
+name = "test_extraction"
+path = "test_extraction.rs" 
