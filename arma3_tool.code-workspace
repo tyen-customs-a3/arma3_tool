@@ -21,6 +21,7 @@
 			"path": "../extraction"
 		},
 		{
+			"name": "HEMTT",
 			"path": "../HEMTT"
 		}
 	],

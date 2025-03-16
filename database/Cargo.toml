@@ -1,0 +1,18 @@
+[package]
+name = "arma3-tool-database"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arma3-tool-models = { path = "../models" }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+env_logger.workspace = true
+assert_fs = "1.0"
+predicates = "3.0"
+test-log = "0.2" 

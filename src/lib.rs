@@ -1,18 +1,22 @@
-pub mod config;
-pub mod cache;
 pub mod error;
 pub mod scanner;
-pub mod database;
+pub mod config;
 
-// Re-export commonly used types
-pub use config::ToolConfig;
-pub use cache::CacheManager;
+use std::path::{Path, PathBuf};
+use log::{debug, info, warn, error};
+
 pub use error::{Result, ToolError};
-pub use scanner::models::{GameDataClasses, MissionData};
-pub use scanner::mission::MissionScanner;
-pub use scanner::report::ReportGenerator;
-pub use scanner::gamedata::GameDataScanner;
-pub use database::DatabaseManager;
 
-/// Version of the library
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+// Re-export necessary types from pbo_cache
+pub use pbo_cache::{
+    PboMetadata,
+    PboType,
+    CacheIndex,
+    ExtractionConfig,
+    ExtractionManager,
+};
+
+// Re-export database types
+pub use arma3_tool_database as database;

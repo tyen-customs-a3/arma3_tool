@@ -1,12 +1,17 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use log::{debug, info, warn, error};
+use log::info;
+use std::path::PathBuf;
 
-mod config;
-mod cache;
 mod error;
+mod config;
 mod scanner;
-mod database;
+
+use config::ScanConfig;
+use scanner::{
+    gamedata::GameDataScanner,
+    mission::MissionScanner,
+};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -35,53 +40,21 @@ enum Commands {
         #[arg(short, long)]
         dirs: Option<Vec<String>>,
     },
-    /// Scan game data for class definitions
-    ScanGameData {
-        /// Only scan specific directories
-        #[arg(short, long)]
-        dirs: Option<Vec<String>>,
+    
+    /// Scan extracted PBO files
+    Scan {
+        /// Scan game data PBOs
+        #[arg(long)]
+        game_data: bool,
         
-        /// Skip extraction phase (use already extracted PBOs)
+        /// Scan mission PBOs
         #[arg(long)]
-        skip_extraction: bool,
-    },
-    /// Scan missions for dependencies
-    ScanMissions {
-        /// Only scan specific directories
-        #[arg(short, long)]
-        dirs: Option<Vec<String>>,
-        
-        /// Skip extraction phase (use already extracted PBOs)
-        #[arg(long)]
-        skip_extraction: bool,
-    },
-    /// Generate reports from scanned data
-    GenerateReports {
-        /// Only generate reports for specific missions
-        #[arg(short, long)]
-        missions: Option<Vec<String>>,
-        
-        /// Scan game data before generating reports
-        #[arg(long)]
-        scan_game_data: bool,
-        
-        /// Scan missions before generating reports
-        #[arg(long)]
-        scan_missions: bool,
-        
-        /// Skip extraction phase when scanning (use already extracted PBOs)
-        #[arg(long)]
-        skip_extraction: bool,
-    },
-    /// Run the full pipeline: scan game data, scan missions, and generate reports
-    RunAll {
-        /// Skip extraction phase (use already extracted PBOs)
-        #[arg(long)]
-        skip_extraction: bool,
-    },
+        missions: bool,
+    }
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize logger
     env_logger::init();
     
@@ -89,124 +62,53 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     
     // Load configuration
-    let config_path = std::path::PathBuf::from(&cli.config);
-    let config = config::ToolConfig::from_file(&config_path)?;
+    let config = ScanConfig::load(&cli.config)?;
+    info!("Loaded configuration from {}", cli.config);
     
-    info!("Arma 3 Tool started with configuration from {}", cli.config);
-    debug!("Configuration: {:?}", config);
-    
-    // Initialize cache manager
-    let mut cache_manager = cache::CacheManager::new(config.cache_dir.clone());
+    // Create PBO cache configuration
+    let pbo_config = config.to_pbo_cache_config();
     
     // Process command
     match &cli.command {
         Commands::Extract { game_data, missions, dirs } => {
             if *game_data {
                 info!("Extracting game data PBOs...");
-                let mut extractor = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
-                extractor.extract_only(dirs.clone())?;
-                info!("Game data PBO extraction completed successfully");
+                let mut scanner = GameDataScanner::new(pbo_config.clone())?;
+                let extracted_paths = scanner.extract_only(dirs.clone()).await?;
+                info!("Extracted {} game data PBO files", extracted_paths.len());
             }
             
             if *missions {
                 info!("Extracting mission PBOs...");
-                let mut extractor = scanner::mission::MissionScanner::new(config.clone(), cache_manager.clone());
-                extractor.extract_only(dirs.clone())?;
-                info!("Mission PBO extraction completed successfully");
+                let mut scanner = MissionScanner::new(pbo_config.clone())?;
+                let extracted_paths = scanner.extract_only(dirs.clone()).await?;
+                info!("Extracted {} mission files", extracted_paths.len());
             }
             
             if !*game_data && !*missions {
                 info!("No extraction type specified. Use --game-data or --missions flags.");
             }
         },
-        Commands::ScanGameData { dirs, skip_extraction } => {
-            info!("Scanning game data...");
-            let mut scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager);
-            let game_data = if *skip_extraction {
-                scanner.scan_only(dirs.clone())?
-            } else {
-                scanner.scan(dirs.clone())?
-            };
-            info!("Game data scanning completed successfully");
-        },
-        Commands::ScanMissions { dirs, skip_extraction } => {
-            info!("Scanning missions...");
-            let mut scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager);
-            let mission_results = if *skip_extraction {
-                scanner.scan_only(dirs.clone())?
-            } else {
-                scanner.scan(dirs.clone())?
-            };
-            info!("Mission scanning completed successfully");
-        },
-        Commands::GenerateReports { missions, scan_game_data, scan_missions, skip_extraction } => {
-            // Scan game data if requested
-            if *scan_game_data {
-                info!("Scanning game data...");
-                let mut game_data_scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
-                if *skip_extraction {
-                    game_data_scanner.scan_only(None)?;
-                } else {
-                    game_data_scanner.scan(None)?;
-                }
-                info!("Game data scanning completed successfully");
+        
+        Commands::Scan { game_data, missions } => {
+            if *game_data {
+                info!("Scanning game data PBOs...");
+                let mut scanner = GameDataScanner::new(pbo_config.clone())?;
+                let game_data = scanner.scan_only(Some(config.game_data_dirs))?;
+                info!("Scanned {} game data classes", game_data.classes.len());
             }
             
-            // Scan missions if requested
-            if *scan_missions {
-                info!("Scanning missions...");
-                let mut mission_scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager.clone());
-                if *skip_extraction {
-                    mission_scanner.scan_only(None)?;
-                } else {
-                    mission_scanner.scan(None)?;
-                }
-                info!("Mission scanning completed successfully");
+            if *missions {
+                info!("Scanning mission PBOs...");
+                let mut scanner = MissionScanner::new(pbo_config.clone())?;
+                let mission_data = scanner.scan_only(Some(config.mission_dirs))?;
+                info!("Scanned {} missions", mission_data.missions.len());
             }
             
-            // Generate reports
-            info!("Generating reports...");
-            let mut report_generator = scanner::report::ReportGenerator::new(
-                config.report_dir.clone(),
-                cache_manager.clone()
-            );
-            report_generator.generate(missions.clone())?;
-            info!("Report generation completed successfully");
-        },
-        Commands::RunAll { skip_extraction } => {
-            info!("Running full pipeline...");
-            
-            // Scan game data
-            info!("Scanning game data...");
-            let mut game_data_scanner = scanner::gamedata::GameDataScanner::new(config.clone(), cache_manager.clone());
-            let game_data = if *skip_extraction {
-                Box::leak(Box::new(game_data_scanner.scan_only(None)?))
-            } else {
-                Box::leak(Box::new(game_data_scanner.scan(None)?))
-            };
-            info!("Game data scanning completed successfully");
-            
-            // Scan missions
-            info!("Scanning missions...");
-            let mut mission_scanner = scanner::mission::MissionScanner::new(config.clone(), cache_manager.clone());
-            let mission_results = if *skip_extraction {
-                mission_scanner.scan_only(None)?
-            } else {
-                mission_scanner.scan(None)?
-            };
-            info!("Mission scanning completed successfully");
-            
-            // Generate reports
-            info!("Generating reports...");
-            let mut report_generator = scanner::report::ReportGenerator::new(
-                config.report_dir.clone(),
-                cache_manager
-            );
-            report_generator.generate_from_results(game_data, &mission_results)?;
-            info!("Report generation completed successfully");
-            
-            info!("Full pipeline completed successfully");
-        },
+            if !*game_data && !*missions {
+                info!("No scan type specified. Use --game-data or --missions flags.");
+            }
+        }
     }
     
     Ok(())

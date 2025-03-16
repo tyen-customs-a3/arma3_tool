@@ -1,35 +1,69 @@
-[package]
-name = "arma3_tool"
+[workspace]
+members = [
+    "models",
+    "database",
+    "pbo_cache",
+]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
-description = "A tool for analyzing Arma 3 missions and game data"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
+[workspace.dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.114"
+chrono = { version = "0.4.40", features = ["serde"] }
+log = "0.4.26"
+env_logger = "0.11.7"
+tempfile = "3.19.0"
+anyhow = "1.0.97"
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["full"] }
+walkdir = "2.5.0"
+indicatif = { version = "0.17.11", features = ["rayon"] }
+rayon = "1.10.0"
+num_cpus = "1.16.0"
+clap = { version = "4.5.32", features = ["derive"] }
+
+[package]
+name = "arma3-tool"
+version.workspace = true
+edition.workspace = true
+description = "A tool for analyzing Arma 3 missions and game data"
+authors.workspace = true
+
 [dependencies]
+arma3-tool-models = { path = "./models" }
+arma3-tool-database = { path = "./database" }
 extraction = { path = "../extraction" }
 gamedata_scanner = { path = "../gamedata_scanner" }
 mission_scanner = { path = "../mission_scanner" }
 pbo_tools = { path = "../pbo_tools" }
+pbo_cache = { path = "./pbo_cache" }
 
-# Additional dependencies
-anyhow = "1.0.97"
-clap = { version = "4.5.30", features = ["derive"] }
-env_logger = "0.11.7"
-indicatif = { version = "0.17.11", features = ["rayon"] }
-log = "0.4.26"
-num_cpus = "1.16.0"
-rayon = "1.10.0"
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.114"
-sha2 = "0.10.8"
-tempfile = "3.18.0"
-thiserror = "2.0.11"
-tokio = { version = "1.44.1", features = ["full"] }
-walkdir = "2.5.0"
+# Use workspace dependencies
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+env_logger.workspace = true
+indicatif.workspace = true
+log.workspace = true
+num_cpus.workspace = true
+rayon.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+walkdir.workspace = true
 
 [[bin]]
 name = "arma3_tool"
 path = "src/main.rs"
+
+[[bin]]
+name = "setup"
+path = "src/bin/setup.rs"
 
 [[example]]
 name = "basic_scan"

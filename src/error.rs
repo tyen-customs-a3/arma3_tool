@@ -22,17 +22,14 @@ pub enum ToolError {
     #[error("Cache error: {0}")]
     CacheError(String),
     
-    #[error("Report generation error: {0}")]
-    ReportError(String),
+    #[error("Database error: {0}")]
+    DatabaseError(String),
     
     #[error("IO error: {0}")]
     IoError(String),
     
     #[error("JSON error: {0}")]
     JsonError(String),
-    
-    #[error("PBO tools error: {0}")]
-    PboToolsError(String),
 }
 
 /// Result type alias for the Arma 3 Tool
@@ -66,10 +63,9 @@ impl Clone for ToolError {
             ToolError::MissionScanError(s) => ToolError::MissionScanError(s.clone()),
             ToolError::GameDataScanError(s) => ToolError::GameDataScanError(s.clone()),
             ToolError::CacheError(s) => ToolError::CacheError(s.clone()),
-            ToolError::ReportError(s) => ToolError::ReportError(s.clone()),
+            ToolError::DatabaseError(s) => ToolError::DatabaseError(s.clone()),
             ToolError::IoError(s) => ToolError::IoError(s.clone()),
             ToolError::JsonError(s) => ToolError::JsonError(s.clone()),
-            ToolError::PboToolsError(s) => ToolError::PboToolsError(s.clone()),
         }
     }
 }
@@ -87,14 +83,20 @@ impl From<serde_json::Error> for ToolError {
     }
 }
 
-impl From<pbo_tools::error::types::PboError> for ToolError {
-    fn from(err: pbo_tools::error::types::PboError) -> Self {
-        ToolError::PboToolsError(err.to_string())
+impl From<pbo_cache::CacheError> for ToolError {
+    fn from(err: pbo_cache::CacheError) -> Self {
+        ToolError::CacheError(err.to_string())
     }
 }
 
 impl From<anyhow::Error> for ToolError {
     fn from(err: anyhow::Error) -> Self {
         from_anyhow(err)
+    }
+}
+
+impl From<arma3_tool_database::error::DatabaseError> for ToolError {
+    fn from(err: arma3_tool_database::error::DatabaseError) -> Self {
+        ToolError::DatabaseError(err.to_string())
     }
 } 
