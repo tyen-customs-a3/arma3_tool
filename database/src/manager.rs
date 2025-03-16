@@ -33,9 +33,6 @@ pub struct ReportInfo {
 
 /// Storage manager for handling persistence
 pub struct StorageManager {
-    /// Root cache directory
-    cache_dir: PathBuf,
-    
     /// Extraction directory
     extraction_dir: PathBuf,
     
@@ -73,7 +70,6 @@ impl StorageManager {
         }
         
         Ok(Self {
-            cache_dir,
             extraction_dir,
             database_dir,
             report_dir,

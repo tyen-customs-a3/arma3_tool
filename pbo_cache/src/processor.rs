@@ -250,7 +250,7 @@ mod tests {
     use tempfile::tempdir;
     use std::fs::File;
     use std::io::Write;
-    use crate::models::{CacheIndex, PboType};
+    use crate::models::CacheIndex;
     
     // Create a simple mock PBO for testing
     fn create_mock_pbo(dir: &Path) -> PathBuf {
