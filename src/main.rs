@@ -94,14 +94,14 @@ async fn main() -> Result<()> {
             if *game_data {
                 info!("Scanning game data PBOs...");
                 let mut scanner = GameDataScanner::new(pbo_config.clone())?;
-                let game_data = scanner.scan_only(Some(config.game_data_dirs))?;
+                let game_data = scanner.scan_only().await?;
                 info!("Scanned {} game data classes", game_data.classes.len());
             }
             
             if *missions {
                 info!("Scanning mission PBOs...");
                 let mut scanner = MissionScanner::new(pbo_config.clone())?;
-                let mission_data = scanner.scan_only(Some(config.mission_dirs))?;
+                let mission_data = scanner.scan_only(None).await?;
                 info!("Scanned {} missions", mission_data.missions.len());
             }
             
