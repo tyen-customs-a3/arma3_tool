@@ -183,7 +183,7 @@ async fn main() -> Result<()> {
             
             // Write reports
             info!("Writing reports to {}...", output_dir.display());
-            let writer = ReportWriter::new(output_dir.clone(), storage);
+            let writer = ReportWriter::new(output_dir.clone(), ());
             writer.write_report(&scan_report)?;
             
             if !scan_report.missing_dependencies.is_empty() {
@@ -290,7 +290,7 @@ async fn main() -> Result<()> {
             
             // Write reports
             info!("Writing reports to {}...", output_dir.display());
-            let writer = ReportWriter::new(output_dir.clone(), storage);
+            let writer = ReportWriter::new(output_dir.clone(), ());
             writer.write_report(&scan_report)?;
             
             if !scan_report.missing_dependencies.is_empty() {

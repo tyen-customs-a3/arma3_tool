@@ -4,7 +4,6 @@ use std::io;
 use std::collections::HashMap;
 use serde_json;
 use thiserror::Error;
-use arma3_tool_cache_storage::StorageManager;
 use arma3_tool_dependency_scanner::ScanReport;
 
 #[derive(Error, Debug)]
@@ -23,14 +22,12 @@ pub type Result<T> = std::result::Result<T, ReportError>;
 
 pub struct ReportWriter {
     output_dir: PathBuf,
-    storage: StorageManager,
 }
 
 impl ReportWriter {
-    pub fn new(output_dir: impl Into<PathBuf>, storage: StorageManager) -> Self {
+    pub fn new(output_dir: impl Into<PathBuf>, _storage: impl Into<()>) -> Self {
         Self {
             output_dir: output_dir.into(),
-            storage,
         }
     }
     
@@ -38,7 +35,7 @@ impl ReportWriter {
         // Ensure output directory exists
         fs::create_dir_all(&self.output_dir)?;
         
-        // Write both report formats
+        // Write the text report
         self.write_text_report(report)?;
         
         Ok(())
@@ -99,13 +96,17 @@ impl ReportWriter {
                     sorted_deps.sort_by(|a, b| a.class_name.cmp(&b.class_name));
                     
                     for (i, dep) in sorted_deps.iter().enumerate() {
-                        let line_info = if let Some(line) = dep.line_number {
-                            format!("line {}", line)
-                        } else {
-                            "unknown line".to_string()
-                        };
+                        report_text.push_str(&format!("    {}. Class: {} ({})\n", 
+                            i + 1, 
+                            dep.class_name, 
+                            dep.reference_type
+                        ));
                         
-                        report_text.push_str(&format!("    {}. {}\n", i + 1, dep.class_name));
+                        if let Some(line) = dep.line_number {
+                            report_text.push_str(&format!("       Location: line {}\n", line));
+                        } else {
+                            report_text.push_str("       Location: unknown line\n");
+                        }
                     }
                 }
                 
