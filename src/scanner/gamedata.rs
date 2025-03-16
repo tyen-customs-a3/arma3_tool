@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use log::{info, warn};
 use crate::error::{Result, ToolError};
-use crate::scanner::models::{GameDataClasses, GameDataClassDefinition};
 use pbo_cache::ExtractionManager;
+use arma3_tool_models::{GameDataClasses, GameDataClass};
 
 /// Scanner for game data PBOs
 pub struct GameDataScanner {
@@ -39,14 +39,13 @@ impl GameDataScanner {
         info!("Scanning extracted PBOs in {}", self.cache_dir.display());
         
         // For now return dummy data - we'll implement actual scanning later
-        Ok(GameDataClasses {
-            classes: vec![
-                GameDataClassDefinition {
-                    name: "DummyClass".to_string(),
-                    parent: Some("BaseClass".to_string()),
-                }
-            ]
-        })
+        let mut classes = GameDataClasses::new();
+        classes.add_class(GameDataClass::new(
+            "DummyClass".to_string(),
+            Some("BaseClass".to_string())
+        ));
+        
+        Ok(classes)
     }
     
     /// Scan game data

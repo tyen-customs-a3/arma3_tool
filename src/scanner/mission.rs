@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 use log::{info, warn};
 use crate::error::{Result, ToolError};
-use crate::scanner::models::{MissionData, MissionDefinition};
 use pbo_cache::ExtractionManager;
+use arma3_tool_models::{MissionData, Mission};
 
 /// Scanner for mission PBOs
 pub struct MissionScanner {
@@ -45,14 +45,13 @@ impl MissionScanner {
         info!("Scanning extracted mission PBOs in {}", self.cache_dir.display());
         
         // For now return dummy data - we'll implement actual scanning later
-        Ok(MissionData {
-            missions: vec![
-                MissionDefinition {
-                    name: "DummyMission".to_string(),
-                    path: PathBuf::from("dummy/path"),
-                }
-            ]
-        })
+        let mut data = MissionData::new();
+        data.add_mission(Mission::new(
+            "DummyMission".to_string(),
+            PathBuf::from("dummy/path")
+        ));
+        
+        Ok(data)
     }
     
     /// Scan missions
