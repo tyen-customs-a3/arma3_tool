@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use thiserror::Error;
+use arma3_tool_cache_storage::StorageError;
 
 /// Custom error types for the Arma 3 Tool
 #[derive(Error, Debug)]
@@ -30,6 +31,9 @@ pub enum ToolError {
     
     #[error("JSON error: {0}")]
     JsonError(String),
+    
+    #[error("Report error: {0}")]
+    ReportError(String),
 }
 
 /// Result type alias for the Arma 3 Tool
@@ -66,6 +70,7 @@ impl Clone for ToolError {
             ToolError::DatabaseError(s) => ToolError::DatabaseError(s.clone()),
             ToolError::IoError(s) => ToolError::IoError(s.clone()),
             ToolError::JsonError(s) => ToolError::JsonError(s.clone()),
+            ToolError::ReportError(s) => ToolError::ReportError(s.clone()),
         }
     }
 }
@@ -95,8 +100,12 @@ impl From<anyhow::Error> for ToolError {
     }
 }
 
-impl From<arma3_tool_database::error::DatabaseError> for ToolError {
-    fn from(err: arma3_tool_database::error::DatabaseError) -> Self {
-        ToolError::DatabaseError(err.to_string())
+impl From<StorageError> for ToolError {
+    fn from(err: StorageError) -> Self {
+        match err {
+            StorageError::Io(e) => ToolError::IoError(e.to_string()),
+            StorageError::Serialization(e) => ToolError::CacheError(format!("Serialization error: {}", e)),
+            StorageError::Deserialization(e) => ToolError::CacheError(format!("Deserialization error: {}", e)),
+        }
     }
-} 
+}

@@ -1,9 +1,41 @@
+[package]
+name = "arma3-tool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+env_logger = "0.11"
+log = "0.4"
+num_cpus = "1.16"
+pbo_cache = { path = "./pbo_cache" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+arma3-tool-cache-storage = { path = "./cache_storage" }
+arma3-tool-report-writer = { path = "./report_writer" }
+arma3-tool-dependency-scanner = { path = "./dependency_scanner" }
+arma3-tool-models = { path = "./models" }
+walkdir = "2.5"
+gamedata_scanner = { path = "../gamedata_scanner" }
+parser_code = { path = "../gamedata_scanner/parser_code" }
+mission_scanner = { path = "../mission_scanner" }
+chrono = "0.4"
+thiserror = "2.0"
+
 [workspace]
 members = [
-    "models",
-    "database",
     "pbo_cache",
+    "cache_storage",
+    "dependency_scanner",
+    "report_writer",
+    "models"
 ]
+
+[[bin]]
+name = "arma3_tool"
+path = "src/bin/arma3tool_cli.rs"
 
 [workspace.package]
 version = "0.1.0"
@@ -12,7 +44,7 @@ authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [workspace.dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.114"
+serde_json = "1.0.140"
 chrono = { version = "0.4.40", features = ["serde"] }
 log = "0.4.26"
 env_logger = "0.11.7"
@@ -26,52 +58,13 @@ rayon = "1.10.0"
 num_cpus = "1.16.0"
 clap = { version = "4.5.32", features = ["derive"] }
 
-[package]
-name = "arma3-tool"
-version.workspace = true
-edition.workspace = true
-description = "A tool for analyzing Arma 3 missions and game data"
-authors.workspace = true
-
-[dependencies]
-arma3-tool-models = { path = "./models" }
-arma3-tool-database = { path = "./database" }
-extraction = { path = "../extraction" }
-gamedata_scanner = { path = "../gamedata_scanner" }
-mission_scanner = { path = "../mission_scanner" }
-pbo_tools = { path = "../pbo_tools" }
-pbo_cache = { path = "./pbo_cache" }
-
-# Use workspace dependencies
-serde.workspace = true
-serde_json.workspace = true
-anyhow.workspace = true
-clap.workspace = true
-env_logger.workspace = true
-indicatif.workspace = true
-log.workspace = true
-num_cpus.workspace = true
-rayon.workspace = true
-tokio.workspace = true
-thiserror.workspace = true
-tempfile.workspace = true
-walkdir.workspace = true
-
-[[bin]]
-name = "arma3_tool"
-path = "src/main.rs"
-
-[[bin]]
-name = "setup"
-path = "src/bin/setup.rs"
-
-[[example]]
-name = "basic_scan"
-path = "examples/basic_scan.rs"
-
 [lints.rust]
 dead_code = "allow"
 unused_parens = "allow"
 unused_imports = "allow"
 unused_variables = "allow"
 unused_mut = "allow"
+
+[[example]]
+name = "basic_scan"
+path = "examples/basic_scan.rs"

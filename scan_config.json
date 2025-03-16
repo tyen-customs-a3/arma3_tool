@@ -1,15 +1,14 @@
 {
     "game_data_dirs": [
-      "C:/Program Files (x86)/Steam/steamapps/common/Arma 3",
       "E:/pca"
     ],
-    "game_data_extensions": ["hpp", "cpp"],
+    "game_data_extensions": ["hpp", "cpp", "bin"],
     "mission_dirs": [
       "E:/pca_missions_quick"
     ],
     "mission_extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
     "cache_dir": "./cache",
     "report_dir": "./reports",
-    "threads": 16
+    "threads": 60
 }
 

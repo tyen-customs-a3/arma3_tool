@@ -1,0 +1,12 @@
+[package]
+name = "arma3-tool-cache-storage"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arma3-tool-models = { path = "../models" }
+rmp-serde = "1.3.0"
+serde = { version = "1.0.219", features = ["derive"] }
+chrono = { version = "0.4.40", features = ["serde"] }
+thiserror = "2.0.12"
+log = "0.4.26" 

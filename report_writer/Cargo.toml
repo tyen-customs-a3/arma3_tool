@@ -1,0 +1,13 @@
+[package]
+name = "arma3-tool-report-writer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arma3-tool-models = { path = "../models" }
+arma3-tool-cache-storage = { path = "../cache_storage" }
+arma3-tool-dependency-scanner = { path = "../dependency_scanner" }
+thiserror = "1.0"
+log = "0.4"
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] } 
