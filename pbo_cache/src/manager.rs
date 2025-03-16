@@ -105,6 +105,7 @@ impl ExtractionManager {
             &self.config.game_data_cache_dir,
             self.config.game_data_extensions.clone(),
             self.config.verbose,
+            self.index_manager.get_index_mut(),
         ).await.map_err(|e| CacheError::PboExtraction {
             pbo_path: PathBuf::new(), // We don't know which PBO failed
             message: e.to_string(),
@@ -180,25 +181,23 @@ impl ExtractionManager {
             return Ok(Vec::new());
         }
         
-        // Determine mission cache directory
-        let mission_name = utils::pbo_base_name(mission_path);
-        let mission_cache_dir = self.config.mission_cache_dir.join(&mission_name);
+        // Extract PBO
+        let extraction_results = self.processor.extract_pbos(
+            vec![mission_path.to_path_buf()],
+            &self.config.mission_cache_dir,
+            self.config.mission_extensions.clone(),
+            self.config.verbose,
+            self.index_manager.get_index_mut(),
+        ).await.map_err(|e| CacheError::PboExtraction {
+            pbo_path: mission_path.to_path_buf(),
+            message: e.to_string(),
+        })?;
         
-        // Ensure the directory exists
-        utils::ensure_dir_exists(&mission_cache_dir)?;
+        if extraction_results.is_empty() {
+            return Ok(Vec::new());
+        }
         
-        // Extract to temp directory
-        let (temp_dir, temp_files) = self.processor.extract_to_temp(
-            mission_path,
-            &self.config.mission_extensions,
-        ).map_err(|e| CacheError::FileOperation(format!("Failed to extract PBO: {}", e)))?;
-        
-        // Move to cache
-        let cache_files = self.processor.move_to_cache(
-            temp_dir.path(),
-            &mission_cache_dir,
-            &temp_files,
-        ).map_err(|e| CacheError::FileOperation(format!("Failed to move files to cache: {}", e)))?;
+        let (_, extracted_files) = &extraction_results[0];
         
         // Create metadata
         let mut metadata = PboMetadata::new(
@@ -208,7 +207,7 @@ impl ExtractionManager {
         ).map_err(|e| CacheError::FileOperation(format!("Failed to create metadata: {}", e)))?;
         
         // Add extracted files
-        metadata.extracted_files = cache_files.clone();
+        metadata.extracted_files = extracted_files.clone();
         
         // Update index
         self.index_manager.update_metadata(metadata);
@@ -217,8 +216,8 @@ impl ExtractionManager {
         self.index_manager.save()
             .map_err(|e| CacheError::IndexOperation(format!("Failed to save index: {}", e)))?;
         
-        info!("Extracted {} files from mission PBO", cache_files.len());
-        Ok(cache_files)
+        info!("Extracted {} files from mission PBO", extracted_files.len());
+        Ok(extracted_files.clone())
     }
     
     /// Process all mission PBOs

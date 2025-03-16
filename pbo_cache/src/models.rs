@@ -94,6 +94,15 @@ impl PboMetadata {
     }
 }
 
+/// Information about a failed PBO extraction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedExtraction {
+    /// When the extraction failed
+    pub timestamp: SystemTime,
+    /// The error message from the failed extraction
+    pub error_message: String,
+}
+
 /// Cache index tracking all extracted PBOs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheIndex {
@@ -102,6 +111,9 @@ pub struct CacheIndex {
     
     /// Mission PBOs by normalized path
     pub missions: HashMap<String, PboMetadata>,
+
+    /// Failed extractions by normalized path
+    pub failed_extractions: HashMap<String, FailedExtraction>,
     
     /// When the index was last updated
     pub last_updated: SystemTime,
@@ -112,6 +124,7 @@ impl Default for CacheIndex {
         Self {
             game_data: HashMap::new(),
             missions: HashMap::new(),
+            failed_extractions: HashMap::new(),
             last_updated: SystemTime::now(),
         }
     }
@@ -158,6 +171,33 @@ impl CacheIndex {
             self.last_updated = SystemTime::now();
         }
         
+        result
+    }
+
+    /// Add a failed extraction to the index
+    pub fn add_failed_extraction(&mut self, path: &Path, error_message: String) {
+        let key = path.to_string_lossy().to_string();
+        let failed = FailedExtraction {
+            timestamp: SystemTime::now(),
+            error_message,
+        };
+        self.failed_extractions.insert(key, failed);
+        self.last_updated = SystemTime::now();
+    }
+
+    /// Check if a PBO has previously failed extraction
+    pub fn is_failed_extraction(&self, path: &Path) -> Option<&FailedExtraction> {
+        let key = path.to_string_lossy().to_string();
+        self.failed_extractions.get(&key)
+    }
+
+    /// Remove a failed extraction entry
+    pub fn remove_failed_extraction(&mut self, path: &Path) -> Option<FailedExtraction> {
+        let key = path.to_string_lossy().to_string();
+        let result = self.failed_extractions.remove(&key);
+        if result.is_some() {
+            self.last_updated = SystemTime::now();
+        }
         result
     }
 }

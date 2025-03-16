@@ -11,15 +11,6 @@ pub fn ensure_dir_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Extract the base name of a PBO without extension
-pub fn pbo_base_name(path: &Path) -> String {
-    path.file_stem()
-        .map_or_else(
-            || "unknown".to_string(),
-            |stem| stem.to_string_lossy().to_string()
-        )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -33,12 +24,5 @@ mod tests {
         assert!(!test_path.exists());
         ensure_dir_exists(&test_path).unwrap();
         assert!(test_path.exists());
-    }
-    
-    #[test]
-    fn test_pbo_base_name() {
-        assert_eq!(pbo_base_name(Path::new("test.pbo")), "test");
-        assert_eq!(pbo_base_name(Path::new("/path/to/addon.pbo")), "addon");
-        assert_eq!(pbo_base_name(Path::new("C:\\path\\mission.pbo")), "mission");
     }
 }

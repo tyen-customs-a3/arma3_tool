@@ -15,6 +15,14 @@ pub enum CacheError {
         message: String,
     },
     
+    /// PBO extraction previously failed
+    #[error("PBO extraction previously failed for {pbo_path} at {timestamp}: {message}")]
+    PboExtractionFailed {
+        pbo_path: PathBuf,
+        timestamp: String,
+        message: String,
+    },
+    
     /// Error with cache index operations
     #[error("Cache index error: {0}")]
     IndexOperation(String),
