@@ -37,7 +37,7 @@ impl ScanConfig {
             mission_dirs,
             self.mission_extensions.clone(),
             self.threads,
-            60, // Default timeout of 60 seconds
+            60,
         )
     }
 } 

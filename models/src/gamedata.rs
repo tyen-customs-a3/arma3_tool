@@ -8,6 +8,9 @@ use crate::types::PropertyValue;
 pub struct GameDataClasses {
     /// Collection of classes
     pub classes: Vec<GameDataClass>,
+    
+    /// Collection of source files
+    pub file_sources: Vec<PathBuf>,
 }
 
 impl GameDataClasses {
@@ -15,7 +18,20 @@ impl GameDataClasses {
     pub fn new() -> Self {
         Self {
             classes: Vec::new(),
+            file_sources: Vec::new(),
         }
+    }
+    
+    /// Add a file source and return its index
+    pub fn add_file_source(&mut self, path: PathBuf) -> usize {
+        let index = self.file_sources.len();
+        self.file_sources.push(path);
+        index
+    }
+    
+    /// Get file source by index
+    pub fn get_file_source(&self, index: usize) -> Option<&PathBuf> {
+        self.file_sources.get(index)
     }
     
     /// Add a class to the collection
@@ -25,14 +41,35 @@ impl GameDataClasses {
     
     /// Get a class by name
     pub fn get_class(&self, name: &str) -> Option<&GameDataClass> {
-        self.classes.iter().find(|c| c.name == name)
+        self.classes.iter().find(|c| c.name.eq_ignore_ascii_case(name))
     }
     
     /// Get all classes with a specific parent
     pub fn get_classes_by_parent(&self, parent: &str) -> Vec<&GameDataClass> {
         self.classes.iter()
-            .filter(|c| c.parent.as_ref().map_or(false, |p| p == parent))
+            .filter(|c| c.parent.as_ref().map_or(false, |p| p.eq_ignore_ascii_case(parent)))
             .collect()
+    }
+    
+    /// Get classes by property name and value (case-insensitive)
+    pub fn get_classes_by_property(&self, property_name: &str, property_value: &str) -> Vec<&GameDataClass> {
+        self.classes.iter()
+            .filter(|c| {
+                c.properties.iter().any(|(key, value)| {
+                    key.eq_ignore_ascii_case(property_name) && 
+                    match value {
+                        PropertyValue::String(s) => s.eq_ignore_ascii_case(property_value),
+                        PropertyValue::Number(n) => property_value == &n.to_string(),
+                        _ => false,
+                    }
+                })
+            })
+            .collect()
+    }
+    
+    /// Check if a class with the given name exists (case-insensitive)
+    pub fn contains_class(&self, name: &str) -> bool {
+        self.classes.iter().any(|c| c.name.eq_ignore_ascii_case(name))
     }
 }
 
@@ -48,14 +85,8 @@ pub struct GameDataClass {
     /// Properties
     pub properties: HashMap<String, PropertyValue>,
     
-    /// Source file path
-    pub source_file: Option<PathBuf>,
-    
-    /// PBO name
-    pub pbo_name: Option<String>,
-    
-    /// Mod name
-    pub mod_name: Option<String>,
+    /// Source file index in the file list
+    pub source_file_index: Option<usize>,
 }
 
 impl GameDataClass {
@@ -65,9 +96,7 @@ impl GameDataClass {
             name,
             parent,
             properties: HashMap::new(),
-            source_file: None,
-            pbo_name: None,
-            mod_name: None,
+            source_file_index: None,
         }
     }
     
@@ -76,19 +105,22 @@ impl GameDataClass {
         self.properties.insert(key, value);
     }
     
-    /// Set the source file
-    pub fn set_source_file(&mut self, path: PathBuf) {
-        self.source_file = Some(path);
+    /// Set the source file index
+    pub fn set_source_file_index(&mut self, index: usize) {
+        self.source_file_index = Some(index);
     }
     
-    /// Set the PBO name
-    pub fn set_pbo_name(&mut self, name: String) {
-        self.pbo_name = Some(name);
+    /// Get a property value by key (case-insensitive)
+    pub fn get_property(&self, key: &str) -> Option<&PropertyValue> {
+        self.properties.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .map(|(_, v)| v)
     }
     
-    /// Set the mod name
-    pub fn set_mod_name(&mut self, name: String) {
-        self.mod_name = Some(name);
+    /// Check if the class has a property (case-insensitive)
+    pub fn has_property(&self, key: &str) -> bool {
+        self.properties.keys()
+            .any(|k| k.eq_ignore_ascii_case(key))
     }
 }
 

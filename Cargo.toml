@@ -23,6 +23,14 @@ parser_code = { path = "../gamedata_scanner/parser_code" }
 mission_scanner = { path = "../mission_scanner" }
 chrono.workspace = true
 thiserror.workspace = true
+egui.workspace = true
+eframe.workspace = true
+fuzzy-matcher.workspace = true
+tabled = "0.18.0"
+owo-colors = "4.2.0"
+prettytable = "0.10.0"
+tempfile.workspace = true
+rfd = "0.15.3"
 
 [workspace]
 members = [
@@ -34,7 +42,7 @@ members = [
 ]
 
 [[bin]]
-name = "arma3_tool"
+name = "arma3tool_cli"
 path = "src/bin/arma3tool_cli.rs"
 
 [workspace.package]
@@ -59,6 +67,9 @@ num_cpus = "1.16.0"
 clap = { version = "4.5.32", features = ["derive"] }
 dashmap = "6.1.0"
 rmp-serde = "1.3.0"
+egui = "0.31.1"
+eframe = "0.31.1"
+fuzzy-matcher = "0.3.7"
 
 [lints.rust]
 dead_code = "allow"

@@ -6,7 +6,7 @@ use crate::error::{Result, ToolError};
 use pbo_cache::ExtractionManager;
 use arma3_tool_models::{GameDataClasses, GameDataClass, PropertyValue};
 use walkdir::WalkDir;
-use gamedata_scanner::{scan_directory, GameDataScannerConfig, FileResult, ScanResult};
+use gamedata_scanner::{Scanner, ScannerConfig, ScannerResult};
 use parser_code::{CodeClass, CodeValue};
 use serde_json;
 use chrono::Utc;
@@ -59,7 +59,7 @@ impl GameDataScanner {
     }
     
     /// Convert a class from the scanner result to GameDataClass
-    fn convert_class(class: &CodeClass, pbo_name: &Option<String>, source_file: PathBuf) -> GameDataClass {
+    fn convert_class(class: &CodeClass) -> GameDataClass {
         let mut properties = HashMap::new();
         
         // Convert properties
@@ -71,9 +71,7 @@ impl GameDataScanner {
             name: class.name.clone(),
             parent: class.parent.clone(),
             properties,
-            mod_name: None, // TODO: Extract mod name from PBO path
-            pbo_name: pbo_name.clone(),
-            source_file: Some(source_file),
+            source_file_index: None,
         }
     }
     
@@ -83,46 +81,65 @@ impl GameDataScanner {
         info!("Scanning extracted game data PBOs in {}", gamedata_dir.display());
         
         // Create scanner config
-        let config = GameDataScannerConfig::builder()
-            .with_extensions(vec!["cpp".to_string(), "hpp".to_string()])
-            .with_max_threads(num_cpus::get())
-            .build();
+        let config = ScannerConfig {
+            extensions: vec!["cpp".to_string(), "hpp".to_string()],
+            max_files: None,
+            show_progress: true,
+        };
             
-        // Scan the directory
-        let scan_result = scan_directory(&gamedata_dir, &config).await
+        // Create scanner and scan the directory
+        let scanner = Scanner::new(config);
+        let scan_result = scanner.scan_directory(&gamedata_dir)
             .map_err(|e| ToolError::GameDataScanError(format!("Failed to scan game data: {}", e)))?;
             
-        info!("Found {} classes in {} files", scan_result.classes_found, scan_result.files_scanned);
-        if scan_result.files_with_errors > 0 {
-            warn!("{} files had errors during scanning", scan_result.files_with_errors);
+        info!("Found {} classes in {} files", 
+            scan_result.results.values().map(|r| r.classes.len()).sum::<usize>(),
+            scan_result.total_files);
+            
+        if scan_result.failed_files > 0 {
+            warn!("{} files had errors during scanning", scan_result.failed_files);
         }
         
-        // Convert scan results to GameDataClasses
+        // Create file sources index
         let mut classes = GameDataClasses::new();
+        let mut file_path_to_index = HashMap::new();
         
-        for file_result in scan_result.file_results {
-            // Skip files with no classes
-            if file_result.classes.is_empty() {
-                continue;
-            }
+        // First pass: Create file sources index from all results
+        for (file_path, _) in &scan_result.results {
+            let index = classes.add_file_source(file_path.clone());
+            file_path_to_index.insert(file_path.clone(), index);
+        }
+        
+        // Create a map to track which class came from which file
+        let mut class_to_file_map: HashMap<String, usize> = HashMap::new();
+        
+        // Second pass: Build mapping of class names to file indices
+        for (file_path, file_result) in &scan_result.results {
+            let file_index = file_path_to_index.get(file_path).unwrap();
             
-            // Try to determine PBO name from path
-            let pbo_name = file_result.file_path
-                .components()
-                .find(|c| c.as_os_str().to_string_lossy().ends_with(".pbo"))
-                .map(|c| c.as_os_str().to_string_lossy().into_owned());
+            for class in &file_result.classes {
+                // We'll use the last file occurrence for each class
+                // This should be sufficient as we're mainly interested in having some source
+                class_to_file_map.insert(class.name.clone(), *file_index);
+            }
+        }
+        
+        // Third pass: Process all classes
+        for (file_path, file_result) in &scan_result.results {
+            for class in &file_result.classes {
+                let mut converted_class = Self::convert_class(class);
                 
-            for class in file_result.classes {
-                classes.add_class(Self::convert_class(
-                    &class,
-                    &pbo_name,
-                    file_result.file_path.clone()
-                ));
+                // Look up the source file index for this class
+                if let Some(&file_index) = class_to_file_map.get(&class.name) {
+                    converted_class.source_file_index = Some(file_index);
+                }
+                
+                classes.add_class(converted_class);
             }
         }
         
         // Save results
-        self.save_results(&classes)?;
+        // self.save_results(&classes)?;
         
         Ok(classes)
     }
