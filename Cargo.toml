@@ -45,6 +45,10 @@ members = [
 name = "arma3tool_cli"
 path = "src/bin/arma3tool_cli.rs"
 
+[[bin]]
+name = "arma3tool_ui"
+path = "src/bin/arma3tool_ui.rs"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
