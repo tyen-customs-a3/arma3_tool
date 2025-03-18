@@ -87,19 +87,8 @@ impl ReportWriter {
         if !report.missing_dependencies.is_empty() {
             report_text.push_str("=== CONSOLIDATED MISSING CLASSES ===\n");
             
-            // Use a HashSet to collect unique missing class names
-            let mut missing_classes = HashSet::new();
-            for dep in &report.missing_dependencies {
-                missing_classes.insert(dep.class_name.clone());
-            }
-            
-            // Convert to sorted vector
-            let mut missing_classes_vec: Vec<_> = missing_classes.into_iter().collect();
-            missing_classes_vec.sort();
-            
-            // Create a table for missing classes
+            // Create a table for missing classes with file paths
             let mut consolidated_table = Table::new();
-            // Use a custom format with the line separator after the header row
             let format = format::FormatBuilder::new()
                 .column_separator('|')
                 .borders('|')
@@ -114,12 +103,22 @@ impl ReportWriter {
             consolidated_table.set_titles(Row::new(vec![
                 Cell::new("#"),
                 Cell::new("Class Name"),
+                Cell::new("File Path"),
             ]));
             
-            for (i, class_name) in missing_classes_vec.iter().enumerate() {
+            // Create a sorted list of unique missing dependencies with their file paths
+            let mut unique_missing: Vec<(&String, &PathBuf)> = report.missing_dependencies
+                .iter()
+                .map(|dep| (&dep.class_name, &dep.source_file))
+                .collect();
+            unique_missing.sort_by(|a, b| a.0.cmp(b.0));
+            unique_missing.dedup();
+            
+            for (i, (class_name, file_path)) in unique_missing.iter().enumerate() {
                 consolidated_table.add_row(Row::new(vec![
                     Cell::new(&(i + 1).to_string()),
                     Cell::new(class_name),
+                    Cell::new(&file_path.display().to_string()),
                 ]));
             }
             
@@ -155,9 +154,7 @@ impl ReportWriter {
                     let mut sorted_deps = found_deps.clone();
                     sorted_deps.sort();
                     
-                    // Create table with the requested format
                     let mut found_table = Table::new();
-                    // Use a custom format with the line separator after the header row
                     let format = format::FormatBuilder::new()
                         .column_separator('|')
                         .borders('|')
@@ -191,63 +188,41 @@ impl ReportWriter {
                 if let Some(deps) = mission_deps.get(&mission_name) {
                     report_text.push_str(&format!("Missing dependencies: {}\n", deps.len()));
                     
-                    // Group dependencies by source file
-                    let mut file_deps: HashMap<String, Vec<&arma3_tool_dependency_scanner::MissingDependency>> = HashMap::new();
+                    let mut missing_table = Table::new();
+                    let format = format::FormatBuilder::new()
+                        .column_separator('|')
+                        .borders('|')
+                        .separator(
+                            format::LinePosition::Title, 
+                            format::LineSeparator::new('-', '+', '+', '+')
+                        )
+                        .padding(1, 1)
+                        .build();
+                    missing_table.set_format(format);
                     
-                    for dep in deps.iter() {
-                        let file_path = dep.source_file.display().to_string();
-                        file_deps
-                            .entry(file_path)
-                            .or_default()
-                            .push(dep);
-                    }
+                    missing_table.set_titles(Row::new(vec![
+                        Cell::new("#"),
+                        Cell::new("Class Name"),
+                        Cell::new("File Path"),
+                    ]));
                     
-                    // Sort files by path for consistent output
-                    let mut file_paths: Vec<_> = file_deps.keys().collect();
-                    file_paths.sort();
+                    // Sort dependencies by class name
+                    let mut sorted_deps = deps.to_vec();
+                    sorted_deps.sort_by(|a, b| a.class_name.cmp(&b.class_name));
                     
-                    for file_path in file_paths {
-                        let file_deps_list = &file_deps[file_path];
-                        report_text.push_str(&format!("\n  FILE: {}\n", file_path));
-                        report_text.push_str(&format!("  Dependencies: {}\n", file_deps_list.len()));
-                        
-                        // Sort dependencies by class name for consistent output
-                        let mut sorted_deps = file_deps_list.to_vec();
-                        sorted_deps.sort_by(|a, b| a.class_name.cmp(&b.class_name));
-                        
-                        // Create table with the requested format
-                        let mut missing_table = Table::new();
-                        // Use a custom format with the line separator after the header row
-                        let format = format::FormatBuilder::new()
-                            .column_separator('|')
-                            .borders('|')
-                            .separator(
-                                format::LinePosition::Title, 
-                                format::LineSeparator::new('-', '+', '+', '+')
-                            )
-                            .padding(1, 1)
-                            .build();
-                        missing_table.set_format(format);
-                        
-                        missing_table.set_titles(Row::new(vec![
-                            Cell::new("#"),
-                            Cell::new("Class Name"),
+                    for (i, dep) in sorted_deps.iter().enumerate() {
+                        missing_table.add_row(Row::new(vec![
+                            Cell::new(&(i + 1).to_string()),
+                            Cell::new(&dep.class_name),
+                            Cell::new(&dep.source_file.display().to_string()),
                         ]));
-                        
-                        for (i, dep) in sorted_deps.iter().enumerate() {
-                            missing_table.add_row(Row::new(vec![
-                                Cell::new(&(i + 1).to_string()),
-                                Cell::new(&dep.class_name),
-                            ]));
-                        }
-                        
-                        let mut missing_buffer = Vec::new();
-                        missing_table.print(&mut missing_buffer).unwrap();
-                        report_text.push_str(&String::from_utf8(missing_buffer).unwrap());
                     }
+                    
+                    let mut missing_buffer = Vec::new();
+                    missing_table.print(&mut missing_buffer).unwrap();
+                    report_text.push_str(&String::from_utf8(missing_buffer).unwrap());
+                    report_text.push_str("\n\n");
                 }
-                
-                report_text.push_str("\n\n");
             }
         }
         

@@ -76,7 +76,7 @@ impl GameDataScanner {
     }
     
     /// Scan classes from previously extracted PBOs
-    pub async fn scan_only(&self) -> Result<GameDataClasses> {
+    pub async fn scan_only(&self, diagnostic_mode: bool) -> Result<GameDataClasses> {
         let gamedata_dir = self.cache_dir.join("gamedata");
         info!("Scanning extracted game data PBOs in {}", gamedata_dir.display());
         
@@ -85,6 +85,8 @@ impl GameDataScanner {
             extensions: vec!["cpp".to_string(), "hpp".to_string()],
             max_files: None,
             show_progress: true,
+            timeout: 30, // Default timeout of 30 seconds
+            diagnostic_mode,
         };
             
         // Create scanner and scan the directory
@@ -98,6 +100,22 @@ impl GameDataScanner {
             
         if scan_result.failed_files > 0 {
             warn!("{} files had errors during scanning", scan_result.failed_files);
+        }
+        
+        // Output diagnostic report if enabled
+        if diagnostic_mode {
+            if let Some(diagnostics) = &scan_result.diagnostics {
+                let report = diagnostics.generate_report();
+                info!("Diagnostic Report:\n{}", report);
+                
+                // Save diagnostic report to file
+                let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+                let report_file = self.output_dir.join(format!("diagnostic_report_{}.txt", timestamp));
+                fs::write(&report_file, &report)
+                    .map_err(|e| ToolError::IoError(format!("Failed to write diagnostic report: {}", e)))?;
+                
+                info!("Diagnostic report saved to {}", report_file.display());
+            }
         }
         
         // Create file sources index
@@ -159,8 +177,8 @@ impl GameDataScanner {
     }
     
     /// Scan game data
-    pub async fn scan(&mut self, dirs: Option<Vec<String>>) -> Result<GameDataClasses> {
+    pub async fn scan(&mut self, dirs: Option<Vec<String>>, diagnostic_mode: bool) -> Result<GameDataClasses> {
         let _extracted = self.extract_only(dirs).await?;
-        self.scan_only().await
+        self.scan_only(diagnostic_mode).await
     }
 } 

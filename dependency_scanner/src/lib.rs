@@ -44,7 +44,7 @@ impl DependencyScanner {
         
         // Pre-populate the map with all known classes - using lowercase keys for case-insensitive comparison
         for class in &game_data.classes {
-            class_map.insert(class.name.clone().to_lowercase(), true);
+            class_map.insert(class.name.trim_matches('"').to_lowercase(), true);
         }
         
         // Log the number of classes found in the database
@@ -130,8 +130,8 @@ impl DependencyScanner {
         missing_deps: &DashMap<String, MissingDependency>,
         found_deps: &mut Vec<String>,
     ) {
-        // Convert class name to lowercase for case-insensitive comparison
-        let lowercase_class_name = dep.class_name.to_lowercase();
+        // Strip quotes and convert class name to lowercase for case-insensitive comparison
+        let lowercase_class_name = dep.class_name.trim_matches('"').to_lowercase();
         
         if !self.class_map.contains_key(&lowercase_class_name) {
             missing_deps.entry(dep.class_name.clone()).or_insert_with(|| MissingDependency {

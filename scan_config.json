@@ -9,6 +9,6 @@
     "mission_extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
     "cache_dir": "./cache",
     "report_dir": "./reports",
-    "threads": 60
+    "threads": 31
 }
 

@@ -61,6 +61,13 @@ enum Commands {
         #[arg(long)]
         output_dir: Option<PathBuf>,
     },
+    
+    /// Run diagnostic scan on game data files
+    Diagnostic {
+        /// Override cache directory from config
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -140,7 +147,7 @@ async fn main() -> Result<()> {
             info!("Processing game data files...");
             // Use the appropriate scanner to process game data
             let scanner = arma3_tool::scanner::gamedata::GameDataScanner::new(extraction_config.clone())?;
-            let mut game_data = Some(scanner.scan_only().await?);
+            let mut game_data = Some(scanner.scan_only(false).await?);
             info!("Processed {} game data classes", game_data.as_ref().unwrap().classes.len());
             
             // Process extracted missions if requested
@@ -257,7 +264,7 @@ async fn main() -> Result<()> {
             // Process extracted game data if requested
             info!("Processing game data files...");
             let scanner = arma3_tool::scanner::gamedata::GameDataScanner::new(extraction_config.clone())?;
-            let mut game_data = Some(scanner.scan_only().await?);
+            let mut game_data = Some(scanner.scan_only(false).await?);
             info!("Processed {} game data classes", game_data.as_ref().unwrap().classes.len());
             
             // Process extracted missions if requested
@@ -307,6 +314,21 @@ async fn main() -> Result<()> {
             }
             
             info!("All operations complete");
+        },
+        
+        Commands::Diagnostic { cache_dir } => {
+            // Configure diagnostic scan
+            let mut extraction_config = config.to_pbo_cache_config();
+            if let Some(cache_dir) = cache_dir {
+                extraction_config.cache_dir = cache_dir;
+            }
+            
+            // Run diagnostic scan on game data files
+            info!("Running diagnostic scan on game data files...");
+            let scanner = arma3_tool::scanner::gamedata::GameDataScanner::new(extraction_config)?;
+            let _game_data = scanner.scan_only(true).await?;
+            
+            info!("Diagnostic scan complete");
         }
     }
     

@@ -48,7 +48,7 @@ pub mod bin {
             
             // Extract and scan game data
             info!("Scanning game data...");
-            let game_data = game_data_scanner.scan(None).await?;
+            let game_data = game_data_scanner.scan(None, false).await?;
             
             // Extract and scan missions
             info!("Scanning missions...");

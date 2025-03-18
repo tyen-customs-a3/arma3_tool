@@ -16,7 +16,7 @@ use num_cpus;
 use std::collections::HashMap;
 use arma3_tool::scanner::gamedata as gamedata_scanner;
 use parser_code::{CodeClass, CodeValue};
-use walkdir;
+use walkdir::WalkDir;
 
 struct Arma3ToolUI {
     search_text: String,
@@ -275,7 +275,7 @@ impl Arma3ToolUI {
                                 
                                 // Now run the scan
                                 let scan_result = rt.block_on(async {
-                                    scanner.scan_only().await
+                                    scanner.scan_only(false).await
                                 });
                                 
                                 match scan_result {
@@ -376,10 +376,14 @@ impl Arma3ToolUI {
         
         ui.add_space(8.0);
         
-        // Scan button and status
+        // Scan buttons and status
         ui.horizontal(|ui| {
             if ui.add_enabled(!self.is_scanning, egui::Button::new("Parse Folder")).clicked() {
                 self.parse_folder();
+            }
+            
+            if ui.add_enabled(!self.is_scanning, egui::Button::new("Diagnostic Scan")).clicked() && self.selected_folder.is_some() {
+                self.parse_folder_diagnostic();
             }
             
             ui.label(&self.scan_status);
@@ -429,6 +433,113 @@ impl Arma3ToolUI {
             parent: class.parent.clone(),
             properties,
             source_file_index: None,
+        }
+    }
+
+    /// Parse a folder with diagnostic mode enabled
+    fn parse_folder_diagnostic(&mut self) {
+        if let Some(folder_path) = &self.selected_folder {
+            self.is_scanning = true;
+            self.scan_status = "Starting diagnostic scan...".to_string();
+            
+            // Create a channel for the worker thread to send status updates
+            let (sender, receiver) = mpsc::channel();
+            self.scan_receiver = Some(receiver);
+            
+            // Clone the path for the worker thread
+            let folder_path = folder_path.clone();
+            
+            // Create a temporary directory for the cache
+            let temp_dir = TempDir::new().unwrap();
+            let temp_dir_path = temp_dir.path().to_path_buf();
+            self.temp_dir = Some(temp_dir);
+            self.using_temp_cache = true;
+            
+            // Spawn a worker thread to do the scanning
+            thread::spawn(move || {
+                // Create a tokio runtime for async operations
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                
+                // Configure extraction
+                let extraction_config = ExtractionConfig {
+                    cache_dir: temp_dir_path.clone(),
+                    game_data_cache_dir: temp_dir_path.join("gamedata"),
+                    mission_cache_dir: temp_dir_path.join("missions"),
+                    game_data_dirs: vec![folder_path.clone()],
+                    game_data_extensions: vec!["hpp".into(), "cpp".into()],
+                    mission_dirs: vec![],
+                    mission_extensions: vec![],
+                    threads: num_cpus::get(),
+                    timeout: 30,
+                    verbose: false,
+                };
+                
+                // Create scanner
+                match GameDataScanner::new(extraction_config) {
+                    Ok(mut scanner) => {
+                        // We'll scan the folder directly by doing a simple file copy operation first
+                        sender.send(Ok("Copying files to temp location...".to_string())).unwrap();
+                        
+                        // Create gamedata directory in the temp folder
+                        let gamedata_dir = temp_dir_path.join("gamedata");
+                        std::fs::create_dir_all(&gamedata_dir).unwrap();
+                        
+                        // Copy all .cpp and .hpp files from source folder to temp gamedata directory
+                        let mut file_count = 0;
+                        for entry in WalkDir::new(&folder_path).into_iter().filter_map(|e| e.ok()) {
+                            if entry.file_type().is_file() {
+                                if let Some(ext) = entry.path().extension() {
+                                    let ext_str = ext.to_string_lossy().to_lowercase();
+                                    if ext_str == "cpp" || ext_str == "hpp" {
+                                        // Create relative path
+                                        let rel_path = entry.path().strip_prefix(&folder_path).unwrap();
+                                        let dest_path = gamedata_dir.join(rel_path);
+                                        
+                                        // Create parent directories
+                                        if let Some(parent) = dest_path.parent() {
+                                            std::fs::create_dir_all(parent).unwrap();
+                                        }
+                                        
+                                        // Copy file
+                                        std::fs::copy(entry.path(), &dest_path).unwrap();
+                                        file_count += 1;
+                                        
+                                        if file_count % 100 == 0 {
+                                            sender.send(Ok(format!("Copied {} files...", file_count))).unwrap();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        sender.send(Ok(format!("Copied {} files. Starting diagnostic scan...", file_count))).unwrap();
+                        
+                        // Now run the diagnostic scan
+                        let scan_result = rt.block_on(async {
+                            scanner.scan_only(true).await
+                        });
+                        
+                        match scan_result {
+                            Ok(game_data) => {
+                                // Send status update
+                                sender.send(Ok(format!("Diagnostic scan complete. Found {} classes", game_data.classes.len()))).unwrap();
+                                
+                                // Convert the game data to our UI model
+                                let mut classes = HashMap::new();
+                                for class in &game_data.classes {
+                                    classes.insert(class.name.clone(), class.clone());
+                                }
+                            },
+                            Err(e) => {
+                                sender.send(Err(format!("Error scanning files: {}", e))).unwrap();
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        sender.send(Err(format!("Error creating scanner: {}", e))).unwrap();
+                    }
+                }
+            });
         }
     }
 }
