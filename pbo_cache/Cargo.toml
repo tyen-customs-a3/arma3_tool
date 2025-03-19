@@ -1,32 +1,29 @@
 [package]
-name = "pbo_cache"
+name = "arma3_tool_pbo_cache"
 version.workspace = true
 edition.workspace = true
 description = "PBO extraction and caching system for Arma 3 tools"
 
 [dependencies]
-anyhow.workspace = true
-log.workspace = true
-env_logger.workspace = true
-pbo_tools = { path = "../../pbo_tools" }
-tokio.workspace = true
-walkdir.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-tempfile.workspace = true
-indicatif.workspace = true
-num_cpus.workspace = true
-thiserror.workspace = true
-chrono.workspace = true
-rayon.workspace = true
+pbo_tools = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+indicatif = { workspace = true }
+num_cpus = { workspace = true }
+thiserror = { workspace = true }
+rayon = { workspace = true }
 clap = { workspace = true, optional = true }
 
 [dev-dependencies]
-tempfile.workspace = true
-criterion = "0.5.1"
-tokio-test = "0.4.4"
-tokio.workspace = true
-walkdir.workspace = true
+tempfile = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
 
 [features]
 default = []

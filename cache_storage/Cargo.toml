@@ -1,12 +1,11 @@
 [package]
-name = "arma3-tool-cache-storage"
+name = "arma3_tool_cache_storage"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arma3-tool-models = { path = "../models" }
-rmp-serde.workspace = true
-serde.workspace = true
-chrono.workspace = true
-thiserror.workspace = true
-log.workspace = true 
+arma3_tool_models = { workspace = true }
+rmp-serde = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }

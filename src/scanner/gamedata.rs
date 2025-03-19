@@ -3,11 +3,19 @@ use std::collections::HashMap;
 use std::fs;
 use log::{info, warn, error};
 use crate::error::{Result, ToolError};
-use pbo_cache::ExtractionManager;
+use arma3_tool_pbo_cache::ExtractionManager;
 use arma3_tool_models::{GameDataClasses, GameDataClass, PropertyValue};
 use walkdir::WalkDir;
-use gamedata_scanner::{Scanner, ScannerConfig, ScannerResult};
-use parser_code::{CodeClass, CodeValue};
+use gamedata_scanner::{
+    GameClass, 
+    ClassProperty, 
+    PropertyValue as GameDataScannerPropertyValue, 
+    Scanner as ClassScanner, 
+    ScanResult,
+    scanner_factory,
+    scanner::ScannerConfig,
+    scanner::ScannerResult
+};
 use serde_json;
 use chrono::Utc;
 
@@ -19,11 +27,13 @@ pub struct GameDataScanner {
     extractor: ExtractionManager,
     /// Output directory for scan results
     output_dir: PathBuf,
+    /// Use advanced scanner for more accurate but slower parsing
+    use_advanced_scanner: bool,
 }
 
 impl GameDataScanner {
     /// Create a new game data scanner
-    pub fn new(config: pbo_cache::ExtractionConfig) -> Result<Self> {
+    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
         let cache_dir = config.cache_dir.clone();
         let output_dir = cache_dir.join("scan_results");
         let extractor = ExtractionManager::new(config)
@@ -33,7 +43,17 @@ impl GameDataScanner {
         fs::create_dir_all(&output_dir)
             .map_err(|e| ToolError::IoError(format!("Failed to create output directory: {}", e)))?;
             
-        Ok(Self { cache_dir, extractor, output_dir })
+        Ok(Self { 
+            cache_dir, 
+            extractor, 
+            output_dir,
+            use_advanced_scanner: false,
+        })
+    }
+    
+    /// Set whether to use the advanced scanner
+    pub fn set_advanced_scanner(&mut self, use_advanced: bool) {
+        self.use_advanced_scanner = use_advanced;
     }
     
     /// Extract PBOs without scanning (preparation step)
@@ -48,23 +68,26 @@ impl GameDataScanner {
         Ok(extraction_results)
     }
     
-    /// Convert a CodeValue to PropertyValue
-    fn convert_value(value: &CodeValue) -> PropertyValue {
+    /// Convert a GameDataScannerPropertyValue to PropertyValue
+    fn convert_property_value(value: &GameDataScannerPropertyValue) -> PropertyValue {
         match value {
-            CodeValue::String(s) => PropertyValue::String(s.clone()),
-            CodeValue::Number(n) => PropertyValue::Number(*n as f64),
-            CodeValue::Array(arr) => PropertyValue::Array(arr.iter().map(|s| PropertyValue::String(s.clone())).collect()),
-            CodeValue::Class(c) => PropertyValue::String(c.name.clone()),
+            GameDataScannerPropertyValue::String(s) => PropertyValue::String(s.clone()),
+            GameDataScannerPropertyValue::Number(n) => PropertyValue::Number(*n as f64),
+            GameDataScannerPropertyValue::Array(arr) => {
+                // Convert each string in the array to PropertyValue::String
+                PropertyValue::Array(arr.iter().map(|s| PropertyValue::String(s.clone())).collect())
+            },
+            GameDataScannerPropertyValue::Class(c) => PropertyValue::String(c.name.clone()),
         }
     }
     
-    /// Convert a class from the scanner result to GameDataClass
-    fn convert_class(class: &CodeClass) -> GameDataClass {
+    /// Convert a GameClass from the scanner interface to GameDataClass
+    fn convert_game_class(class: &GameClass) -> GameDataClass {
         let mut properties = HashMap::new();
         
         // Convert properties
         for prop in &class.properties {
-            properties.insert(prop.name.clone(), Self::convert_value(&prop.value));
+            properties.insert(prop.name.clone(), Self::convert_property_value(&prop.value));
         }
         
         GameDataClass {
@@ -80,84 +103,82 @@ impl GameDataScanner {
         let gamedata_dir = self.cache_dir.join("gamedata");
         info!("Scanning extracted game data PBOs in {}", gamedata_dir.display());
         
-        // Create scanner config
-        let config = ScannerConfig {
-            extensions: vec!["cpp".to_string(), "hpp".to_string()],
-            max_files: None,
-            show_progress: true,
-            timeout: 30, // Default timeout of 30 seconds
-            diagnostic_mode,
-        };
-            
-        // Create scanner and scan the directory
-        let scanner = Scanner::new(config);
+        let use_advanced = self.use_advanced_scanner;
+        
+        info!("Using {} scanner for game data", if self.use_advanced_scanner { "advanced" } else { "simple" });
+        
+        // Get appropriate scanner based on needs
+        let scanner = scanner_factory::get_scanner(use_advanced);
+        
+        // Create scanner configuration
+        let mut scanner_config = ScannerConfig::default();
+        scanner_config.diagnostic_mode = diagnostic_mode;
+        
+        // Scan the directory
         let scan_result = scanner.scan_directory(&gamedata_dir)
             .map_err(|e| ToolError::GameDataScanError(format!("Failed to scan game data: {}", e)))?;
             
         info!("Found {} classes in {} files", 
-            scan_result.results.values().map(|r| r.classes.len()).sum::<usize>(),
-            scan_result.total_files);
+            scan_result.classes_found,
+            scan_result.files_scanned);
             
-        if scan_result.failed_files > 0 {
-            warn!("{} files had errors during scanning", scan_result.failed_files);
+        if scan_result.files_with_errors > 0 {
+            warn!("{} files had errors during scanning", scan_result.files_with_errors);
         }
         
         // Output diagnostic report if enabled
-        if diagnostic_mode {
-            if let Some(diagnostics) = &scan_result.diagnostics {
-                let report = diagnostics.generate_report();
-                info!("Diagnostic Report:\n{}", report);
-                
-                // Save diagnostic report to file
-                let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
-                let report_file = self.output_dir.join(format!("diagnostic_report_{}.txt", timestamp));
-                fs::write(&report_file, &report)
-                    .map_err(|e| ToolError::IoError(format!("Failed to write diagnostic report: {}", e)))?;
-                
-                info!("Diagnostic report saved to {}", report_file.display());
-            }
-        }
-        
-        // Create file sources index
-        let mut classes = GameDataClasses::new();
-        let mut file_path_to_index = HashMap::new();
-        
-        // First pass: Create file sources index from all results
-        for (file_path, _) in &scan_result.results {
-            let index = classes.add_file_source(file_path.clone());
-            file_path_to_index.insert(file_path.clone(), index);
-        }
-        
-        // Create a map to track which class came from which file
-        let mut class_to_file_map: HashMap<String, usize> = HashMap::new();
-        
-        // Second pass: Build mapping of class names to file indices
-        for (file_path, file_result) in &scan_result.results {
-            let file_index = file_path_to_index.get(file_path).unwrap();
+        if diagnostic_mode && scan_result.scan_time_ms.is_some() {
+            let scan_time_ms = scan_result.scan_time_ms.unwrap();
+            let report = format!(
+                "=== Scan Report ===\n\
+                Total scan time: {:.2} seconds\n\
+                Files processed: {}\n\
+                Classes found: {}\n\
+                Files with errors: {}\n",
+                scan_time_ms as f64 / 1000.0,
+                scan_result.files_scanned,
+                scan_result.classes_found,
+                scan_result.files_with_errors
+            );
             
-            for class in &file_result.classes {
-                // We'll use the last file occurrence for each class
-                // This should be sufficient as we're mainly interested in having some source
-                class_to_file_map.insert(class.name.clone(), *file_index);
-            }
+            info!("Scan Report:\n{}", report);
+            
+            // Save diagnostic report to file
+            let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+            let report_file = self.output_dir.join(format!("scan_report_{}.txt", timestamp));
+            fs::write(&report_file, &report)
+                .map_err(|e| ToolError::IoError(format!("Failed to write scan report: {}", e)))?;
+            
+            info!("Scan report saved to {}", report_file.display());
         }
         
-        // Third pass: Process all classes
-        for (file_path, file_result) in &scan_result.results {
-            for class in &file_result.classes {
-                let mut converted_class = Self::convert_class(class);
+        // Create game data classes container
+        let mut classes = GameDataClasses::new();
+        let mut file_sources: HashMap<String, usize> = HashMap::new();
+        
+        // Process all classes from the scan result
+        for (class_name, class_list) in &scan_result.class_map {
+            for class in class_list {
+                // Get or create file source index
+                let file_path_str = class.file_path.to_string_lossy().to_string();
                 
-                // Look up the source file index for this class
-                if let Some(&file_index) = class_to_file_map.get(&class.name) {
-                    converted_class.source_file_index = Some(file_index);
-                }
+                // Get or add file source index
+                let file_index = if let Some(&idx) = file_sources.get(&file_path_str) {
+                    idx
+                } else {
+                    let idx = classes.add_file_source(class.file_path.clone());
+                    file_sources.insert(file_path_str, idx);
+                    idx
+                };
                 
+                // Convert the class
+                let mut converted_class = Self::convert_game_class(class);
+                converted_class.source_file_index = Some(file_index);
+                
+                // Add the class to our collection
                 classes.add_class(converted_class);
             }
         }
-        
-        // Save results
-        // self.save_results(&classes)?;
         
         Ok(classes)
     }

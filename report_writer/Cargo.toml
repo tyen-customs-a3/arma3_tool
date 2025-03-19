@@ -1,14 +1,10 @@
 [package]
-name = "arma3-tool-report-writer"
+name = "arma3_tool_report_writer"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arma3-tool-models = { path = "../models" }
-arma3-tool-cache-storage = { path = "../cache_storage" }
-arma3-tool-dependency-scanner = { path = "../dependency_scanner" }
-thiserror.workspace = true
-log.workspace = true
-serde_json.workspace = true
-chrono.workspace = true 
+arma3_tool_dependency_scanner = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
 prettytable = "0.10.0"

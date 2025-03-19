@@ -9,13 +9,17 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::sync::mpsc::{self, Receiver};
 use arma3_tool::scanner::gamedata::GameDataScanner;
-use pbo_cache::ExtractionConfig;
+use arma3_tool_pbo_cache::ExtractionConfig;
 use tempfile::TempDir;
 use std::thread;
 use num_cpus;
 use std::collections::HashMap;
 use arma3_tool::scanner::gamedata as gamedata_scanner;
-use parser_code::{CodeClass, CodeValue};
+use gamedata_scanner_models::{
+    GameClass,
+    ClassProperty,
+    PropertyValue as GameDataScannerPropertyValue
+};
 use walkdir::WalkDir;
 
 struct Arma3ToolUI {
@@ -409,23 +413,29 @@ impl Arma3ToolUI {
         }
     }
 
-    /// Convert a CodeValue to PropertyValue
-    fn convert_value(value: &CodeValue) -> arma3_tool_models::PropertyValue {
+    /// Convert a GameDataScannerPropertyValue to PropertyValue
+    fn convert_property_value(value: &GameDataScannerPropertyValue) -> arma3_tool_models::PropertyValue {
         match value {
-            CodeValue::String(s) => arma3_tool_models::PropertyValue::String(s.clone()),
-            CodeValue::Number(n) => arma3_tool_models::PropertyValue::Number(*n as f64),
-            CodeValue::Array(arr) => arma3_tool_models::PropertyValue::Array(arr.iter().map(|s| arma3_tool_models::PropertyValue::String(s.clone())).collect()),
-            CodeValue::Class(c) => arma3_tool_models::PropertyValue::String(c.name.clone()),
+            GameDataScannerPropertyValue::String(s) => arma3_tool_models::PropertyValue::String(s.clone()),
+            GameDataScannerPropertyValue::Number(n) => arma3_tool_models::PropertyValue::Number(*n as f64),
+            GameDataScannerPropertyValue::Array(arr) => {
+                // Convert each string to PropertyValue::String
+                let string_props: Vec<arma3_tool_models::PropertyValue> = arr.iter()
+                    .map(|s| arma3_tool_models::PropertyValue::String(s.clone()))
+                    .collect();
+                arma3_tool_models::PropertyValue::Array(string_props)
+            },
+            GameDataScannerPropertyValue::Class(c) => arma3_tool_models::PropertyValue::String(c.name.clone()),
         }
     }
     
     /// Convert a class from the scanner result to GameDataClass
-    fn convert_class(class: &CodeClass) -> arma3_tool_models::GameDataClass {
+    fn convert_class(class: &GameClass) -> arma3_tool_models::GameDataClass {
         let mut properties = std::collections::HashMap::new();
         
         // Convert properties
         for prop in &class.properties {
-            properties.insert(prop.name.clone(), Self::convert_value(&prop.value));
+            properties.insert(prop.name.clone(), Self::convert_property_value(&prop.value));
         }
         
         arma3_tool_models::GameDataClass {

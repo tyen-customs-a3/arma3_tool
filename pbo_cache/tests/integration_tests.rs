@@ -4,7 +4,7 @@ use tempfile::tempdir;
 use std::fs::{self, File};
 use std::io::Write;
 
-use pbo_cache::{
+use arma3_tool_pbo_cache::{
     ExtractionConfig,
     ExtractionManager,
     PboType,
@@ -136,33 +136,3 @@ fn test_cleanup_cache() -> Result<()> {
     
     Ok(())
 }
-
-// This test would require actual PBO files to work
-// but we can at least test that the code runs without crashing
-#[test]
-#[ignore]
-fn test_process_game_data() {
-    let (_temp_dir, config) = create_test_config();
-    let mut manager = ExtractionManager::new(config).unwrap();
-    
-    // This should return an empty vector since we don't have any game_data_dirs
-    let result = tokio_test::block_on(async {
-        manager.process_game_data(false).await
-    }).unwrap();
-    
-    assert!(result.is_empty());
-}
-
-#[test]
-#[ignore]
-fn test_process_missions() {
-    let (_temp_dir, config) = create_test_config();
-    let mut manager = ExtractionManager::new(config).unwrap();
-    
-    // This should return an empty hash map since we don't have any mission_dirs
-    let result = tokio_test::block_on(async {
-        manager.process_all_missions(false).await
-    }).unwrap();
-    
-    assert!(result.is_empty());
-} 

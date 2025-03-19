@@ -1,8 +1,7 @@
 [package]
-name = "arma3-tool-models"
+name = "arma3_tool_models"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-serde.workspace = true
-chrono.workspace = true 
+serde = { workspace = true }

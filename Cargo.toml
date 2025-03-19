@@ -4,41 +4,38 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow.workspace = true
-clap.workspace = true
-env_logger.workspace = true
-log.workspace = true
-num_cpus.workspace = true
-pbo_cache = { path = "./pbo_cache" }
-serde.workspace = true
-serde_json.workspace = true
-tokio.workspace = true
-arma3-tool-cache-storage = { path = "./cache_storage" }
-arma3-tool-report-writer = { path = "./report_writer" }
-arma3-tool-dependency-scanner = { path = "./dependency_scanner" }
-arma3-tool-models = { path = "./models" }
-walkdir.workspace = true
+arma3_tool_cache_storage = { path = "./cache_storage" }
+arma3_tool_report_writer = { path = "./report_writer" }
+arma3_tool_dependency_scanner = { path = "./dependency_scanner" }
+arma3_tool_models = { path = "./models" }
+arma3_tool_pbo_cache = { path = "./pbo_cache" }
 gamedata_scanner = { path = "../gamedata_scanner" }
-parser_code = { path = "../gamedata_scanner/parser_code" }
+gamedata_scanner_models = { path = "../gamedata_scanner/models" }
 mission_scanner = { path = "../mission_scanner" }
-chrono.workspace = true
-thiserror.workspace = true
-egui.workspace = true
-eframe.workspace = true
-fuzzy-matcher.workspace = true
-tabled = "0.18.0"
-owo-colors = "4.2.0"
-prettytable = "0.10.0"
-tempfile.workspace = true
+anyhow = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+num_cpus = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+fuzzy-matcher = { workspace = true }
+tempfile = { workspace = true }
 rfd = "0.15.3"
 
 [workspace]
 members = [
-    "pbo_cache",
     "cache_storage",
-    "dependency_scanner",
     "report_writer",
-    "models"
+    "models",
+    "dependency_scanner",
+    "pbo_cache",
 ]
 
 [[bin]]
@@ -55,6 +52,15 @@ edition = "2021"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [workspace.dependencies]
+# Internal crates
+arma3_tool_models = { path = "./models" }
+arma3_tool_cache_storage = { path = "./cache_storage" }
+arma3_tool_dependency_scanner = { path = "./dependency_scanner" }
+arma3_tool_report_writer = { path = "./report_writer" }
+arma3_tool_pbo_cache = { path = "./pbo_cache" }
+pbo_tools = { path = "../pbo_tools" }
+
+# External dependencies
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 chrono = { version = "0.4.40", features = ["serde"] }
@@ -81,7 +87,3 @@ unused_parens = "allow"
 unused_imports = "allow"
 unused_variables = "allow"
 unused_mut = "allow"
-
-[[example]]
-name = "basic_scan"
-path = "examples/basic_scan.rs"

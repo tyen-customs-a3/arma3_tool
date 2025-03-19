@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use anyhow::{Result, Context};
-use pbo_cache::{ExtractionConfig, ExtractionManager, PboType};
+use arma3_tool_pbo_cache::{ExtractionConfig, ExtractionManager, PboType};
 use log::{info, warn, debug, LevelFilter};
 use clap::Parser;
 

@@ -10,7 +10,7 @@ pub use error::{Result, ToolError};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Re-export necessary types from pbo_cache
-pub use pbo_cache::{
+pub use arma3_tool_pbo_cache::{
     PboMetadata,
     PboType,
     CacheIndex,
@@ -22,7 +22,7 @@ pub mod bin {
     pub mod cache_builder {
         use std::path::PathBuf;
         use crate::error::Result;
-        use pbo_cache::ExtractionConfig;
+        use arma3_tool_pbo_cache::ExtractionConfig;
         use arma3_tool_cache_storage::{StorageManager, CacheData};
         use crate::scanner::gamedata::GameDataScanner;
         use crate::scanner::mission::MissionScanner;

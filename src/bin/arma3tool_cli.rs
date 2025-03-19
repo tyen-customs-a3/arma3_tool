@@ -5,7 +5,7 @@ use arma3_tool_dependency_scanner::DependencyScanner;
 use arma3_tool_report_writer::ReportWriter;
 use clap::{Parser, Subcommand};
 use log::{error, info, warn};
-use pbo_cache::{
+use arma3_tool_pbo_cache::{
     extract_game_data as pbo_extract_game_data, 
     extract_mission as pbo_extract_mission, 
     ExtractionConfig, ExtractionManager

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
-use pbo_cache::ExtractionConfig;
+use arma3_tool_pbo_cache::ExtractionConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {

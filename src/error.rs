@@ -88,8 +88,8 @@ impl From<serde_json::Error> for ToolError {
     }
 }
 
-impl From<pbo_cache::CacheError> for ToolError {
-    fn from(err: pbo_cache::CacheError) -> Self {
+impl From<arma3_tool_pbo_cache::CacheError> for ToolError {
+    fn from(err: arma3_tool_pbo_cache::CacheError) -> Self {
         ToolError::CacheError(err.to_string())
     }
 }

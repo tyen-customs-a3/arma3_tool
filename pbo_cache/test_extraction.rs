@@ -2,7 +2,7 @@ use std::path::Path;
 use anyhow::Result;
 use std::fs;
 use std::time::Instant;
-use pbo_cache::{
+use arma3_tool_pbo_cache::{
     ExtractionConfig,
     ExtractionManager,
 };

@@ -1,13 +1,12 @@
 [package]
-name = "arma3-tool-dependency-scanner"
+name = "arma3_tool_dependency_scanner"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arma3-tool-models = { path = "../models" }
-arma3-tool-cache-storage = { path = "../cache_storage" }
-dashmap.workspace = true
-rayon.workspace = true
-thiserror.workspace = true
-log.workspace = true
-serde.workspace = true 
+arma3_tool_models = { workspace = true }
+dashmap = { workspace = true }
+rayon = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true } 

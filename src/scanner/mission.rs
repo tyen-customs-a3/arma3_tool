@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::fs;
 use log::{info, warn, error};
 use crate::error::{Result, ToolError};
-use pbo_cache::ExtractionManager;
+use arma3_tool_pbo_cache::ExtractionManager;
 use arma3_tool_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
 use walkdir::WalkDir;
 use mission_scanner::{scan_mission, MissionScannerConfig, ReferenceType as ScannerReferenceType};
@@ -21,7 +21,7 @@ pub struct MissionScanner {
 
 impl MissionScanner {
     /// Create a new mission scanner
-    pub fn new(config: pbo_cache::ExtractionConfig) -> Result<Self> {
+    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
         let cache_dir = config.cache_dir.clone();
         let output_dir = cache_dir.join("scan_results");
         let extractor = ExtractionManager::new(config)

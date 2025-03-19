@@ -251,7 +251,7 @@ impl ExtractionConfig {
             mission_dirs: Vec::new(),
             mission_extensions: vec!["hpp".into(), "cpp".into(), "sqf".into(), "sqm".into()],
             threads: num_cpus::get(),
-            timeout: 60,
+            timeout: 400,
             verbose: false,
         }
     }

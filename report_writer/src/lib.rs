@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 use std::io;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use serde_json;
 use thiserror::Error;
 use arma3_tool_dependency_scanner::ScanReport;
