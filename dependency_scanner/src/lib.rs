@@ -4,7 +4,6 @@ use rayon::prelude::*;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
 use arma3_tool_models::{GameDataClasses, MissionData, Mission, DependencyRef};
-use std::collections::HashMap;
 
 #[derive(Error, Debug)]
 pub enum ScanError {
@@ -18,7 +17,7 @@ pub enum ScanError {
 pub type Result<T> = std::result::Result<T, ScanError>;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct MissingDependency {
+pub struct Dependency {
     pub class_name: String,
     pub mission_name: String,
     pub reference_type: String,
@@ -26,10 +25,11 @@ pub struct MissingDependency {
     pub line_number: Option<usize>,
 }
 
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScanReport {
-    pub missing_dependencies: Vec<MissingDependency>,
-    pub found_dependencies: HashMap<String, Vec<String>>,
+    pub missing_dependencies: Vec<Dependency>,
+    pub found_dependencies: Vec<Dependency>,
     pub total_dependencies_checked: usize,
     pub total_missions_scanned: usize,
 }
@@ -65,25 +65,33 @@ impl DependencyScanner {
         });
         
         // Convert DashMap to Vec and HashMap
-        let missing_dependencies: Vec<MissingDependency> = missing_deps
+        let missing_dependencies: Vec<Dependency> = missing_deps
             .into_iter()
             .map(|(_, v)| v)
             .collect();
             
-        let found_dependencies: HashMap<String, Vec<String>> = found_deps
+        let found_dependencies: Vec<Dependency> = found_deps
             .into_iter()
-            .map(|(k, v)| (k, v))
+            .flat_map(|(_, v)| v)
             .collect();
         
         let total_deps_checked = total_deps.load(std::sync::atomic::Ordering::Relaxed);
-        let missing_count = missing_dependencies.len();
+        
+        // Count unique missing class names (case-insensitive)
+        let mut unique_missing_classes = std::collections::HashSet::new();
+        for dep in &missing_dependencies {
+            unique_missing_classes.insert(dep.class_name.to_lowercase());
+        }
+        let unique_missing_count = unique_missing_classes.len();
         
         // Print summary
         println!("==== Dependency Scan Summary ====");
         println!("Game Database Classes: {}", self.class_map.len());
         println!("Total Dependencies Checked: {}", total_deps_checked);
-        println!("Missing Dependencies: {}", missing_count);
-        println!("Match Rate: {:.2}%", 100.0 * (total_deps_checked - missing_count) as f64 / total_deps_checked as f64);
+        println!("Missing Dependencies: {}", missing_dependencies.len());
+        println!("Unique Missing Classes: {}", unique_missing_count);
+        println!("Match Rate: {:.2}%", 100.0 * (total_deps_checked - missing_dependencies.len()) as f64 / total_deps_checked as f64);
+        println!("True Match Rate (unique classes): {:.2}%", 100.0 * (total_deps_checked - unique_missing_count) as f64 / total_deps_checked as f64);
         println!("===============================");
         
         ScanReport {
@@ -97,8 +105,8 @@ impl DependencyScanner {
     fn scan_mission(
         &self,
         mission: &Mission,
-        missing_deps: &DashMap<String, MissingDependency>,
-        found_deps: &DashMap<String, Vec<String>>,
+        missing_deps: &DashMap<String, Dependency>,
+        found_deps: &DashMap<String, Vec<Dependency>>,
         total_deps: &std::sync::atomic::AtomicUsize,
     ) {
         let mut mission_found_deps = Vec::new();
@@ -127,14 +135,14 @@ impl DependencyScanner {
         &self,
         dep: &DependencyRef,
         mission: &Mission,
-        missing_deps: &DashMap<String, MissingDependency>,
-        found_deps: &mut Vec<String>,
+        missing_deps: &DashMap<String, Dependency>,
+        found_deps: &mut Vec<Dependency>,
     ) {
         // Strip quotes and convert class name to lowercase for case-insensitive comparison
         let lowercase_class_name = dep.class_name.trim_matches('"').to_lowercase();
         
         if !self.class_map.contains_key(&lowercase_class_name) {
-            missing_deps.entry(dep.class_name.clone()).or_insert_with(|| MissingDependency {
+            missing_deps.entry(dep.class_name.clone()).or_insert_with(|| Dependency {
                 class_name: dep.class_name.clone(),
                 mission_name: mission.name.clone(),
                 reference_type: format!("{:?}", dep.reference_type),
@@ -142,7 +150,13 @@ impl DependencyScanner {
                 line_number: dep.line_number,
             });
         } else {
-            found_deps.push(dep.class_name.clone());
+            found_deps.push(Dependency {
+                class_name: dep.class_name.clone(),
+                mission_name: mission.name.clone(),
+                reference_type: format!("{:?}", dep.reference_type),
+                source_file: dep.source_file.clone(),
+                line_number: dep.line_number,
+            });
         }
     }
 } 

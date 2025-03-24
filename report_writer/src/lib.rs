@@ -31,7 +31,6 @@ impl ReportWriter {
             output_dir: output_dir.into(),
         }
     }
-    
     pub fn write_report(&self, report: &ScanReport) -> Result<()> {
         // Ensure output directory exists
         fs::create_dir_all(&self.output_dir)?;
@@ -44,7 +43,7 @@ impl ReportWriter {
     
     fn write_text_report(&self, report: &ScanReport) -> Result<()> {
         // Group dependencies by mission
-        let mut mission_deps: HashMap<String, Vec<&arma3_tool_dependency_scanner::MissingDependency>> = HashMap::new();
+        let mut mission_deps: HashMap<String, Vec<&arma3_tool_dependency_scanner::Dependency>> = HashMap::new();
         
         for dependency in &report.missing_dependencies {
             mission_deps
@@ -111,7 +110,26 @@ impl ReportWriter {
                 .iter()
                 .map(|dep| (&dep.class_name, &dep.source_file))
                 .collect();
-            unique_missing.sort_by(|a, b| a.0.cmp(b.0));
+
+            // Sort alphabetically by class name (case-insensitive) and then by file path
+            unique_missing.sort_by(|a, b| {
+                // First sort by class name (case-insensitive)
+                let name_cmp = a.0.to_lowercase().cmp(&b.0.to_lowercase());
+                if name_cmp == std::cmp::Ordering::Equal {
+                    // If class names are the same (ignoring case), preserve the original case ordering
+                    let case_cmp = a.0.cmp(b.0);
+                    if case_cmp == std::cmp::Ordering::Equal {
+                        // If the exact same class name, sort by file path
+                        a.1.to_string_lossy().cmp(&b.1.to_string_lossy())
+                    } else {
+                        case_cmp
+                    }
+                } else {
+                    name_cmp
+                }
+            });
+
+            // Remove exact duplicates (same class name and file path)
             unique_missing.dedup();
             
             for (i, (class_name, file_path)) in unique_missing.iter().enumerate() {
@@ -130,7 +148,18 @@ impl ReportWriter {
 
         // Get all mission names (both with missing and found dependencies)
         let mut all_mission_names: Vec<String> = mission_deps.keys().cloned().collect();
-        for mission_name in report.found_dependencies.keys() {
+
+        // Group found dependencies by mission
+        let mut found_deps_by_mission: HashMap<String, Vec<&arma3_tool_dependency_scanner::Dependency>> = HashMap::new();
+        for dependency in &report.found_dependencies {
+            found_deps_by_mission
+                .entry(dependency.mission_name.clone())
+                .or_default()
+                .push(dependency);
+        }
+
+        // Add missions with found dependencies to the list
+        for mission_name in found_deps_by_mission.keys() {
             if !all_mission_names.contains(mission_name) {
                 all_mission_names.push(mission_name.clone());
             }
@@ -147,12 +176,12 @@ impl ReportWriter {
                 report_text.push_str(&format!("MISSION: {}\n\n", mission_name));
                 
                 // Report found dependencies
-                if let Some(found_deps) = report.found_dependencies.get(&mission_name) {
+                if let Some(found_deps) = found_deps_by_mission.get(&mission_name) {
                     report_text.push_str(&format!("Found dependencies: {}\n", found_deps.len()));
                     
                     // Sort found dependencies for consistent output
-                    let mut sorted_deps = found_deps.clone();
-                    sorted_deps.sort();
+                    let mut sorted_deps = found_deps.to_vec();
+                    sorted_deps.sort_by(|a, b| a.class_name.cmp(&b.class_name));
                     
                     let mut found_table = Table::new();
                     let format = format::FormatBuilder::new()
@@ -169,12 +198,14 @@ impl ReportWriter {
                     found_table.set_titles(Row::new(vec![
                         Cell::new("#"),
                         Cell::new("Class Name"),
+                        Cell::new("File Path"),
                     ]));
                     
-                    for (i, class_name) in sorted_deps.iter().enumerate() {
+                    for (i, dependency) in sorted_deps.iter().enumerate() {
                         found_table.add_row(Row::new(vec![
                             Cell::new(&(i + 1).to_string()),
-                            Cell::new(class_name),
+                            Cell::new(&dependency.class_name),
+                            Cell::new(&dependency.source_file.display().to_string())
                         ]));
                     }
                     
