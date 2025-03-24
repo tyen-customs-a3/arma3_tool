@@ -94,38 +94,19 @@ async fn main() -> Result<()> {
             let paths = pbo_extract_game_data(extraction_config.clone()).await?;
             info!("Game data extraction complete: {} paths processed", paths.len());
 
-            // Extract missions
+            // Extract missions using multithreaded extraction
             info!("Extracting missions...");
-            let mut total_missions = 0;
-
-            // We need to find and extract mission PBOs from each mission directory
-            for mission_dir_str in &config.mission_dirs {
-                let mission_dir = PathBuf::from(mission_dir_str);
-                info!("Scanning mission directory: {}", mission_dir_str);
-                
-                // Walk directory to find PBO files
-                let entries = WalkDir::new(&mission_dir)
-                    .follow_links(true)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.path().extension().map_or(false, |ext| ext == "pbo")
-                    })
-                    .collect::<Vec<_>>();
-                
-                info!("Found {} mission PBO files in {}", entries.len(), mission_dir_str);
-                
-                // Extract each mission PBO
-                for entry in entries {
-                    let pbo_path = entry.path();
-                    info!("Extracting mission: {}", pbo_path.display());
-                    let extracted_files = pbo_extract_mission(extraction_config.clone(), pbo_path).await?;
-                    total_missions += 1;
-                    info!("Extracted {} files from {}", extracted_files.len(), pbo_path.display());
-                }
-                
-                info!("Mission extraction complete: {} missions processed", total_missions);
-            }
+            
+            // Create extractor manager
+            let mut manager = ExtractionManager::new(extraction_config.clone())?;
+            
+            // Process all missions in parallel
+            let mission_results = manager.process_all_missions(false).await?;
+            let total_missions = mission_results.len();
+            let total_files: usize = mission_results.values().map(|files| files.len()).sum();
+            
+            info!("Mission extraction complete: {} missions processed with {} total files", 
+                  total_missions, total_files);
             
             info!("Extraction complete");
         },
@@ -224,38 +205,19 @@ async fn main() -> Result<()> {
             let paths = pbo_extract_game_data(extraction_config.clone()).await?;
             info!("Game data extraction complete: {} paths processed", paths.len());
             
-            // Extract missions
+            // Extract missions using multithreaded extraction
             info!("Extracting missions...");
-            let mut total_missions = 0;
             
-            // We need to find and extract mission PBOs from each mission directory
-            for mission_dir_str in &config.mission_dirs {
-                let mission_dir = PathBuf::from(mission_dir_str);
-                info!("Scanning mission directory: {}", mission_dir_str);
-                
-                // Walk directory to find PBO files
-                let entries = WalkDir::new(&mission_dir)
-                    .follow_links(true)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.path().extension().map_or(false, |ext| ext == "pbo")
-                    })
-                    .collect::<Vec<_>>();
-                
-                info!("Found {} mission PBO files in {}", entries.len(), mission_dir_str);
-                
-                // Extract each mission PBO
-                for entry in entries {
-                    let pbo_path = entry.path();
-                    info!("Extracting mission: {}", pbo_path.display());
-                    let extracted_files = pbo_extract_mission(extraction_config.clone(), pbo_path).await?;
-                    total_missions += 1;
-                    info!("Extracted {} files from {}", extracted_files.len(), pbo_path.display());
-                }
-                
-                info!("Mission extraction complete: {} missions processed", total_missions);
-            }
+            // Create extractor manager
+            let mut manager = ExtractionManager::new(extraction_config.clone())?;
+            
+            // Process all missions in parallel
+            let mission_results = manager.process_all_missions(false).await?;
+            let total_missions = mission_results.len();
+            let total_files: usize = mission_results.values().map(|files| files.len()).sum();
+            
+            info!("Mission extraction complete: {} missions processed with {} total files", 
+                  total_missions, total_files);
             
             // STEP 2: Process
             // Create storage
