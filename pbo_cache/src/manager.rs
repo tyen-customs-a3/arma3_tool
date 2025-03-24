@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::fs;
-use log::{info, warn, error};
+use log::{info, warn};
 
 use crate::models::{ExtractionConfig, PboMetadata, PboType};
 use crate::scanner::PboScanner;
@@ -65,6 +65,32 @@ impl ExtractionManager {
         })
     }
     
+    /// Helper method to determine if a PBO needs extraction
+    fn needs_extraction(&self, path: &Path, pbo_type: PboType, extensions: &[String]) -> Result<bool> {
+        self.index_manager.needs_extraction(path, pbo_type, extensions)
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to check extraction status: {}", e)))
+    }
+    
+    /// Helper method to create metadata
+    fn create_metadata(
+        pbo_path: &Path, 
+        extracted_files: &[PathBuf], 
+        pbo_type: PboType, 
+        extensions: &[String]
+    ) -> Result<PboMetadata> {
+        // Create metadata
+        let mut metadata = PboMetadata::new(
+            pbo_path.to_path_buf(),
+            pbo_type,
+            extensions.to_vec(),
+        ).map_err(|e| CacheError::FileOperation(format!("Failed to create metadata: {}", e)))?;
+        
+        // Add extracted files
+        metadata.extracted_files = extracted_files.to_vec();
+        
+        Ok(metadata)
+    }
+    
     /// Process game data PBOs
     pub async fn process_game_data(&mut self, skip_extraction: bool) -> Result<Vec<PathBuf>> {
         info!("Processing game data from {} directories", self.config.game_data_dirs.len());
@@ -82,11 +108,7 @@ impl ExtractionManager {
         
         // Find PBOs that need extraction
         let needs_extraction = |path: &Path| -> Result<bool> {
-            self.index_manager.needs_extraction(
-                path, 
-                PboType::GameData,
-                &self.config.game_data_extensions,
-            ).map_err(|e| CacheError::IndexOperation(format!("Failed to check extraction status: {}", e)))
+            self.needs_extraction(path, PboType::GameData, &self.config.game_data_extensions)
         };
         
         let pbos_to_extract = PboScanner::filter_needs_extraction(
@@ -99,12 +121,17 @@ impl ExtractionManager {
             return Ok(Vec::new());
         }
         
+        // Save cache_dir and extensions before the mutable borrow
+        let cache_dir = self.config.game_data_cache_dir.clone();
+        let extensions = self.config.game_data_extensions.clone();
+        let verbose = self.config.verbose;
+        
         // Extract PBOs
         let extraction_results = self.processor.extract_pbos(
             pbos_to_extract,
-            &self.config.game_data_cache_dir,
-            self.config.game_data_extensions.clone(),
-            self.config.verbose,
+            &cache_dir,
+            extensions.clone(),
+            verbose,
             self.index_manager.get_index_mut(),
         ).await.map_err(|e| CacheError::PboExtraction {
             pbo_path: PathBuf::new(), // We don't know which PBO failed
@@ -116,20 +143,18 @@ impl ExtractionManager {
         
         for (pbo_path, extracted_files) in &extraction_results {
             // Create metadata
-            let mut metadata = PboMetadata::new(
-                pbo_path.clone(),
+            let metadata = Self::create_metadata(
+                pbo_path,
+                extracted_files,
                 PboType::GameData,
-                self.config.game_data_extensions.clone(),
-            ).map_err(|e| CacheError::FileOperation(format!("Failed to create metadata: {}", e)))?;
-            
-            // Add extracted files
-            metadata.extracted_files = extracted_files.clone();
+                &extensions,
+            )?;
             
             // Update index
-            self.index_manager.update_metadata(metadata);
+            self.index_manager.update_metadata(metadata.clone());
             
             // Add to result
-            all_extracted_files.extend(extracted_files.clone());
+            all_extracted_files.extend(metadata.extracted_files);
         }
         
         // Save the index
@@ -161,11 +186,11 @@ impl ExtractionManager {
         }
         
         // Check if extraction is needed
-        let needs_extraction = self.index_manager.needs_extraction(
+        let needs_extraction = self.needs_extraction(
             mission_path,
             PboType::Mission,
             &self.config.mission_extensions,
-        ).map_err(|e| CacheError::IndexOperation(format!("Failed to check extraction status: {}", e)))?;
+        )?;
         
         if !needs_extraction {
             info!("Mission PBO already extracted and up to date");
@@ -181,12 +206,17 @@ impl ExtractionManager {
             return Ok(Vec::new());
         }
         
+        // Save cache_dir and extensions before the mutable borrow
+        let cache_dir = self.config.mission_cache_dir.clone();
+        let extensions = self.config.mission_extensions.clone();
+        let verbose = self.config.verbose;
+        
         // Extract PBO
         let extraction_results = self.processor.extract_pbos(
             vec![mission_path.to_path_buf()],
-            &self.config.mission_cache_dir,
-            self.config.mission_extensions.clone(),
-            self.config.verbose,
+            &cache_dir,
+            extensions.clone(),
+            verbose,
             self.index_manager.get_index_mut(),
         ).await.map_err(|e| CacheError::PboExtraction {
             pbo_path: mission_path.to_path_buf(),
@@ -197,27 +227,25 @@ impl ExtractionManager {
             return Ok(Vec::new());
         }
         
-        let (_, extracted_files) = &extraction_results[0];
+        let (pbo_path, extracted_files) = &extraction_results[0];
         
         // Create metadata
-        let mut metadata = PboMetadata::new(
-            mission_path.to_path_buf(),
+        let metadata = Self::create_metadata(
+            pbo_path,
+            extracted_files,
             PboType::Mission,
-            self.config.mission_extensions.clone(),
-        ).map_err(|e| CacheError::FileOperation(format!("Failed to create metadata: {}", e)))?;
-        
-        // Add extracted files
-        metadata.extracted_files = extracted_files.clone();
+            &extensions,
+        )?;
         
         // Update index
-        self.index_manager.update_metadata(metadata);
+        self.index_manager.update_metadata(metadata.clone());
         
         // Save the index
         self.index_manager.save()
             .map_err(|e| CacheError::IndexOperation(format!("Failed to save index: {}", e)))?;
         
         info!("Extracted {} files from mission PBO", extracted_files.len());
-        Ok(extracted_files.clone())
+        Ok(metadata.extracted_files)
     }
     
     /// Process all mission PBOs
@@ -232,19 +260,93 @@ impl ExtractionManager {
             .map_err(|e| CacheError::FileOperation(format!("Failed to scan for PBOs: {}", e)))?;
         info!("Found {} mission PBOs", all_missions.len());
         
-        // Process each mission
-        let mut results = HashMap::new();
+        // Skip extraction if requested
+        if skip_extraction {
+            info!("Skipping extraction as requested");
+            return Ok(HashMap::new());
+        }
         
-        for mission_path in all_missions {
-            match self.process_mission(&mission_path, skip_extraction).await {
-                Ok(files) => {
-                    results.insert(mission_path, files);
-                },
-                Err(e) => {
-                    error!("Failed to process mission {}: {}", mission_path.display(), e);
+        // Find PBOs that need extraction
+        let needs_extraction = |path: &Path| -> Result<bool> {
+            self.needs_extraction(path, PboType::Mission, &self.config.mission_extensions)
+        };
+        
+        let pbos_to_extract = PboScanner::filter_needs_extraction(
+            &all_missions,
+            needs_extraction,
+        ).map_err(|e| CacheError::FileOperation(format!("Failed to filter PBOs: {}", e)))?;
+        
+        if pbos_to_extract.is_empty() {
+            info!("No mission PBOs need extraction");
+            
+            // Return already extracted missions
+            let mut results = HashMap::new();
+            for mission_path in all_missions {
+                if let Some(metadata) = self.index_manager.get_index().get_metadata(
+                    &mission_path,
+                    PboType::Mission,
+                ) {
+                    results.insert(mission_path, metadata.extracted_files.clone());
                 }
             }
+            
+            return Ok(results);
         }
+        
+        // Save cache_dir and extensions before the mutable borrow
+        let cache_dir = self.config.mission_cache_dir.clone();
+        let extensions = self.config.mission_extensions.clone();
+        let verbose = self.config.verbose;
+        
+        // Extract PBOs in parallel
+        let extraction_results = self.processor.extract_pbos(
+            pbos_to_extract,
+            &cache_dir,
+            extensions.clone(),
+            verbose,
+            self.index_manager.get_index_mut(),
+        ).await.map_err(|e| CacheError::PboExtraction {
+            pbo_path: PathBuf::new(), // We don't know which PBO failed
+            message: e.to_string(),
+        })?;
+        
+        // Update cache index and build results
+        let mut results = HashMap::new();
+        
+        // First add the newly extracted PBOs
+        for (pbo_path, extracted_files) in &extraction_results {
+            // Create metadata
+            let metadata = Self::create_metadata(
+                pbo_path,
+                extracted_files,
+                PboType::Mission,
+                &extensions,
+            )?;
+            
+            // Update index
+            self.index_manager.update_metadata(metadata.clone());
+            
+            // Add to result
+            results.insert(pbo_path.clone(), metadata.extracted_files);
+        }
+        
+        // Then add any already extracted PBOs
+        for mission_path in all_missions {
+            if results.contains_key(&mission_path) {
+                continue; // Already processed
+            }
+            
+            if let Some(metadata) = self.index_manager.get_index().get_metadata(
+                &mission_path,
+                PboType::Mission,
+            ) {
+                results.insert(mission_path, metadata.extracted_files.clone());
+            }
+        }
+        
+        // Save the index
+        self.index_manager.save()
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to save index: {}", e)))?;
         
         info!("Processed {} mission PBOs", results.len());
         Ok(results)
@@ -258,14 +360,19 @@ impl ExtractionManager {
         let mut removed_count = 0;
         let mut removed_files_count = 0;
         
-        // Check game data PBOs
-        let game_data_index = self.index_manager.get_index().game_data.clone();
-        for (_key, metadata) in game_data_index {
+        // Helper function for removing cache entries
+        fn remove_nonexistent_entry(
+            metadata: &PboMetadata, 
+            pbo_type: PboType, 
+            manager: &mut IndexManager,
+            removed_count: &mut usize, 
+            removed_files_count: &mut usize
+        ) -> Result<()> {
             if !metadata.path.exists() {
                 info!("Removing cache entry for non-existent PBO: {}", metadata.path.display());
-                self.index_manager.get_index_mut().remove_metadata(
+                manager.get_index_mut().remove_metadata(
                     &metadata.path,
-                    PboType::GameData,
+                    pbo_type,
                 );
                 
                 // Remove cached files
@@ -274,51 +381,54 @@ impl ExtractionManager {
                         if let Err(e) = fs::remove_file(cached_file) {
                             warn!("Failed to remove cached file {}: {}", cached_file.display(), e);
                         } else {
-                            removed_files_count += 1;
+                            *removed_files_count += 1;
                         }
                     }
                 }
                 
-                removed_count += 1;
-            }
-        }
-        
-        // Check mission PBOs
-        let missions_index = self.index_manager.get_index().missions.clone();
-        for (_key, metadata) in missions_index {
-            if !metadata.path.exists() {
-                info!("Removing cache entry for non-existent mission PBO: {}", metadata.path.display());
-                self.index_manager.get_index_mut().remove_metadata(
-                    &metadata.path,
-                    PboType::Mission,
-                );
-                
-                // Remove cached files
-                for cached_file in &metadata.extracted_files {
-                    if cached_file.exists() {
-                        if let Err(e) = fs::remove_file(cached_file) {
-                            warn!("Failed to remove cached file {}: {}", cached_file.display(), e);
-                        } else {
-                            removed_files_count += 1;
-                        }
-                    }
-                }
-                
-                // Try to remove the mission cache directory if empty
-                if let Some(parent) = metadata.extracted_files.first().and_then(|p| p.parent()) {
-                    if parent.exists() {
-                        if let Ok(entries) = fs::read_dir(parent) {
-                            if entries.count() == 0 {
-                                if let Err(e) = fs::remove_dir(parent) {
-                                    warn!("Failed to remove empty mission cache directory {}: {}", parent.display(), e);
+                // For mission PBOs, try to remove empty directories
+                if pbo_type == PboType::Mission {
+                    if let Some(parent) = metadata.extracted_files.first().and_then(|p| p.parent()) {
+                        if parent.exists() {
+                            if let Ok(entries) = fs::read_dir(parent) {
+                                if entries.count() == 0 {
+                                    if let Err(e) = fs::remove_dir(parent) {
+                                        warn!("Failed to remove empty mission cache directory {}: {}", parent.display(), e);
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 
-                removed_count += 1;
+                *removed_count += 1;
             }
+            
+            Ok(())
+        }
+        
+        // Check game data PBOs
+        let game_data_index = self.index_manager.get_index().game_data.clone();
+        for (_key, metadata) in game_data_index {
+            remove_nonexistent_entry(
+                &metadata, 
+                PboType::GameData, 
+                &mut self.index_manager,
+                &mut removed_count, 
+                &mut removed_files_count
+            )?;
+        }
+        
+        // Check mission PBOs
+        let missions_index = self.index_manager.get_index().missions.clone();
+        for (_key, metadata) in missions_index {
+            remove_nonexistent_entry(
+                &metadata, 
+                PboType::Mission, 
+                &mut self.index_manager,
+                &mut removed_count, 
+                &mut removed_files_count
+            )?;
         }
         
         // Save the index if changes were made
