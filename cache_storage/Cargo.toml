@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arma3_tool_models = { workspace = true }
+arma3_tool_shared_models = { workspace = true }
 rmp-serde = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }

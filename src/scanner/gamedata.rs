@@ -4,7 +4,7 @@ use std::fs;
 use log::{info, warn, error};
 use crate::error::{Result, ToolError};
 use arma3_tool_pbo_cache::ExtractionManager;
-use arma3_tool_models::{GameDataClasses, GameDataClass, PropertyValue};
+use arma3_tool_shared_models::{GameDataClasses, GameDataClass, PropertyValue};
 use walkdir::WalkDir;
 use gamedata_scanner::{
     GameClass, 
@@ -90,12 +90,16 @@ impl GameDataScanner {
             properties.insert(prop.name.clone(), Self::convert_property_value(&prop.value));
         }
         
-        GameDataClass {
+        let mut game_class = GameDataClass {
             name: class.name.clone(),
             parent: class.parent.clone(),
             properties,
             source_file_index: None,
-        }
+            pbo_id: None,
+            line_number: None,
+        };
+        
+        game_class
     }
     
     /// Scan classes from previously extracted PBOs
@@ -156,8 +160,12 @@ impl GameDataScanner {
         let mut classes = GameDataClasses::new();
         let mut file_sources: HashMap<String, usize> = HashMap::new();
         
+        // Map from PBO path to ID for consistent PBO IDs
+        let mut pbo_id_map: HashMap<String, usize> = HashMap::new();
+        let mut next_pbo_id = 0;
+        
         // Process all classes from the scan result
-        for (class_name, class_list) in &scan_result.class_map {
+        for (_, class_list) in &scan_result.class_map {
             for class in class_list {
                 // Get or create file source index
                 let file_path_str = class.file_path.to_string_lossy().to_string();
@@ -171,9 +179,23 @@ impl GameDataScanner {
                     idx
                 };
                 
+                // Determine PBO ID based on the PBO path
+                let pbo_path = determine_pbo_path(&class.file_path);
+                let pbo_path_str = pbo_path.to_string_lossy().to_string();
+                
+                let pbo_id = if let Some(&id) = pbo_id_map.get(&pbo_path_str) {
+                    id
+                } else {
+                    let id = next_pbo_id;
+                    pbo_id_map.insert(pbo_path_str, id);
+                    next_pbo_id += 1;
+                    id
+                };
+                
                 // Convert the class
                 let mut converted_class = Self::convert_game_class(class);
                 converted_class.source_file_index = Some(file_index);
+                converted_class.pbo_id = Some(pbo_id);
                 
                 // Add the class to our collection
                 classes.add_class(converted_class);
@@ -202,4 +224,24 @@ impl GameDataScanner {
         let _extracted = self.extract_only(dirs).await?;
         self.scan_only(diagnostic_mode).await
     }
+}
+
+/// Determine the PBO path from a file path
+/// This assumes that the gamedata directory structure follows the PBO structure
+fn determine_pbo_path(file_path: &Path) -> PathBuf {
+    let mut path = file_path.to_path_buf();
+    
+    // We need to go up to the PBO root directory
+    if path.pop() {
+        // If we're in a subdirectory, keep going up until we find the PBO root
+        while path.file_name().map_or(false, |name| 
+            name != "addons" && name != "gamedata" && name.to_string_lossy() != "Addons"
+        ) {
+            if !path.pop() {
+                break;
+            }
+        }
+    }
+    
+    path
 } 

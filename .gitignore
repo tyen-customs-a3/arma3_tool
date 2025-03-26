@@ -1,8 +1,5 @@
-a3_cache/
-cache/
-cache/
+/cache
+/logs
+/reports
+/target
 Cargo.lock
-logs/
-report/
-reports/
-target/

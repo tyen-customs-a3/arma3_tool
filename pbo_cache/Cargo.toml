@@ -5,20 +5,20 @@ edition.workspace = true
 description = "PBO extraction and caching system for Arma 3 tools"
 
 [dependencies]
-pbo_tools = { workspace = true }
 anyhow = { workspace = true }
-log = { workspace = true }
+clap = { workspace = true, optional = true }
 env_logger = { workspace = true }
-tokio = { workspace = true }
-walkdir = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+num_cpus = { workspace = true }
+pbo_tools = { workspace = true }
+rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
-indicatif = { workspace = true }
-num_cpus = { workspace = true }
 thiserror = { workspace = true }
-rayon = { workspace = true }
-clap = { workspace = true, optional = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

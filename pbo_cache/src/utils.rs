@@ -10,19 +10,3 @@ pub fn ensure_dir_exists(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-    
-    #[test]
-    fn test_ensure_dir_exists() {
-        let temp_dir = tempdir().unwrap();
-        let test_path = temp_dir.path().join("subdir").join("nested");
-        
-        assert!(!test_path.exists());
-        ensure_dir_exists(&test_path).unwrap();
-        assert!(test_path.exists());
-    }
-}

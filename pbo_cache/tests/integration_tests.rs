@@ -98,21 +98,34 @@ fn test_cleanup_cache() -> Result<()> {
     create_mock_pbo(&game_data_pbo)?;
     create_mock_pbo(&mission_pbo)?;
     
+    // Get cache directories (for reference, even if unused)
+    let _game_data_cache_dir = temp_dir.path().join("gamedata");
+    let _mission_cache_dir = temp_dir.path().join("missions");
+    
+    // Create metadata with relative paths
+    let game_data_rel_path = PathBuf::from("game_data.pbo");
+    let mission_rel_path = PathBuf::from("mission.pbo");
+    
+    let game_data_rel_extracted = PathBuf::from("test.hpp");
+    let mission_rel_extracted = PathBuf::from("test_mission/mission.sqf");
+    
     // Add files to the index
-    let mut game_data_metadata = PboMetadata::new(
-        game_data_pbo.clone(),
+    let mut game_data_metadata = PboMetadata::new_with_base_dir(
+        game_data_rel_path,
+        temp_dir.path().to_path_buf(),
         PboType::GameData,
         vec!["hpp".to_string(), "cpp".to_string()],
     )?;
-    game_data_metadata.extracted_files = vec![created_files[0].clone()];
+    game_data_metadata.extracted_files = vec![game_data_rel_extracted];
     manager.update_metadata(game_data_metadata)?;
     
-    let mut mission_metadata = PboMetadata::new(
-        mission_pbo.clone(),
+    let mut mission_metadata = PboMetadata::new_with_base_dir(
+        mission_rel_path,
+        temp_dir.path().to_path_buf(),
         PboType::Mission,
         vec!["hpp".to_string(), "sqf".to_string()],
     )?;
-    mission_metadata.extracted_files = vec![created_files[1].clone()];
+    mission_metadata.extracted_files = vec![mission_rel_extracted];
     manager.update_metadata(mission_metadata)?;
     
     // Save the index

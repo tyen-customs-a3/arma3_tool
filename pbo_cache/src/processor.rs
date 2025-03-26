@@ -175,7 +175,8 @@ impl PboProcessor {
                                         continue;
                                     }
 
-                                    cache_paths.push(target_path);
+                                    // Store only the relative path, not the full cache path
+                                    cache_paths.push(PathBuf::from(rel_path));
                                 }
 
                                 // Store the result

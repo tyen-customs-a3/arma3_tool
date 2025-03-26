@@ -52,6 +52,9 @@ pub struct Mission {
     
     /// Mission description
     pub description: Option<String>,
+    
+    /// Source PBO name
+    pub source_pbo: Option<String>,
 }
 
 impl Mission {
@@ -65,6 +68,7 @@ impl Mission {
             properties: HashMap::new(),
             author: None,
             description: None,
+            source_pbo: None,
         }
     }
     

@@ -17,8 +17,13 @@ pub enum PboType {
 /// Metadata about an extracted PBO
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PboMetadata {
-    /// Original path to the PBO file
+    /// Original path to the PBO file (now stored as relative to base_dir)
     pub path: PathBuf,
+    
+    /// Original base directory (can be empty if already relative)
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_empty_path")]
+    pub base_dir: PathBuf,
     
     /// Last modified timestamp of the PBO
     pub last_modified: SystemTime,
@@ -39,6 +44,11 @@ pub struct PboMetadata {
     pub pbo_type: PboType,
 }
 
+/// Helper function for serde to check if a path is empty
+fn is_empty_path(path: &PathBuf) -> bool {
+    path.as_os_str().is_empty()
+}
+
 impl PboMetadata {
     /// Create new metadata for a PBO file
     pub fn new(
@@ -51,6 +61,7 @@ impl PboMetadata {
         
         Ok(Self {
             path,
+            base_dir: PathBuf::new(),
             last_modified: metadata.modified()
                 .map_err(|e| CacheError::FileOperation(format!("Failed to get modified time: {}", e)))?,
             file_size: metadata.len(),
@@ -59,6 +70,45 @@ impl PboMetadata {
             used_extensions,
             pbo_type,
         })
+    }
+    
+    /// Create new metadata with a relative path
+    pub fn new_with_base_dir(
+        path: PathBuf,
+        base_dir: PathBuf,
+        pbo_type: PboType,
+        used_extensions: Vec<String>
+    ) -> Result<Self> {
+        // Get the full path for accessing metadata
+        let full_path = if path.is_relative() {
+            base_dir.join(&path)
+        } else {
+            path.clone()
+        };
+        
+        let metadata = std::fs::metadata(&full_path)
+            .map_err(|e| CacheError::FileOperation(format!("Failed to get metadata for {}: {}", full_path.display(), e)))?;
+        
+        Ok(Self {
+            path,
+            base_dir,
+            last_modified: metadata.modified()
+                .map_err(|e| CacheError::FileOperation(format!("Failed to get modified time: {}", e)))?,
+            file_size: metadata.len(),
+            extraction_time: SystemTime::now(),
+            extracted_files: Vec::new(),
+            used_extensions,
+            pbo_type,
+        })
+    }
+    
+    /// Get the full path to the PBO file
+    pub fn get_full_path(&self) -> PathBuf {
+        if self.path.is_absolute() || self.base_dir.as_os_str().is_empty() {
+            self.path.clone()
+        } else {
+            self.base_dir.join(&self.path)
+        }
     }
     
     /// Check if this PBO needs to be extracted again
@@ -91,6 +141,14 @@ impl PboMetadata {
         
         // No need to extract
         Ok(false)
+    }
+
+    /// Get full paths to extracted files by combining with a cache directory
+    pub fn get_full_extracted_paths(&self, cache_dir: &Path) -> Vec<PathBuf> {
+        self.extracted_files
+            .iter()
+            .map(|path| cache_dir.join(path))
+            .collect()
     }
 }
 
@@ -138,11 +196,37 @@ impl CacheIndex {
     
     /// Get a reference to the metadata for a PBO
     pub fn get_metadata(&self, path: &Path, pbo_type: PboType) -> Option<&PboMetadata> {
+        // Use the path string as the key
         let key = path.to_string_lossy().to_string();
-        match pbo_type {
+        
+        // Check by full path first
+        let result = match pbo_type {
             PboType::GameData => self.game_data.get(&key),
             PboType::Mission => self.missions.get(&key),
+        };
+        
+        if result.is_some() {
+            return result;
         }
+        
+        // If not found, try to find by the filename part of the path
+        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+            let metadata_map = match pbo_type {
+                PboType::GameData => &self.game_data,
+                PboType::Mission => &self.missions,
+            };
+            
+            // Look for entries matching the filename
+            for metadata in metadata_map.values() {
+                if let Some(stored_name) = metadata.path.file_name().and_then(|f| f.to_str()) {
+                    if stored_name == file_name {
+                        return Some(metadata);
+                    }
+                }
+            }
+        }
+        
+        None
     }
     
     /// Add or update metadata for a PBO
@@ -169,9 +253,39 @@ impl CacheIndex {
         
         if result.is_some() {
             self.last_updated = SystemTime::now();
+            return result;
         }
         
-        result
+        // If not found, try to find by the filename
+        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+            let metadata_map = match pbo_type {
+                PboType::GameData => &mut self.game_data,
+                PboType::Mission => &mut self.missions,
+            };
+            
+            // Get keys with matching filename
+            let matching_keys: Vec<String> = metadata_map
+                .iter()
+                .filter_map(|(k, v)| {
+                    if let Some(stored_name) = v.path.file_name().and_then(|f| f.to_str()) {
+                        if stored_name == file_name {
+                            return Some(k.clone());
+                        }
+                    }
+                    None
+                })
+                .collect();
+            
+            if let Some(first_key) = matching_keys.first() {
+                let removed = metadata_map.remove(first_key);
+                if removed.is_some() {
+                    self.last_updated = SystemTime::now();
+                }
+                return removed;
+            }
+        }
+        
+        None
     }
 
     /// Add a failed extraction to the index

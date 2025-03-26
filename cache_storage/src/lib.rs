@@ -4,7 +4,8 @@ use std::io::{self, Read};
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use thiserror::Error;
-use arma3_tool_models::{GameDataClasses, MissionData};
+use arma3_tool_shared_models::{GameDataClasses, MissionData};
+use std::collections::HashMap;
 
 #[derive(Error, Debug)]
 pub enum StorageError {
@@ -20,19 +21,37 @@ pub enum StorageError {
 
 pub type Result<T> = std::result::Result<T, StorageError>;
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PboCacheEntry {
+    pub path: PathBuf,
+    pub last_modified: DateTime<Utc>,
+    pub file_size: u64,
+    pub extraction_time: DateTime<Utc>,
+    pub extracted_files: Vec<PathBuf>,
+    pub used_extensions: Vec<String>,
+    pub pbo_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PboCache {
+    pub game_data: HashMap<PathBuf, PboCacheEntry>,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct CacheData {
     pub timestamp: DateTime<Utc>,
     pub game_data: GameDataClasses,
     pub mission_data: MissionData,
+    pub pbo_cache: PboCache,
 }
 
 impl CacheData {
-    pub fn new(game_data: GameDataClasses, mission_data: MissionData) -> Self {
+    pub fn new(game_data: GameDataClasses, mission_data: MissionData, pbo_cache: PboCache) -> Self {
         Self {
             timestamp: Utc::now(),
             game_data,
             mission_data,
+            pbo_cache,
         }
     }
 }

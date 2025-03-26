@@ -4,7 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-arma3_tool_dependency_scanner = { workspace = true }
-thiserror = { workspace = true }
+arma3_tool_shared_models = { workspace = true }
+dashmap = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+prettytable-rs = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
-prettytable = "0.10.0"
+strsim = { workspace = true }
+thiserror = { workspace = true }

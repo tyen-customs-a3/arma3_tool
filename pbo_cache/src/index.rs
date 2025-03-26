@@ -120,6 +120,18 @@ impl IndexManager {
     }
 }
 
+impl CacheIndex {
+    /// Get a copy of all game data metadata
+    pub fn get_game_data_metadata(&self) -> Vec<PboMetadata> {
+        self.game_data.values().cloned().collect()
+    }
+    
+    /// Get a copy of all mission metadata
+    pub fn get_mission_metadata(&self) -> Vec<PboMetadata> {
+        self.missions.values().cloned().collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +159,7 @@ mod tests {
         let path = PathBuf::from("/path/to/test.pbo");
         let metadata = PboMetadata {
             path: path.clone(),
+            base_dir: PathBuf::new(),
             last_modified: std::time::SystemTime::now(),
             file_size: 1234,
             extraction_time: std::time::SystemTime::now(),

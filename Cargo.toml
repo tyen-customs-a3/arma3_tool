@@ -5,36 +5,34 @@ edition = "2021"
 
 [dependencies]
 arma3_tool_cache_storage = { path = "./cache_storage" }
-arma3_tool_report_writer = { path = "./report_writer" }
-arma3_tool_dependency_scanner = { path = "./dependency_scanner" }
-arma3_tool_models = { path = "./models" }
 arma3_tool_pbo_cache = { path = "./pbo_cache" }
+arma3_tool_report_writer = { path = "./report_writer" }
+arma3_tool_shared_models = { path = "./shared_models" }
 gamedata_scanner = { path = "../gamedata_scanner" }
-gamedata_scanner_models = { path = "../gamedata_scanner/models" }
 mission_scanner = { path = "../mission_scanner" }
 anyhow = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
+eframe = { workspace = true }
+egui = { workspace = true }
 env_logger = { workspace = true }
+fuzzy-matcher = { workspace = true }
 log = { workspace = true }
 num_cpus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 walkdir = { workspace = true }
-chrono = { workspace = true }
-thiserror = { workspace = true }
-egui = { workspace = true }
-eframe = { workspace = true }
-fuzzy-matcher = { workspace = true }
-tempfile = { workspace = true }
+once_cell = "1.21.1"
 rfd = "0.15.3"
 
 [workspace]
 members = [
     "cache_storage",
     "report_writer",
-    "models",
-    "dependency_scanner",
+    "shared_models",
     "pbo_cache",
 ]
 
@@ -53,33 +51,34 @@ authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [workspace.dependencies]
 # Internal crates
-arma3_tool_models = { path = "./models" }
+arma3_tool_shared_models = { path = "./shared_models" }
 arma3_tool_cache_storage = { path = "./cache_storage" }
-arma3_tool_dependency_scanner = { path = "./dependency_scanner" }
 arma3_tool_report_writer = { path = "./report_writer" }
 arma3_tool_pbo_cache = { path = "./pbo_cache" }
 pbo_tools = { path = "../pbo_tools" }
 
 # External dependencies
+anyhow = "1.0.97"
+chrono = { version = "0.4.40", features = ["serde"] }
+clap = { version = "4.5.32", features = ["derive"] }
+dashmap = "6.1.0"
+eframe = "0.31.1"
+egui = "0.31.1"
+env_logger = "0.11.7"
+fuzzy-matcher = "0.3.7"
+indicatif = { version = "0.17.11", features = ["rayon"] }
+log = "0.4.27"
+num_cpus = "1.16.0"
+prettytable-rs = "0.10.0"
+rayon = "1.10.0"
+rmp-serde = "1.3.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
-chrono = { version = "0.4.40", features = ["serde"] }
-log = "0.4.26"
-env_logger = "0.11.7"
-tempfile = "3.19.0"
-anyhow = "1.0.97"
+strsim = "0.11.1"
+tempfile = "3.19.1"
 thiserror = "2.0.12"
 tokio = { version = "1.44.1", features = ["full"] }
 walkdir = "2.5.0"
-indicatif = { version = "0.17.11", features = ["rayon"] }
-rayon = "1.10.0"
-num_cpus = "1.16.0"
-clap = { version = "4.5.32", features = ["derive"] }
-dashmap = "6.1.0"
-rmp-serde = "1.3.0"
-egui = "0.31.1"
-eframe = "0.31.1"
-fuzzy-matcher = "0.3.7"
 
 [lints.rust]
 dead_code = "allow"

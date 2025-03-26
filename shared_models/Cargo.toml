@@ -1,5 +1,5 @@
 [package]
-name = "arma3_tool_models"
+name = "arma3_tool_shared_models"
 version.workspace = true
 edition.workspace = true
 

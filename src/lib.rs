@@ -1,9 +1,16 @@
+pub mod config;
 pub mod error;
 pub mod scanner;
-pub mod config;
+pub mod types;
+pub mod ui;
+pub mod workflow;
 
 use std::path::{Path, PathBuf};
 use log::{debug, info, warn, error};
+use std::collections::HashMap;
+use arma3_tool_shared_models::{GameDataClasses, MissionData};
+use arma3_tool_cache_storage::{StorageManager, CacheData, PboCache};
+use arma3_tool_pbo_cache::{ExtractionConfig, ExtractionManager};
 
 pub use error::{Result, ToolError};
 
@@ -14,16 +21,16 @@ pub use arma3_tool_pbo_cache::{
     PboMetadata,
     PboType,
     CacheIndex,
-    ExtractionConfig,
-    ExtractionManager,
 };
 
 pub mod bin {
     pub mod cache_builder {
+        use std::collections::HashMap;
         use std::path::PathBuf;
         use crate::error::Result;
+        use arma3_tool_shared_models::{GameDataClasses, MissionData};
         use arma3_tool_pbo_cache::ExtractionConfig;
-        use arma3_tool_cache_storage::{StorageManager, CacheData};
+        use arma3_tool_cache_storage::{CacheData, PboCache, StorageManager};
         use crate::scanner::gamedata::GameDataScanner;
         use crate::scanner::mission::MissionScanner;
         use log::info;
@@ -57,7 +64,10 @@ pub mod bin {
             // Create and save cache
             info!("Creating cache...");
             let storage = StorageManager::new(&cache_dir);
-            let cache_data = CacheData::new(game_data, mission_data);
+            let game_data = GameDataClasses::new();
+            let mission_data = MissionData::new();
+            let pbo_cache = PboCache { game_data: HashMap::new() };
+            let cache_data = CacheData::new(game_data, mission_data, pbo_cache);
             storage.save(&cache_data).map_err(|e| {
                 crate::error::ToolError::CacheError(format!("Failed to save cache: {}", e))
             })?;

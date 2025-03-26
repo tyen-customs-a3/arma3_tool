@@ -1,0 +1,14 @@
+{
+    "game_data_dirs": [
+      "E:/pcanext",
+      "C:/Program Files (x86)/Steam/steamapps/common/Arma 3"
+    ],
+    "game_data_extensions": ["hpp", "cpp", "bin"],
+    "mission_dirs": [
+      "E:/pca_missions"
+    ],
+    "mission_extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
+    "cache_dir": "./cache_pca_next",
+    "report_dir": "./reports_pca_next",
+    "threads": 31
+}

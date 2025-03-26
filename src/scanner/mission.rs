@@ -3,7 +3,7 @@ use std::fs;
 use log::{info, warn, error};
 use crate::error::{Result, ToolError};
 use arma3_tool_pbo_cache::ExtractionManager;
-use arma3_tool_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
+use arma3_tool_shared_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
 use walkdir::WalkDir;
 use mission_scanner::{scan_mission, MissionScannerConfig, ReferenceType as ScannerReferenceType};
 use serde_json;
@@ -129,6 +129,13 @@ impl MissionScanner {
                             mission_dir_clone.to_path_buf()
                         );
                         
+                        // Set source PBO name 
+                        let pbo_name = mission_dir_clone.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        mission.source_pbo = Some(pbo_name);
+                        
                         // Add dependencies from all sources
                         for dep in scan_result.class_dependencies {
                             
@@ -143,7 +150,7 @@ impl MissionScanner {
                         if let Some(sqm_file) = scan_result.sqm_file {
                             let sqm_component = MissionComponent::new(
                                 "mission.sqm".to_string(),
-                                arma3_tool_models::MissionComponentType::Other("SQM".to_string()),
+                                arma3_tool_shared_models::MissionComponentType::Other("SQM".to_string()),
                                 sqm_file
                             );
                             mission.add_component(sqm_component);
@@ -156,7 +163,7 @@ impl MissionScanner {
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .to_string(),
-                                arma3_tool_models::MissionComponentType::Other("SQF".to_string()),
+                                arma3_tool_shared_models::MissionComponentType::Other("SQF".to_string()),
                                 sqf_file
                             );
                             mission.add_component(sqf_component);
@@ -169,7 +176,7 @@ impl MissionScanner {
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .to_string(),
-                                arma3_tool_models::MissionComponentType::Other("CPP".to_string()),
+                                arma3_tool_shared_models::MissionComponentType::Other("CPP".to_string()),
                                 cpp_file
                             );
                             mission.add_component(cpp_component);
