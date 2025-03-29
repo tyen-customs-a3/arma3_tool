@@ -6,7 +6,6 @@ description = "PBO extraction and caching system for Arma 3 tools"
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { workspace = true, optional = true }
 env_logger = { workspace = true }
 indicatif = { workspace = true }
 log = { workspace = true }
@@ -14,11 +13,12 @@ num_cpus = { workspace = true }
 pbo_tools = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 walkdir = { workspace = true }
+chrono = { workspace = true }
+arma3_db = { path = "../arma3_db" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -31,11 +31,6 @@ default = []
 [[example]]
 name = "basic_usage"
 path = "examples/basic_usage.rs"
-
-[[example]]
-name = "advanced_usage"
-path = "examples/advanced_usage.rs"
-required-features = ["clap"]
 
 [[example]]
 name = "test_extraction"

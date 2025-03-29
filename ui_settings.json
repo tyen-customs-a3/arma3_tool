@@ -1,0 +1,5 @@
+{
+  "default_cache_dir": "./cache/pca_next",
+  "dark_mode": true,
+  "visualization_config_path": "visualization_config.json"
+}

@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
         threads: num_cpus::get(),
         timeout: 60,
         verbose: true,
+        db_path: Some(PathBuf::from("./cache/pbo_cache.db")),
     };
     
     // Create extraction manager

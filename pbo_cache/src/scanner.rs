@@ -43,7 +43,7 @@ impl PboScanner {
         Ok(pbos)
     }
     
-    /// Filter PBOs that need extraction based on the index
+    /// Filter PBOs that need extraction based on the provided function
     pub fn filter_needs_extraction<F>(
         pbos: &[PathBuf],
         needs_extraction_fn: F,
@@ -53,15 +53,15 @@ impl PboScanner {
     {
         debug!("Checking {} PBOs for extraction", pbos.len());
         
+        // Use try_fold to collect results and propagate errors if all checks fail
         let filtered: Vec<PathBuf> = pbos.par_iter()
             .filter_map(|path| {
                 match needs_extraction_fn(path) {
-                    Ok(true) => {
-                        debug!("PBO needs extraction: {}", path.display());
-                        Some(path.clone())
-                    },
+                    Ok(true) => Some(path.clone()),
                     Ok(false) => None,
                     Err(e) => {
+                        // Only log a warning but don't fail the entire operation
+                        // This allows some PBOs to fail checks while others succeed
                         warn!("Error checking PBO {}: {}", path.display(), e);
                         None
                     }

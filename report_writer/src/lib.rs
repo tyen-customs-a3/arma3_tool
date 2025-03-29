@@ -11,4 +11,4 @@ pub use utils::mission_dependency_builder::{ScanReport, Dependency, MissionDepen
 
 pub use reports::dependency::DependencyReportWriter;
 pub use reports::comparison::ComparisonReportWriter;
-pub use reports::fuzzy_search::FuzzySearchReportWriter; 
+pub use reports::fuzzy_search::FuzzySearchReportWriter;

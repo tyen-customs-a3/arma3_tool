@@ -3,19 +3,21 @@ use crate::
     ui::{
         components::TopPanel,
         state::Arma3ToolState,
-        pages::{PageId, Page, ExtractPage, SettingsPage, ReportsPage, BrowserPage},
+        pages::{
+            PageId,
+            Page,
+            SettingsPage,
+            GraphViewPage
+        },
     }
 ;
-use arma3_tool_cache_storage::StorageManager;
 use std::path::PathBuf;
 
 pub struct Arma3ToolUI {
     state: Arma3ToolState,
     current_page: Box<dyn Page>,
-    extract_page: ExtractPage,
     settings_page: SettingsPage,
-    reports_page: ReportsPage,
-    browser_page: BrowserPage,
+    graph_view_page: GraphViewPage,
 }
 
 impl Arma3ToolUI {
@@ -46,11 +48,9 @@ impl Arma3ToolUI {
         // Create the application with default state
         let mut app = Self {
             state,
-            current_page: Box::new(ExtractPage::default()),
-            extract_page: ExtractPage::default(),
+            current_page: Box::new(GraphViewPage::default()),
             settings_page: SettingsPage::default(),
-            reports_page: ReportsPage::default(),
-            browser_page: BrowserPage::default(),
+            graph_view_page: GraphViewPage::default(),
         };
         
         // Load initial data
@@ -100,24 +100,10 @@ impl eframe::App for Arma3ToolUI {
                 ui.add_space(8.0);
                 
                 if ui.selectable_label(
-                    matches!(self.current_page.id(), PageId::Extract),
-                    "Extract Data"
+                    matches!(self.current_page.id(), PageId::GraphView),
+                    "Class Graph"
                 ).clicked() {
-                    self.current_page = Box::new(ExtractPage::default());
-                }
-                
-                if ui.selectable_label(
-                    matches!(self.current_page.id(), PageId::Browser),
-                    "Browser"
-                ).clicked() {
-                    self.current_page = Box::new(BrowserPage::default());
-                }
-                
-                if ui.selectable_label(
-                    matches!(self.current_page.id(), PageId::Reports),
-                    "Reports"
-                ).clicked() {
-                    self.current_page = Box::new(ReportsPage::default());
+                    self.current_page = Box::new(GraphViewPage::default());
                 }
                 
                 if ui.selectable_label(

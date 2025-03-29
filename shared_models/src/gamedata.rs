@@ -49,17 +49,14 @@ pub struct GameDataClass {
     /// Parent class (if any)
     pub parent: Option<String>,
     
+    /// Container class (if this is a nested class)
+    pub container_class: Option<String>,
+    
     /// Properties
     pub properties: HashMap<String, PropertyValue>,
     
     /// Source file index in the file list
     pub source_file_index: Option<usize>,
-    
-    /// PBO identifier (source PBO index)
-    pub pbo_id: Option<usize>,
-    
-    /// Line number in source file
-    pub line_number: Option<usize>,
 }
 
 impl GameDataClass {
@@ -68,10 +65,9 @@ impl GameDataClass {
         Self {
             name,
             parent,
+            container_class: None,
             properties: HashMap::new(),
             source_file_index: None,
-            pbo_id: None,
-            line_number: None,
         }
     }
     
@@ -85,13 +81,8 @@ impl GameDataClass {
         self.source_file_index = Some(index);
     }
     
-    /// Set the PBO identifier
-    pub fn set_pbo_id(&mut self, pbo_id: usize) {
-        self.pbo_id = Some(pbo_id);
-    }
-    
-    /// Set the line number in source file
-    pub fn set_line_number(&mut self, line: usize) {
-        self.line_number = Some(line);
+    /// Set the container class
+    pub fn set_container_class(&mut self, container: String) {
+        self.container_class = Some(container);
     }
 } 

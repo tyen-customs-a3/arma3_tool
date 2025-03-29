@@ -10,14 +10,15 @@ pub mod manager;
 pub mod models;
 mod scanner;
 mod processor;
-mod index;
+mod db_manager;
 mod utils;
 pub mod error;
 
 // Public API exports
 pub use manager::ExtractionManager;
-pub use models::{CacheIndex, PboMetadata, PboType, ExtractionConfig};
+pub use models::{PboMetadata, PboType, ExtractionConfig};
 pub use error::{CacheError, Result};
+pub use db_manager::DbManager;
 
 // Convenience re-exports of core functionality
 pub use manager::{extract_game_data, extract_mission};

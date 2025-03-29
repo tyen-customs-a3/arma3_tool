@@ -85,6 +85,23 @@ impl Page for SettingsPage {
                     
                     // Update the PathBuf when the string changes
                     config.cache_dir = PathBuf::from(&self.cache_dir_string);
+                    
+                    // Add cache operations
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+                    
+                    ui.horizontal(|ui| {
+                        if ui.button("Check Cache").clicked() {
+                            // This just checks if cache exists without loading
+                            state.refresh_database();
+                        }
+                        
+                        // Show cache status
+                        if !state.loading_progress.is_empty() {
+                            ui.label(&state.loading_progress);
+                        }
+                    });
                 }
             });
             
@@ -145,6 +162,36 @@ impl Page for SettingsPage {
             
             ui.add_space(16.0);
             
+            // Status and game data information
+            if state.game_data.is_some() {
+                ui.group(|ui| {
+                    ui.heading("Game Data Status");
+                    ui.add_space(4.0);
+                    
+                    if let Some(game_data) = &state.game_data {
+                        ui.horizontal(|ui| {
+                            ui.label("Classes loaded:");
+                            ui.strong(format!("{}", game_data.classes.len()));
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label("Source files:");
+                            ui.strong(format!("{}", game_data.file_sources.len()));
+                        });
+                        
+                        if ui.button("Unload Data").clicked() {
+                            state.game_data = None;
+                            state.selected_class = None;
+                            state.search_results.clear();
+                            state.search_text.clear();
+                            state.loading_progress = "Game data unloaded".to_string();
+                        }
+                    }
+                });
+                
+                ui.add_space(16.0);
+            }
+            
             // Save settings button
             if ui.button("Save Settings").clicked() {
                 // Save scan config
@@ -162,6 +209,12 @@ impl Page for SettingsPage {
                 } else if state.error_message.is_none() {
                     state.error_message = Some("Settings saved successfully.".to_string());
                 }
+            }
+            
+            // Show any error message
+            if let Some(error) = &state.error_message {
+                ui.add_space(16.0);
+                ui.colored_label(egui::Color32::RED, error);
             }
         });
     }

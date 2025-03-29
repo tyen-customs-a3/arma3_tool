@@ -1,16 +1,15 @@
 use arma3_tool_shared_models::{GameDataClass, GameDataClasses, MissionData};
-use fuzzy_matcher::skim::SkimMatcherV2;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender, Receiver};
 use tempfile::TempDir;
 use std::collections::{HashMap, HashSet};
 use crate::config::{ScanConfig, UiSettings};
-use arma3_tool_cache_storage::{StorageManager, CacheData, PboCache};
 use std::fs::File;
 use std::io::{self, Write};
-use crate::ui::pages::browsing::sourcegraph::SourceGraph;
 use walkdir::WalkDir;
 use std::thread;
+use arma3_db::{DatabaseManager, repos::ClassRepository};
+use log::{info, warn, error};
 
 /// UI state for the visualization page to separate UI concerns from logic
 #[derive(Default)]
@@ -58,13 +57,10 @@ impl ClassSelectionModel {
     }
     
     /// Update the list of all available classes from game data
-    pub fn update_all_classes<G>(&mut self, graph: &G) 
-    where 
-        G: PboGraphTrait,
-    {
+    pub fn update_all_classes(&mut self, game_data: &GameDataClasses) {
         self.all_classes.clear();
-        for class_name in graph.get_class_keys() {
-            self.all_classes.insert(class_name.clone());
+        for class in &game_data.classes {
+            self.all_classes.insert(class.name.clone());
         }
     }
     
@@ -112,17 +108,8 @@ impl ClassSelectionModel {
     }
 }
 
-/// Trait for PboGraph to allow access to class keys
-pub trait PboGraphTrait {
-    fn get_class_keys(&self) -> impl Iterator<Item = &String>;
-}
-
-#[derive(Debug)]
 pub enum LoadingMessage {
     Progress(String),
-    GameDataLoaded(GameDataClasses),
-    PboCacheLoaded(PboCache),
-    SourceGraphReady(SourceGraph),
     Error(String),
     Complete,
 }
@@ -132,23 +119,14 @@ pub struct Arma3ToolState {
     /// Game data classes
     pub game_data: Option<GameDataClasses>,
     
-    /// Currently selected class
+    /// Selected class
     pub selected_class: Option<GameDataClass>,
     
     /// Search text
     pub search_text: String,
     
-    /// Search results (class name and match score)
+    /// Search results
     pub search_results: Vec<(String, i64)>,
-    
-    /// Fuzzy matcher for search
-    pub fuzzy_matcher: SkimMatcherV2,
-    
-    /// Source graph for mapping classes to PBOs
-    pub source_graph: Option<SourceGraph>,
-    
-    /// PBO cache index
-    pub pbo_cache: Option<PboCache>,
     
     pub error_message: Option<String>,
     pub config: Option<ScanConfig>,
@@ -167,63 +145,80 @@ pub struct Arma3ToolState {
     // Loading state
     pub is_loading: bool,
     pub loading_progress: String,
-    pub loading_receiver: Option<Receiver<LoadingMessage>>,
+    pub loading_receiver: Option<mpsc::Receiver<LoadingMessage>>,
+    // Track discovered PBOs without loading
+    pub discovered_pbos: Vec<PathBuf>,
+    pub total_discovered_pbos: usize,
+    // Database connection
+    pub db_manager: Option<DatabaseManager>,
 }
 
 impl Arma3ToolState {
-    /// Load classes from a directory
-    pub fn load_directory(&mut self, path: PathBuf) {
+    /// Set the directory for future loading but don't load data yet
+    pub fn prepare_directory(&mut self, path: PathBuf) {
+        // Clear any previously discovered PBOs
+        self.discovered_pbos.clear();
+        self.total_discovered_pbos = 0;
+        
+        // Set the selected folder
+        self.selected_folder = Some(path.clone());
+        
+        // Discover PBOs but don't load them yet
+        let pbos: Vec<_> = WalkDir::new(&path)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path().extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("pbo"))
+            })
+            .map(|e| e.path().to_path_buf())
+            .collect();
+            
+        self.total_discovered_pbos = pbos.len();
+        self.discovered_pbos = pbos;
+        
+        self.loading_progress = format!("Found {} PBO files. Ready to load.", self.total_discovered_pbos);
+    }
+
+    /// Load classes from a directory that was previously prepared
+    pub fn load_prepared_directory(&mut self) {
+        if self.discovered_pbos.is_empty() {
+            self.error_message = Some("No PBOs have been discovered. Please select a directory first.".to_string());
+            return;
+        }
+        
         // Clear current state
         self.game_data = None;
         self.selected_class = None;
         self.search_results.clear();
         self.search_text.clear();
-        self.source_graph = None;
         
         self.is_loading = true;
-        self.loading_progress = "Scanning directory for PBO files...".to_string();
+        self.loading_progress = "Loading discovered PBO files...".to_string();
 
         // Create new game data collection
         let mut game_data = GameDataClasses::new();
         
-        // First count total PBOs for progress tracking
-        let total_pbos = WalkDir::new(&path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path().extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("pbo"))
-            })
-            .count();
-            
+        let total_pbos = self.discovered_pbos.len();
         let mut processed_pbos = 0;
         
-        // Walk directory and find all PBO files
-        for entry in WalkDir::new(&path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path().extension()
-                    .map_or(false, |ext| ext.eq_ignore_ascii_case("pbo"))
-            }) 
-        {
+        // Process all discovered PBO files
+        for pbo_path in &self.discovered_pbos {
             processed_pbos += 1;
             self.loading_progress = format!(
                 "Processing PBO files... [{}/{}] - {}", 
                 processed_pbos,
                 total_pbos,
-                entry.path().file_name().unwrap_or_default().to_string_lossy()
+                pbo_path.file_name().unwrap_or_default().to_string_lossy()
             );
             
             // Add PBO to file sources
-            let pbo_path = entry.path().to_path_buf();
-            let source_index = game_data.add_file_source(pbo_path);
+            let source_index = game_data.add_file_source(pbo_path.clone());
             
             // For now, just create a dummy class for each PBO
             // In a real implementation, you would parse the PBO contents
-            let class_name = entry.path()
+            let class_name = pbo_path
                 .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
@@ -236,158 +231,140 @@ impl Arma3ToolState {
         
         // Update state
         self.game_data = Some(game_data);
-        self.loading_progress = format!("Found {} PBO files. Initializing source graph...", total_pbos);
+        self.loading_progress = format!("Loaded {} PBO files. Loading complete.", total_pbos);
+        self.is_loading = false;
+    }
+    
+    /// Legacy method that now calls prepare_directory instead
+    pub fn load_directory(&mut self, path: PathBuf) {
+        self.prepare_directory(path);
     }
 
     /// Start loading game data in the background
     pub fn start_background_loading(&mut self) {
-        if self.is_loading {
+        if self.game_data.is_none() || self.is_loading {
             return;
         }
-
-        self.is_loading = true;
-        self.loading_progress = "Starting initialization...".to_string();
         
-        // Create channel for progress updates
-        let (tx, rx) = mpsc::channel();
-        self.loading_receiver = Some(rx);
-        
-        // Clone necessary data for the background thread
-        let config_path = self.config_path.clone();
-        let cache_dir = self.config.as_ref()
-            .map(|c| c.cache_dir.clone())
-            .unwrap_or_else(|| PathBuf::from("cache"));
-
-        // Get game data for background processing
-        let game_data = if let Some(data) = self.game_data.clone() {
-            data
-        } else {
-            let _ = tx.send(LoadingMessage::Error("No game data available".to_string()));
-            return;
-        };
-
-        // Spawn background thread
-        thread::spawn(move || {
-            let tx = tx.clone();
-            
-            // Load PBO cache
-            let _ = tx.send(LoadingMessage::Progress("Loading PBO cache...".to_string()));
-            let storage = StorageManager::new(&cache_dir);
-            match storage.load() {
-                Ok(cache_data) => {
-                    let _ = tx.send(LoadingMessage::PboCacheLoaded(cache_data.pbo_cache.clone()));
-                    
-                    // Count total classes for progress tracking
-                    let total_classes = game_data.classes.len();
-                    let _ = tx.send(LoadingMessage::Progress(format!(
-                        "Building source graph for {} classes...", 
-                        total_classes
-                    )));
-                    
-                    // Build source graph with progress updates
-                    let mut processed = 0;
-                    let chunk_size = (total_classes / 10).max(1); // Update every 10% or each item if small
-                    
-                    let source_graph = SourceGraph::from_classes(
-                        &game_data.classes,
-                        &game_data.file_sources,
-                        &cache_data.pbo_cache
-                    );
-                    
-                    let _ = tx.send(LoadingMessage::Progress("Finalizing source graph...".to_string()));
-                    let _ = tx.send(LoadingMessage::GameDataLoaded(game_data));
-                    let _ = tx.send(LoadingMessage::SourceGraphReady(source_graph));
-                    let _ = tx.send(LoadingMessage::Complete);
-                }
-                Err(err) => {
-                    let _ = tx.send(LoadingMessage::Error(format!("Failed to load cache: {}", err)));
-                }
-            }
-        });
+        // Since the data is already loaded, we don't need an actual background thread
+        // Just mark the process as complete immediately
+        self.loading_progress = "Game data ready for use".to_string();
+        self.is_loading = false;
     }
 
     /// Process any pending loading messages
     pub fn process_loading_messages(&mut self) {
-        let mut should_clear = false;
-        let mut error_msg = None;
-        
-        if let Some(rx) = &self.loading_receiver {
-            while let Ok(message) = rx.try_recv() {
+        if let Some(receiver) = &self.loading_receiver {
+            while let Ok(message) = receiver.try_recv() {
                 match message {
                     LoadingMessage::Progress(msg) => {
                         self.loading_progress = msg;
                     }
-                    LoadingMessage::GameDataLoaded(game_data) => {
-                        self.game_data = Some(game_data);
-                    }
-                    LoadingMessage::PboCacheLoaded(pbo_cache) => {
-                        self.pbo_cache = Some(pbo_cache);
-                    }
-                    LoadingMessage::SourceGraphReady(source_graph) => {
-                        self.source_graph = Some(source_graph);
-                    }
-                    LoadingMessage::Error(error) => {
-                        error_msg = Some(error);
-                        should_clear = true;
+                    LoadingMessage::Error(msg) => {
+                        self.error_message = Some(msg);
+                        self.is_loading = false;
+                        self.loading_receiver = None;
+                        break;
                     }
                     LoadingMessage::Complete => {
-                        should_clear = true;
+                        self.is_loading = false;
+                        self.loading_receiver = None;
+                        break;
                     }
                 }
-            }
-        }
-        
-        if should_clear {
-            self.is_loading = false;
-            self.loading_receiver = None;
-            if let Some(error) = error_msg {
-                self.error_message = Some(error);
             }
         }
     }
 
-    pub fn refresh_database(&mut self) {
-        // Clear current state
-        self.game_data = None;
-        self.config = None;
-        self.error_message = None;
-        self.selected_class = None;
-        self.search_results.clear();
-        self.search_text.clear();
+    /// Load game data from database
+    pub fn load_from_database(&mut self, db_path: Option<PathBuf>) -> Result<(), String> {
+        let db_path = db_path.unwrap_or_else(|| {
+            if let Some(config) = &self.config {
+                config.cache_dir.join("arma3.db")
+            } else {
+                PathBuf::from("arma3.db")
+            }
+        });
         
-        // Load the scan configuration first
-        match ScanConfig::load(&self.config_path.to_string_lossy()) {
-            Ok(config) => {
-                self.config = Some(config.clone());
-                
-                if self.using_temp_cache && self.temp_dir.is_some() {
-                    // Load from temp cache
-                    let temp_dir_path = self.temp_dir.as_ref().unwrap().path().to_path_buf();
-                    let storage = StorageManager::new(&temp_dir_path);
-                    match storage.load() {
-                        Ok(cache_data) => {
-                            self.game_data = Some(cache_data.game_data);
-                        }
-                        Err(err) => {
-                            self.error_message = Some(format!("Failed to load temp cache: {}", err));
-                        }
-                    }
-                } else {
-                    // Load from normal cache
-                    let storage = StorageManager::new(&config.cache_dir);
-                    match storage.load() {
-                        Ok(cache_data) => {
-                            self.game_data = Some(cache_data.game_data);
-                        }
-                        Err(err) => {
-                            self.error_message = Some(format!("Failed to load cache: {}", err));
-                        }
-                    }
+        info!("Loading game data from database: {}", db_path.display());
+        self.loading_progress = format!("Loading game data from database: {}", db_path.display());
+        self.is_loading = true;
+        
+        // Create database manager
+        let db_config = arma3_db::models::DatabaseConfig::new(db_path.clone(), {
+            if let Some(config) = &self.config {
+                config.cache_dir.clone()
+            } else {
+                PathBuf::from("cache")
+            }
+        });
+        
+        let db_manager = match DatabaseManager::with_config(db_config) {
+            Ok(manager) => manager,
+            Err(e) => {
+                let error_msg = format!("Failed to create database manager: {}", e);
+                error!("{}", error_msg);
+                self.error_message = Some(error_msg.clone());
+                self.is_loading = false;
+                return Err(error_msg);
+            }
+        };
+        
+        // Create class repository
+        let class_repo = ClassRepository::new(&db_manager);
+        
+        // Get all classes from database
+        let class_models = match class_repo.get_all() {
+            Ok(models) => models,
+            Err(e) => {
+                let error_msg = format!("Failed to load classes from database: {}", e);
+                error!("{}", error_msg);
+                self.error_message = Some(error_msg.clone());
+                self.is_loading = false;
+                return Err(error_msg);
+            }
+        };
+        
+        // Convert class models to game data classes
+        let mut game_data = GameDataClasses::new();
+        for model in class_models {
+            game_data.add_class(model.to_game_data_class());
+        }
+        
+        info!("Loaded {} classes from database", game_data.classes.len());
+        self.loading_progress = format!("Loaded {} classes from database", game_data.classes.len());
+        
+        // Update state
+        self.game_data = Some(game_data);
+        self.db_manager = Some(db_manager);
+        self.is_loading = false;
+        
+        Ok(())
+    }
+    
+    /// Refresh database connection and data
+    pub fn refresh_database(&mut self) {
+        // Get database path from config if available
+        let db_path = if let Some(config) = &self.config {
+            config.cache_dir.join("arma3.db")
+        } else {
+            PathBuf::from("arma3.db")
+        };
+        
+        // Load data from database if it exists
+        if db_path.exists() {
+            match self.load_from_database(Some(db_path)) {
+                Ok(_) => {
+                    info!("Successfully refreshed database");
+                },
+                Err(e) => {
+                    error!("Failed to refresh database: {}", e);
+                    self.error_message = Some(format!("Failed to refresh database: {}", e));
                 }
             }
-            Err(err) => {
-                self.error_message = Some(format!("Failed to load config: {}", err));
-            }
+        } else {
+            info!("Database file not found: {}", db_path.display());
+            self.error_message = Some(format!("Database file not found: {}", db_path.display()));
         }
     }
 
@@ -417,34 +394,30 @@ impl Arma3ToolState {
 
 impl Default for Arma3ToolState {
     fn default() -> Self {
-        // Load UI settings
-        let ui_settings_path = PathBuf::from("ui_settings.json");
-        let ui_settings = UiSettings::load(&ui_settings_path.to_string_lossy());
-        
         Self {
             game_data: None,
             selected_class: None,
             search_text: String::new(),
             search_results: Vec::new(),
-            fuzzy_matcher: SkimMatcherV2::default(),
-            source_graph: None,
-            pbo_cache: None,
             error_message: None,
             config: None,
-            ui_settings,
-            dark_mode: true,
+            ui_settings: UiSettings::default(),
+            dark_mode: false,
             config_path: PathBuf::from("scan_config.json"),
-            export_path: PathBuf::from("arma3_classes_export.txt"),
-            ui_settings_path,
+            export_path: PathBuf::from("export.json"),
+            ui_settings_path: PathBuf::from("ui_settings.json"),
             selected_folder: None,
             temp_dir: None,
-            scan_status: String::from("Ready"),
+            scan_status: String::new(),
             is_scanning: false,
             scan_receiver: None,
             using_temp_cache: false,
             is_loading: false,
             loading_progress: String::new(),
             loading_receiver: None,
+            discovered_pbos: Vec::new(),
+            total_discovered_pbos: 0,
+            db_manager: None,
         }
     }
 } 

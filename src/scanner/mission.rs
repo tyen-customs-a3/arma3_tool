@@ -217,10 +217,7 @@ impl MissionScanner {
                 }
             }
         }
-        
-        // Save complete scan results
-        self.save_results(&mission_data)?;
-        
+
         Ok(mission_data)
     }
     
@@ -242,24 +239,7 @@ impl MissionScanner {
             
         Ok(())
     }
-    
-    /// Save complete scan results
-    fn save_results(&self, data: &MissionData) -> Result<()> {
-        let output_file = self.output_dir.join(format!("mission_scan_{}.json",
-            Utc::now().format("%Y%m%d_%H%M%S").to_string()
-        ));
-        
-        info!("Saving complete scan results to {}", output_file.display());
-        
-        let json = serde_json::to_string_pretty(data)
-            .map_err(|e| ToolError::JsonError(format!("Failed to serialize scan results: {}", e)))?;
-            
-        fs::write(&output_file, json)
-            .map_err(|e| ToolError::IoError(format!("Failed to write scan results: {}", e)))?;
-            
-        Ok(())
-    }
-    
+
     /// Scan missions
     pub async fn scan(&mut self, dirs: Option<Vec<String>>) -> Result<MissionData> {
         let _extracted = self.extract_only(dirs).await?;

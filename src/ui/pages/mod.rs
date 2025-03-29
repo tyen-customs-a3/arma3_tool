@@ -1,21 +1,14 @@
-// This file defines the pages of the application
-pub mod processing;
-pub mod reporting;
 pub mod settings;
-pub mod browsing;
+mod graph_view;
 
-pub use processing::extract::ExtractPage;
-pub use reporting::reports::ReportsPage;
 pub use settings::SettingsPage;
-pub use browsing::BrowserPage;
+pub use graph_view::GraphViewPage;
 
 /// Page identifier
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum PageId {
-    Extract,
-    Browser,
-    Reports,
-    Settings
+    GraphView,
+    Settings,
 }
 
 /// Trait for UI pages
@@ -27,5 +20,5 @@ pub trait Page {
     fn title(&self) -> &'static str;
     
     /// Render the page
-    fn show(&mut self, ui: &mut eframe::egui::Ui, state: &mut crate::ui::state::Arma3ToolState);
+    fn show(&mut self, ui: &mut egui::Ui, state: &mut crate::ui::state::Arma3ToolState);
 } 

@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use indicatif::{ProgressBar, ProgressStyle};
 use pbo_tools::extract::ExtractOptions;
 use pbo_tools::core::api::{PboApi, PboApiOps};
-use std::time::UNIX_EPOCH;
 
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
@@ -44,54 +43,26 @@ impl PboProcessor {
     }
     
     /// Extract multiple PBOs in parallel
-    pub async fn extract_pbos(
+    pub async fn extract_pbos<F>(
         &self,
         pbos: Vec<PathBuf>,
         cache_dir: &Path,
         extensions: Vec<String>,
         progress: bool,
-        index: &mut crate::models::CacheIndex,
-    ) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> {
+        on_failed_extraction: &mut F,
+    ) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> 
+    where
+        F: FnMut(&Path, String) -> crate::error::Result<()>
+    {
         if pbos.is_empty() {
             return Ok(Vec::new());
         }
 
         info!("Extracting {} PBOs to cache", pbos.len());
 
-        // Filter out previously failed extractions and count them
-        let total_pbos = pbos.len();
-        let pbos_to_extract: Vec<_> = pbos.into_iter()
-            .filter(|path| {
-                if let Some(failed) = index.is_failed_extraction(path) {
-                    warn!("Skipping previously failed PBO {}: {} at {}", 
-                        path.display(), 
-                        failed.error_message,
-                        failed.timestamp.duration_since(UNIX_EPOCH)
-                            .map(|d| d.as_secs().to_string())
-                            .unwrap_or_else(|_| "unknown time".to_string())
-                    );
-                    false
-                } else {
-                    true
-                }
-            })
-            .collect();
-
-        let filtered_count = total_pbos - pbos_to_extract.len();
-
-        if pbos_to_extract.is_empty() {
-            info!("All PBOs were previously failed, skipping extraction");
-            return Ok(Vec::new());
-        }
-
-        info!("Extracting {} PBOs (filtered out {} previously failed)", 
-            pbos_to_extract.len(), 
-            filtered_count
-        );
-
         // Setup progress bar if requested
         let progress_bar = if progress {
-            let pb = ProgressBar::new(pbos_to_extract.len() as u64);
+            let pb = ProgressBar::new(pbos.len() as u64);
             pb.set_style(ProgressStyle::default_bar()
                 .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} PBOs ({eta})")
                 .unwrap()
@@ -102,7 +73,7 @@ impl PboProcessor {
         };
 
         // Shared result collection
-        let results = Arc::new(Mutex::new(Vec::with_capacity(pbos_to_extract.len())));
+        let results = Arc::new(Mutex::new(Vec::with_capacity(pbos.len())));
         
         // Create a mutex for tracking failures
         let failures = Arc::new(Mutex::new(Vec::new()));
@@ -113,7 +84,7 @@ impl PboProcessor {
         // Process PBOs in parallel
         let mut tasks = vec![];
 
-        for pbo_path in pbos_to_extract {
+        for pbo_path in pbos {
             let cache_dir = cache_dir.to_path_buf();
             let extensions = extensions.clone();
             let results = Arc::clone(&results);
@@ -126,8 +97,22 @@ impl PboProcessor {
                 // Acquire semaphore permit
                 let _permit = semaphore_clone.acquire().await.unwrap();
 
+                // Common error handling function to reduce duplication
+                let record_failure = |error_msg: String| {
+                    error!("Error processing PBO {}: {}", pbo_path.display(), error_msg);
+                    let mut failures_guard = failures.lock().unwrap();
+                    failures_guard.push((pbo_path.clone(), error_msg));
+                };
+
                 // Extract the PBO to a temporary directory
-                let temp_dir = tempdir().unwrap();
+                let temp_dir = match tempdir() {
+                    Ok(dir) => dir,
+                    Err(e) => {
+                        record_failure(format!("Failed to create temporary directory: {}", e));
+                        return;
+                    }
+                };
+                
                 let temp_dir_path = temp_dir.path().to_path_buf();
 
                 // Setup extraction options with defaults
@@ -165,7 +150,10 @@ impl PboProcessor {
                                     // Ensure the target directory exists
                                     if let Some(parent) = target_path.parent() {
                                         if !parent.exists() {
-                                            let _ = fs::create_dir_all(parent);
+                                            if let Err(e) = fs::create_dir_all(parent) {
+                                                warn!("Failed to create directory {}: {}", parent.display(), e);
+                                                continue;
+                                            }
                                         }
                                     }
 
@@ -184,24 +172,15 @@ impl PboProcessor {
                                 result_guard.push((pbo_path, cache_paths));
                             },
                             Ok(Err(e)) => {
-                                error!("Failed to catalog extracted files for {}: {}", pbo_path.display(), e);
-                                // Record the failure
-                                let mut failures_guard = failures.lock().unwrap();
-                                failures_guard.push((pbo_path, format!("Failed to catalog files: {}", e)));
+                                record_failure(format!("Failed to catalog extracted files: {}", e));
                             },
                             Err(e) => {
-                                error!("Task failure when cataloging files for {}: {}", pbo_path.display(), e);
-                                // Record the failure
-                                let mut failures_guard = failures.lock().unwrap();
-                                failures_guard.push((pbo_path, format!("Task failure: {}", e)));
+                                record_failure(format!("Task failure when cataloging files: {}", e));
                             }
                         }
                     },
                     Err(e) => {
-                        error!("Failed to extract PBO {}: {}", pbo_path.display(), e);
-                        // Record the failure
-                        let mut failures_guard = failures.lock().unwrap();
-                        failures_guard.push((pbo_path, format!("Extraction error: {}", e)));
+                        record_failure(format!("Extraction error: {}", e));
                     }
                 }
 
@@ -224,14 +203,16 @@ impl PboProcessor {
             pb.finish_with_message("Extraction complete");
         }
 
-        // Process failures and update the index
+        // Process failures and update the index using the callback
         let failures = Arc::try_unwrap(failures)
             .expect("Failed to unwrap failures")
             .into_inner()
             .expect("Failed to get inner failures");
 
         for (path, error_message) in failures {
-            index.add_failed_extraction(&path, error_message);
+            if let Err(e) = on_failed_extraction(&path, error_message) {
+                warn!("Failed to record extraction failure for {}: {}", path.display(), e);
+            }
         }
 
         // Return the collected results
@@ -251,7 +232,6 @@ mod tests {
     use tempfile::tempdir;
     use std::fs::File;
     use std::io::Write;
-    use crate::models::CacheIndex;
     
     // Create a simple mock PBO for testing
     fn create_mock_pbo(dir: &Path) -> PathBuf {
@@ -273,11 +253,14 @@ mod tests {
         let processor = PboProcessor::new(30, 1);
         let extensions = vec!["sqf".to_string()];
         
-        // Create cache index and mark pbo2 as failed
-        let mut index = CacheIndex::new();
-        index.add_failed_extraction(&pbo2_path, "Previous failure".to_string());
+        // Track failed extractions
+        let mut failed_pbo_paths = Vec::new();
+        let mut on_failed_extraction = |path: &Path, _error: String| {
+            failed_pbo_paths.push(path.to_path_buf());
+            Ok(())
+        };
         
-        // First extraction attempt - should skip pbo2
+        // First extraction attempt
         let pbos = vec![
             pbo1_path.clone(),
             pbo2_path.clone(),
@@ -289,20 +272,11 @@ mod tests {
             &cache_dir,
             extensions.clone(),
             false,
-            &mut index
+            &mut on_failed_extraction
         ).await;
         
         // The extraction itself will fail because these aren't real PBOs,
-        // but we can verify that pbo2 was skipped by checking the error details
-        if let Err(e) = &results {
-            let error_msg = e.to_string();
-            let pbo2_str = pbo2_path.to_string_lossy().to_string();
-            assert!(!error_msg.contains(&pbo2_str),
-                "Failed PBO should have been skipped");
-        }
-        
-        // Verify pbo2 is still in failed extractions
-        assert!(index.is_failed_extraction(&pbo2_path).is_some(),
-            "PBO should remain in failed extractions");
+        // but we can verify that failures were recorded correctly
+        assert!(results.is_err() || failed_pbo_paths.len() > 0);
     }
 }

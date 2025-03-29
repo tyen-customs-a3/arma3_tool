@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use thiserror::Error;
-use arma3_tool_cache_storage::StorageError;
 
 /// Custom error types for the Arma 3 Tool
 #[derive(Error, Debug)]
@@ -94,18 +93,14 @@ impl From<arma3_tool_pbo_cache::CacheError> for ToolError {
     }
 }
 
-impl From<anyhow::Error> for ToolError {
-    fn from(err: anyhow::Error) -> Self {
-        from_anyhow(err)
+impl From<arma3_db::error::DatabaseError> for ToolError {
+    fn from(err: arma3_db::error::DatabaseError) -> Self {
+        ToolError::DatabaseError(err.to_string())
     }
 }
 
-impl From<StorageError> for ToolError {
-    fn from(err: StorageError) -> Self {
-        match err {
-            StorageError::Io(e) => ToolError::IoError(e.to_string()),
-            StorageError::Serialization(e) => ToolError::CacheError(format!("Serialization error: {}", e)),
-            StorageError::Deserialization(e) => ToolError::CacheError(format!("Deserialization error: {}", e)),
-        }
+impl From<anyhow::Error> for ToolError {
+    fn from(err: anyhow::Error) -> Self {
+        from_anyhow(err)
     }
 }

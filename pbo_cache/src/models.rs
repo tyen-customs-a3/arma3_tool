@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 use crate::error::{Result, CacheError};
+use arma3_db::models::pbo::PboMetadataConversion;
 
 /// Type of PBO being processed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -150,169 +151,53 @@ impl PboMetadata {
             .map(|path| cache_dir.join(path))
             .collect()
     }
-}
-
-/// Information about a failed PBO extraction
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FailedExtraction {
-    /// When the extraction failed
-    pub timestamp: SystemTime,
-    /// The error message from the failed extraction
-    pub error_message: String,
-}
-
-/// Cache index tracking all extracted PBOs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheIndex {
-    /// Game data PBOs by normalized path
-    pub game_data: HashMap<String, PboMetadata>,
     
-    /// Mission PBOs by normalized path
-    pub missions: HashMap<String, PboMetadata>,
-
-    /// Failed extractions by normalized path
-    pub failed_extractions: HashMap<String, FailedExtraction>,
-    
-    /// When the index was last updated
-    pub last_updated: SystemTime,
-}
-
-impl Default for CacheIndex {
-    fn default() -> Self {
-        Self {
-            game_data: HashMap::new(),
-            missions: HashMap::new(),
-            failed_extractions: HashMap::new(),
-            last_updated: SystemTime::now(),
-        }
+    // Convert SystemTime to DateTime<Utc>
+    fn system_time_to_datetime(system_time: SystemTime) -> DateTime<Utc> {
+        let duration = system_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+        let secs = duration.as_secs() as i64;
+        let nsecs = duration.subsec_nanos();
+        DateTime::<Utc>::from_timestamp(secs, nsecs).unwrap_or_else(|| Utc::now())
     }
 }
 
-impl CacheIndex {
-    /// Create a new empty cache index
-    pub fn new() -> Self {
-        Self::default()
+// Implement PboMetadataConversion trait for PboMetadata
+impl PboMetadataConversion for PboMetadata {
+    fn get_path(&self) -> PathBuf {
+        self.path.clone()
     }
     
-    /// Get a reference to the metadata for a PBO
-    pub fn get_metadata(&self, path: &Path, pbo_type: PboType) -> Option<&PboMetadata> {
-        // Use the path string as the key
-        let key = path.to_string_lossy().to_string();
-        
-        // Check by full path first
-        let result = match pbo_type {
-            PboType::GameData => self.game_data.get(&key),
-            PboType::Mission => self.missions.get(&key),
-        };
-        
-        if result.is_some() {
-            return result;
-        }
-        
-        // If not found, try to find by the filename part of the path
-        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
-            let metadata_map = match pbo_type {
-                PboType::GameData => &self.game_data,
-                PboType::Mission => &self.missions,
-            };
-            
-            // Look for entries matching the filename
-            for metadata in metadata_map.values() {
-                if let Some(stored_name) = metadata.path.file_name().and_then(|f| f.to_str()) {
-                    if stored_name == file_name {
-                        return Some(metadata);
-                    }
-                }
-            }
-        }
-        
-        None
+    fn get_full_path(&self) -> PathBuf {
+        self.get_full_path()
     }
     
-    /// Add or update metadata for a PBO
-    pub fn update_metadata(&mut self, metadata: PboMetadata) {
-        let key = metadata.path.to_string_lossy().to_string();
-        match metadata.pbo_type {
-            PboType::GameData => {
-                self.game_data.insert(key, metadata);
-            },
-            PboType::Mission => {
-                self.missions.insert(key, metadata);
-            },
+    fn get_base_dir(&self) -> Option<&PathBuf> {
+        if self.base_dir.as_os_str().is_empty() {
+            None
+        } else {
+            Some(&self.base_dir)
         }
-        self.last_updated = SystemTime::now();
     }
     
-    /// Remove metadata for a PBO
-    pub fn remove_metadata(&mut self, path: &Path, pbo_type: PboType) -> Option<PboMetadata> {
-        let key = path.to_string_lossy().to_string();
-        let result = match pbo_type {
-            PboType::GameData => self.game_data.remove(&key),
-            PboType::Mission => self.missions.remove(&key),
-        };
-        
-        if result.is_some() {
-            self.last_updated = SystemTime::now();
-            return result;
-        }
-        
-        // If not found, try to find by the filename
-        if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
-            let metadata_map = match pbo_type {
-                PboType::GameData => &mut self.game_data,
-                PboType::Mission => &mut self.missions,
-            };
-            
-            // Get keys with matching filename
-            let matching_keys: Vec<String> = metadata_map
-                .iter()
-                .filter_map(|(k, v)| {
-                    if let Some(stored_name) = v.path.file_name().and_then(|f| f.to_str()) {
-                        if stored_name == file_name {
-                            return Some(k.clone());
-                        }
-                    }
-                    None
-                })
-                .collect();
-            
-            if let Some(first_key) = matching_keys.first() {
-                let removed = metadata_map.remove(first_key);
-                if removed.is_some() {
-                    self.last_updated = SystemTime::now();
-                }
-                return removed;
-            }
-        }
-        
-        None
+    fn get_file_size(&self) -> u64 {
+        self.file_size
     }
-
-    /// Add a failed extraction to the index
-    pub fn add_failed_extraction(&mut self, path: &Path, error_message: String) {
-        let key = path.to_string_lossy().to_string();
-        let failed = FailedExtraction {
-            timestamp: SystemTime::now(),
-            error_message,
-        };
-        self.failed_extractions.insert(key, failed);
-        self.last_updated = SystemTime::now();
+    
+    fn get_last_modified(&self) -> DateTime<Utc> {
+        Self::system_time_to_datetime(self.last_modified)
     }
-
-    /// Check if a PBO has previously failed extraction
-    pub fn is_failed_extraction(&self, path: &Path) -> Option<&FailedExtraction> {
-        let key = path.to_string_lossy().to_string();
-        self.failed_extractions.get(&key)
+    
+    fn get_extraction_time(&self) -> DateTime<Utc> {
+        Self::system_time_to_datetime(self.extraction_time)
     }
-
-    /// Remove a failed extraction entry
-    pub fn remove_failed_extraction(&mut self, path: &Path) -> Option<FailedExtraction> {
-        let key = path.to_string_lossy().to_string();
-        let result = self.failed_extractions.remove(&key);
-        if result.is_some() {
-            self.last_updated = SystemTime::now();
+    
+    fn get_pbo_type(&self) -> &str {
+        match self.pbo_type {
+            PboType::GameData => "GameData",
+            PboType::Mission => "Mission",
         }
-        result
     }
 }
 
@@ -348,6 +233,9 @@ pub struct ExtractionConfig {
     
     /// Whether to enable verbose logging
     pub verbose: bool,
+    
+    /// Path to the database file (optional)
+    pub db_path: Option<PathBuf>,
 }
 
 impl ExtractionConfig {
@@ -357,7 +245,7 @@ impl ExtractionConfig {
         let mission_cache_dir = cache_dir.join("missions");
         
         Self {
-            cache_dir,
+            cache_dir: cache_dir.clone(),
             game_data_cache_dir,
             mission_cache_dir,
             game_data_dirs: Vec::new(),
@@ -367,6 +255,7 @@ impl ExtractionConfig {
             threads: num_cpus::get(),
             timeout: 400,
             verbose: false,
+            db_path: Some(cache_dir.join("arma3.db")),
         }
     }
   
@@ -384,7 +273,7 @@ impl ExtractionConfig {
         let mission_cache_dir = cache_dir.join("missions");
         
         Self {
-            cache_dir,
+            cache_dir: cache_dir.clone(),
             game_data_cache_dir,
             mission_cache_dir,
             game_data_dirs,
@@ -394,11 +283,7 @@ impl ExtractionConfig {
             threads,
             timeout,
             verbose: false,
+            db_path: Some(cache_dir.join("arma3.db")),
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    // ... existing code ...
-} 

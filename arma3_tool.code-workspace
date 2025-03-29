@@ -3,6 +3,15 @@
 		{
 			"name": "arma3_tool",
 			"path": "."
+		},
+		{
+			"path": "../gamedata_scanner"
+		},
+		{
+			"path": "../mission_scanner"
+		},
+		{
+			"path": "../pbo_tools"
 		}
 	],
 	"settings": {}
