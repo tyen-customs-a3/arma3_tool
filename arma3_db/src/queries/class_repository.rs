@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use log::debug;
 use rusqlite::{params, Row, OptionalExtension};
 
@@ -21,12 +20,11 @@ impl<'a> ClassRepository<'a> {
     pub fn create(&self, class: &ClassModel) -> Result<()> {
         self.db.with_connection(|conn| {
             conn.execute(
-                "INSERT OR REPLACE INTO classes (id, parent_id, source_pbo_id, source_file_index)
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT OR REPLACE INTO classes (id, parent_id, source_file_index)
+                 VALUES (?1, ?2, ?3)",
                 params![
                     class.id,
                     class.parent_id,
-                    class.source_pbo_id,
                     convert_opt_usize_to_i64(class.source_file_index),
                 ],
             )?;
@@ -39,7 +37,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get(&self, id: &str) -> Result<Option<ClassModel>> {
         self.db.with_connection(|conn| {
             let result = conn.query_row(
-                "SELECT id, parent_id, source_pbo_id, source_file_index
+                "SELECT id, parent_id, source_file_index
                  FROM classes WHERE id = ?1",
                 [id],
                 |row| self.map_row_to_class(row),
@@ -53,12 +51,11 @@ impl<'a> ClassRepository<'a> {
     pub fn update(&self, class: &ClassModel) -> Result<()> {
         self.db.with_connection(|conn| {
             let rows_affected = conn.execute(
-                "UPDATE classes SET parent_id = ?2, source_pbo_id = ?3, source_file_index = ?4
+                "UPDATE classes SET parent_id = ?2, source_file_index = ?3
                  WHERE id = ?1",
                 params![
                     class.id,
                     class.parent_id,
-                    class.source_pbo_id,
                     convert_opt_usize_to_i64(class.source_file_index),
                 ],
             )?;
@@ -97,7 +94,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get_all(&self) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, source_pbo_id, source_file_index
+                "SELECT id, parent_id, source_file_index
                  FROM classes ORDER BY id"
             )?;
             
@@ -116,7 +113,7 @@ impl<'a> ClassRepository<'a> {
     pub fn find_by_parent(&self, parent_id: &str) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, source_pbo_id, source_file_index
+                "SELECT id, parent_id, source_file_index
                  FROM classes WHERE parent_id = ?1"
             )?;
             
@@ -140,7 +137,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get_root_classes(&self) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, source_pbo_id, source_file_index
+                "SELECT id, parent_id, source_file_index
                  FROM classes WHERE parent_id IS NULL"
             )?;
             
@@ -160,19 +157,19 @@ impl<'a> ClassRepository<'a> {
         self.db.with_connection(|conn| {
             // Use recursive CTE to get hierarchy
             let mut stmt = conn.prepare(
-                "WITH RECURSIVE hierarchy(id, parent_id, source_pbo_id, depth) AS (
-                    SELECT id, parent_id, source_pbo_id, 0
+                "WITH RECURSIVE hierarchy(id, parent_id, source_file_index, depth) AS (
+                    SELECT id, parent_id, source_file_index, 0
                     FROM classes
                     WHERE id = ?1
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.source_pbo_id, h.depth + 1
+                    SELECT c.id, c.parent_id, c.source_file_index, h.depth + 1
                     FROM classes c
                     JOIN hierarchy h ON c.parent_id = h.id
                     WHERE h.depth < ?2
                 )
-                SELECT id, parent_id, source_pbo_id, depth
+                SELECT id, parent_id, source_file_index, depth
                 FROM hierarchy
                 ORDER BY depth, id"
             )?;
@@ -181,7 +178,7 @@ impl<'a> ClassRepository<'a> {
                 Ok(ClassHierarchyNode {
                     id: row.get(0)?,
                     parent_id: row.get(1)?,
-                    source_pbo_id: row.get(2)?,
+                    source_file_index: convert_i64_to_usize(row.get(2)?),
                     depth: row.get(3)?,
                 })
             })?;
@@ -218,19 +215,19 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "WITH RECURSIVE hierarchy(id, parent_id, source_pbo_id, depth) AS (
-                    SELECT id, parent_id, source_pbo_id, 0
+                "WITH RECURSIVE hierarchy(id, parent_id, source_file_index, depth) AS (
+                    SELECT id, parent_id, source_file_index, 0
                     FROM classes
                     WHERE id IN ({})
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.source_pbo_id, h.depth + 1
+                    SELECT c.id, c.parent_id, c.source_file_index, h.depth + 1
                     FROM classes c
                     JOIN hierarchy h ON c.parent_id = h.id
                     WHERE h.depth < ?1
                 )
-                SELECT id, parent_id, source_pbo_id, depth
+                SELECT id, parent_id, source_file_index, depth
                 FROM hierarchy
                 ORDER BY depth, id",
                 root_list
@@ -242,7 +239,7 @@ impl<'a> ClassRepository<'a> {
                 Ok(ClassHierarchyNode {
                     id: row.get(0)?,
                     parent_id: row.get(1)?,
-                    source_pbo_id: row.get(2)?,
+                    source_file_index: convert_i64_to_usize(row.get(2)?),
                     depth: row.get(3)?,
                 })
             })?;
@@ -270,7 +267,7 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "SELECT id, parent_id, source_pbo_id, source_file_index
+                "SELECT id, parent_id, source_file_index
                  FROM classes
                  WHERE parent_id IN ({})",
                 placeholders
@@ -309,19 +306,19 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "WITH RECURSIVE affected_hierarchy(id, parent_id, source_pbo_id, source_file_index, depth) AS (
-                    SELECT id, parent_id, source_pbo_id, source_file_index, 0
+                "WITH RECURSIVE affected_hierarchy(id, parent_id, source_file_index, depth) AS (
+                    SELECT id, parent_id, source_file_index, 0
                     FROM classes
                     WHERE id IN ({})
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.source_pbo_id, c.source_file_index, a.depth + 1
+                    SELECT c.id, c.parent_id, c.source_file_index, a.depth + 1
                     FROM classes c
                     JOIN affected_hierarchy a ON c.parent_id = a.id
                     WHERE a.depth < ?{}
                 )
-                SELECT id, parent_id, source_pbo_id, source_file_index
+                SELECT id, parent_id, source_file_index
                 FROM affected_hierarchy
                 WHERE depth > 0",  // Exclude the starting classes
                 placeholders,
@@ -361,8 +358,8 @@ impl<'a> ClassRepository<'a> {
         self.db.with_transaction(|tx| {
             // Prepare statement outside the loop
             let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO classes (id, parent_id, source_pbo_id, source_file_index)
-                 VALUES (?1, ?2, ?3, ?4)"
+                "INSERT OR REPLACE INTO classes (id, parent_id, source_file_index)
+                 VALUES (?1, ?2, ?3)"
             )?;
             
             // Insert all classes in a single transaction
@@ -370,7 +367,6 @@ impl<'a> ClassRepository<'a> {
                 stmt.execute(params![
                     class.id,
                     class.parent_id,
-                    class.source_pbo_id,
                     convert_opt_usize_to_i64(class.source_file_index),
                 ])?;
             }
@@ -386,19 +382,19 @@ impl<'a> ClassRepository<'a> {
     ) -> Result<()> {
         debug!("Importing {} classes from GameDataClasses", game_data.classes.len());
         
-        // Build PBO map
-        let mut pbo_map = HashMap::new();
-        for (idx, path) in game_data.file_sources.iter().enumerate() {
-            pbo_map.insert(idx, path.to_string_lossy().to_string());
-        }
-        
         // Convert to ClassModel
         let classes: Vec<ClassModel> = game_data.classes.iter()
-            .map(|class| ClassModel::from_game_data_class(class, &pbo_map))
+            .map(|class| ClassModel::from_game_data_class(class))
             .collect();
         
-        // Bulk import
-        self.bulk_import(&classes)
+        // Bulk import classes
+        self.bulk_import(&classes)?;
+        
+        // Update file index mapping
+        let cache = crate::queries::cache::Cache::new(self.db);
+        cache.import_file_index_mappings(game_data)?;
+        
+        Ok(())
     }
     
     /// Clear all classes
@@ -411,12 +407,11 @@ impl<'a> ClassRepository<'a> {
     
     /// Convert a database row to a ClassModel
     fn map_row_to_class(&self, row: &Row) -> rusqlite::Result<ClassModel> {
-        let source_file_index: Option<i64> = row.get(3)?;
+        let source_file_index: Option<i64> = row.get(2)?;
         
         Ok(ClassModel {
             id: row.get(0)?,
             parent_id: row.get(1)?,
-            source_pbo_id: row.get(2)?,
             source_file_index: source_file_index.map(|idx| idx as usize),
         })
     }
@@ -425,6 +420,11 @@ impl<'a> ClassRepository<'a> {
 // Function that converts Option<usize> to Option<i64> properly
 fn convert_opt_usize_to_i64(val: Option<usize>) -> Option<i64> {
     val.map(|v| v as i64)
+}
+
+// Function that converts Option<i64> to Option<usize>
+fn convert_i64_to_usize(val: Option<i64>) -> Option<usize> {
+    val.map(|v| v as usize)
 }
 
 #[cfg(test)]
@@ -445,21 +445,18 @@ mod tests {
         let class1 = ClassModel::new(
             "Class1".to_string(), 
             None::<String>, 
-            None::<String>, // No PBO reference for test
             Some(1)
         );
         
         let class2 = ClassModel::new(
             "Class2".to_string(), 
             Some("Class1".to_string()), 
-            None::<String>, // No PBO reference for test
             Some(2)
         );
         
         let class3 = ClassModel::new(
             "Class3".to_string(), 
             Some("Class2".to_string()), 
-            None::<String>, // No PBO reference for test
             Some(3)
         );
         

@@ -22,8 +22,6 @@ pub struct PboMetadata {
     pub path: PathBuf,
     
     /// Original base directory (can be empty if already relative)
-    #[serde(default)]
-    #[serde(skip_serializing_if = "is_empty_path")]
     pub base_dir: PathBuf,
     
     /// Last modified timestamp of the PBO
@@ -43,11 +41,6 @@ pub struct PboMetadata {
     
     /// Type of PBO (game data or mission)
     pub pbo_type: PboType,
-}
-
-/// Helper function for serde to check if a path is empty
-fn is_empty_path(path: &PathBuf) -> bool {
-    path.as_os_str().is_empty()
 }
 
 impl PboMetadata {
@@ -234,8 +227,8 @@ pub struct ExtractionConfig {
     /// Whether to enable verbose logging
     pub verbose: bool,
     
-    /// Path to the database file (optional)
-    pub db_path: Option<PathBuf>,
+    /// Path to the database file
+    pub db_path: PathBuf,
 }
 
 impl ExtractionConfig {
@@ -255,35 +248,7 @@ impl ExtractionConfig {
             threads: num_cpus::get(),
             timeout: 400,
             verbose: false,
-            db_path: Some(cache_dir.join("arma3.db")),
-        }
-    }
-  
-    /// Create a configuration for processing arma3_tool data
-    pub fn for_arma3_tool(
-        cache_dir: PathBuf,
-        game_data_dirs: Vec<PathBuf>,
-        game_data_extensions: Vec<String>,
-        mission_dirs: Vec<PathBuf>,
-        mission_extensions: Vec<String>,
-        threads: usize,
-        timeout: u64,
-    ) -> Self {
-        let game_data_cache_dir = cache_dir.join("gamedata");
-        let mission_cache_dir = cache_dir.join("missions");
-        
-        Self {
-            cache_dir: cache_dir.clone(),
-            game_data_cache_dir,
-            mission_cache_dir,
-            game_data_dirs,
-            game_data_extensions,
-            mission_dirs,
-            mission_extensions,
-            threads,
-            timeout,
-            verbose: false,
-            db_path: Some(cache_dir.join("arma3.db")),
+            db_path: cache_dir.join("arma3.db"),
         }
     }
 }

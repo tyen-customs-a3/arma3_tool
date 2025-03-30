@@ -8,11 +8,41 @@ use crate::models::pbo::{PboModel, PboType, ExtractedFile, FailedExtraction};
 use crate::DatabaseManager;
 
 /// Repository for PBO-related database operations
-pub struct PboRepository<'a> {
+pub struct Cache<'a> {
     db: &'a DatabaseManager,
 }
 
-impl<'a> PboRepository<'a> {
+// Helper function to find the length of the common suffix between two paths
+fn common_suffix_length(path1: &str, path2: &str) -> usize {
+    let path1_components: Vec<&str> = path1.split('/').collect();
+    let path2_components: Vec<&str> = path2.split('/').collect();
+    
+    let mut common_length = 0;
+    let mut i = 1;
+    
+    // Start from the end of both paths and count matching components
+    while i <= path1_components.len() && i <= path2_components.len() {
+        let p1_idx = path1_components.len() - i;
+        let p2_idx = path2_components.len() - i;
+        
+        if path1_components[p1_idx] == path2_components[p2_idx] {
+            // Add the length of this component plus 1 for the slash
+            common_length += path1_components[p1_idx].len() + 1;
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    
+    // Remove the leading slash from the count if there was a match
+    if common_length > 0 {
+        common_length -= 1;
+    }
+    
+    common_length
+}
+
+impl<'a> Cache<'a> {
     /// Create a new PBO repository
     pub fn new(db: &'a DatabaseManager) -> Self {
         Self { db }
@@ -64,88 +94,6 @@ impl<'a> PboRepository<'a> {
         })
     }
     
-    /// Update a PBO
-    pub fn update(&self, pbo: &PboModel) -> Result<()> {
-        self.db.with_connection(|conn| {
-            let rows_affected = conn.execute(
-                "UPDATE pbo_files SET 
-                     full_path = ?2, base_dir = ?3, file_size = ?4, 
-                     last_modified = ?5, extraction_time = ?6, pbo_type = ?7
-                 WHERE id = ?1",
-                params![
-                    pbo.id,
-                    pbo.full_path.to_string_lossy(),
-                    pbo.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    pbo.file_size,
-                    pbo.last_modified.to_rfc3339(),
-                    pbo.extraction_time.to_rfc3339(),
-                    pbo.pbo_type.to_string(),
-                ],
-            )?;
-            
-            if rows_affected == 0 {
-                return Err(DatabaseError::NotFound {
-                    entity_type: "PBO".to_string(),
-                    id: pbo.id.clone(),
-                });
-            }
-            
-            Ok(())
-        })
-    }
-    
-    /// Delete a PBO
-    pub fn delete(&self, id: &str) -> Result<()> {
-        self.db.with_transaction(|tx| {
-            // Delete all extracted files first
-            tx.execute(
-                "DELETE FROM extracted_files WHERE pbo_id = ?1",
-                [id],
-            )?;
-            
-            // Delete any failed extraction record
-            tx.execute(
-                "DELETE FROM failed_extractions WHERE pbo_id = ?1",
-                [id],
-            )?;
-            
-            // Delete the PBO record
-            let rows_affected = tx.execute(
-                "DELETE FROM pbo_files WHERE id = ?1",
-                [id],
-            )?;
-            
-            if rows_affected == 0 {
-                return Err(DatabaseError::NotFound {
-                    entity_type: "PBO".to_string(),
-                    id: id.to_string(),
-                });
-            }
-            
-            Ok(())
-        })
-    }
-    
-    /// Get all PBOs
-    pub fn get_all(&self) -> Result<Vec<PboModel>> {
-        self.db.with_connection(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, full_path, base_dir, file_size, 
-                        last_modified, extraction_time, pbo_type
-                 FROM pbo_files ORDER BY id"
-            )?;
-            
-            let rows = stmt.query_map([], |row| self.map_row_to_pbo(row))?;
-            
-            let mut pbos = Vec::new();
-            for row_result in rows {
-                pbos.push(row_result?);
-            }
-            
-            Ok(pbos)
-        })
-    }
-    
     /// Get PBOs by type
     pub fn get_by_type(&self, pbo_type: PboType) -> Result<Vec<PboModel>> {
         self.db.with_connection(|conn| {
@@ -166,22 +114,6 @@ impl<'a> PboRepository<'a> {
         })
     }
     
-    /// Add an extracted file
-    pub fn add_extracted_file(&self, pbo_id: &str, relative_path: impl AsRef<Path>) -> Result<()> {
-        self.db.with_connection(|conn| {
-            conn.execute(
-                "INSERT INTO extracted_files (pbo_id, relative_path)
-                 VALUES (?1, ?2)",
-                params![
-                    pbo_id,
-                    relative_path.as_ref().to_string_lossy(),
-                ],
-            )?;
-            
-            Ok(())
-        })
-    }
-    
     /// Add multiple extracted files
     pub fn add_extracted_files(&self, files: &[ExtractedFile]) -> Result<()> {
         if files.is_empty() {
@@ -190,14 +122,25 @@ impl<'a> PboRepository<'a> {
         
         self.db.with_transaction(|tx| {
             let mut stmt = tx.prepare(
-                "INSERT INTO extracted_files (pbo_id, relative_path)
-                 VALUES (?1, ?2)"
+                "INSERT INTO extracted_files (pbo_id, relative_path, extension, file_name)
+                 VALUES (?1, ?2, ?3, ?4)"
             )?;
             
             for file in files {
+                // Get extension and file name if not already cached
+                let extension = file.extension.clone().or_else(|| {
+                    file.relative_path.extension().map(|e| e.to_string_lossy().to_string())
+                });
+                
+                let file_name = file.file_name.clone().or_else(|| {
+                    file.relative_path.file_name().map(|f| f.to_string_lossy().to_string())
+                });
+                
                 stmt.execute(params![
                     file.pbo_id,
                     file.relative_path.to_string_lossy(),
+                    extension,
+                    file_name,
                 ])?;
             }
             
@@ -205,13 +148,14 @@ impl<'a> PboRepository<'a> {
         })
     }
     
-    /// Get all extracted files for a PBO
+    /// Get extracted files for a PBO
     pub fn get_extracted_files(&self, pbo_id: &str) -> Result<Vec<ExtractedFile>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, pbo_id, relative_path
+                "SELECT id, pbo_id, relative_path, extension, file_name
                  FROM extracted_files
-                 WHERE pbo_id = ?1"
+                 WHERE pbo_id = ?1
+                 ORDER BY relative_path"
             )?;
             
             let rows = stmt.query_map([pbo_id], |row| {
@@ -219,6 +163,8 @@ impl<'a> PboRepository<'a> {
                     id: row.get(0)?,
                     pbo_id: row.get(1)?,
                     relative_path: PathBuf::from(row.get::<_, String>(2)?),
+                    extension: row.get(3)?,
+                    file_name: row.get(4)?,
                 })
             })?;
             
@@ -231,15 +177,83 @@ impl<'a> PboRepository<'a> {
         })
     }
     
-    /// Clear all extracted files for a PBO
-    pub fn clear_extracted_files(&self, pbo_id: &str) -> Result<()> {
+    /// Find the source PBO for a given file path
+    pub fn find_pbo_by_file_path(&self, file_path: impl AsRef<Path>) -> Result<Option<PboModel>> {
+        // Convert path to string and normalize slashes
+        let path_str = file_path.as_ref().to_string_lossy().replace('\\', "/");
+        
+        // Try exact match first (useful for relative paths)
+        let exact_match_result = self.find_pbo_by_exact_file_path(&path_str)?;
+        if exact_match_result.is_some() {
+            return Ok(exact_match_result);
+        }
+        
+        // If not found, try as full path by finding the file name component
+        if let Some(file_name) = file_path.as_ref().file_name() {
+            let file_name_str = file_name.to_string_lossy();
+            return self.find_pbo_by_file_name(&path_str, &file_name_str);
+        }
+        
+        Ok(None)
+    }
+    
+    // Helper function to find PBO by exact file path
+    fn find_pbo_by_exact_file_path(&self, file_path: &str) -> Result<Option<PboModel>> {
         self.db.with_connection(|conn| {
-            conn.execute(
-                "DELETE FROM extracted_files WHERE pbo_id = ?1",
-                [pbo_id],
+            // First find the extracted file entry
+            let pbo_id: Option<String> = conn.query_row(
+                "SELECT pbo_id FROM extracted_files WHERE relative_path = ?1 LIMIT 1",
+                [file_path],
+                |row| row.get(0)
+            ).optional()?;
+            
+            match pbo_id {
+                Some(id) => self.get(&id),
+                None => Ok(None),
+            }
+        })
+    }
+    
+    // Helper function to find PBO by file name and partial path
+    fn find_pbo_by_file_name(&self, full_path: &str, file_name: &str) -> Result<Option<PboModel>> {
+        self.db.with_connection(|conn| {
+            // First try to find by exact filename match (fast path)
+            let mut stmt = conn.prepare(
+                "SELECT pbo_id, relative_path FROM extracted_files 
+                 WHERE relative_path LIKE ?1 LIMIT 100"
             )?;
             
-            Ok(())
+            let pattern = format!("%/{}", file_name);
+            let rows = stmt.query_map([pattern], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                ))
+            })?;
+            
+            // Collect potential matches
+            let mut matches = Vec::new();
+            for row_result in rows {
+                matches.push(row_result?);
+            }
+            
+            if matches.is_empty() {
+                return Ok(None);
+            }
+            
+            // If we have multiple matches, find the best one
+            if matches.len() > 1 {
+                // Sort by length of common suffix with the target path
+                matches.sort_by(|(_, path_a), (_, path_b)| {
+                    let common_a = common_suffix_length(full_path, path_a);
+                    let common_b = common_suffix_length(full_path, path_b);
+                    common_b.cmp(&common_a) // Sort descending by common length
+                });
+            }
+            
+            // Get the PBO for the best match
+            let (best_pbo_id, _) = &matches[0];
+            self.get(best_pbo_id)
         })
     }
     
@@ -325,8 +339,23 @@ impl<'a> PboRepository<'a> {
     
     /// Record a failed extraction
     pub fn record_failed_extraction(&self, pbo_id: &str, error_message: &str) -> Result<()> {
-        self.db.with_connection(|conn| {
-            conn.execute(
+        self.db.with_transaction(|tx| {
+            // First check if the PBO record exists
+            let pbo_exists: bool = tx.query_row(
+                "SELECT 1 FROM pbo_files WHERE id = ?1 LIMIT 1",
+                [pbo_id],
+                |_| Ok(true)
+            ).optional()?.unwrap_or(false);
+            
+            // If the PBO record doesn't exist, we can't record the failure due to foreign key constraint
+            if !pbo_exists {
+                return Err(crate::error::DatabaseError::InvalidData(
+                    format!("Cannot record failed extraction: PBO {} not found in database", pbo_id)
+                ));
+            }
+            
+            // Record the failed extraction
+            tx.execute(
                 "INSERT OR REPLACE INTO failed_extractions (pbo_id, timestamp, error_message)
                  VALUES (?1, ?2, ?3)",
                 params![
@@ -336,6 +365,35 @@ impl<'a> PboRepository<'a> {
                 ],
             )?;
             
+            Ok(())
+        })
+    }
+    
+    /// Record a failed extraction directly, bypassing foreign key checks
+    /// This should only be used after ensuring the PBO record exists
+    pub fn record_failed_extraction_direct(&self, pbo_id: &str, error_message: &str) -> Result<()> {
+        self.db.with_connection(|conn| {
+            // Temporarily disable foreign key constraints
+            conn.execute("PRAGMA foreign_keys = OFF", [])?;
+            
+            // Record the failed extraction
+            let result = conn.execute(
+                "INSERT OR REPLACE INTO failed_extractions (pbo_id, timestamp, error_message)
+                 VALUES (?1, ?2, ?3)",
+                params![
+                    pbo_id,
+                    Utc::now().to_rfc3339(),
+                    error_message,
+                ],
+            );
+            
+            // Re-enable foreign key constraints
+            conn.execute("PRAGMA foreign_keys = ON", [])?;
+            
+            // Check result
+            result?;
+            
+            debug!("Directly recorded failed extraction for {}", pbo_id);
             Ok(())
         })
     }
@@ -365,99 +423,31 @@ impl<'a> PboRepository<'a> {
         })
     }
     
-    /// Bulk import PBOs
-    pub fn bulk_import(&self, pbos: &[PboModel]) -> Result<()> {
-        if pbos.is_empty() {
-            return Ok(());
-        }
-        
-        debug!("Bulk importing {} PBOs", pbos.len());
-        
-        self.db.with_transaction(|tx| {
-            let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO pbo_files (
-                     id, full_path, base_dir, file_size, 
-                     last_modified, extraction_time, pbo_type
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+    /// Find extracted files by extension
+    pub fn find_files_by_extension(&self, extension: &str) -> Result<Vec<ExtractedFile>> {
+        self.db.with_connection(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, pbo_id, relative_path, extension, file_name
+                 FROM extracted_files
+                 WHERE extension = ?1"
             )?;
             
-            for pbo in pbos {
-                stmt.execute(params![
-                    pbo.id,
-                    pbo.full_path.to_string_lossy(),
-                    pbo.base_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    pbo.file_size,
-                    pbo.last_modified.to_rfc3339(),
-                    pbo.extraction_time.to_rfc3339(),
-                    pbo.pbo_type.to_string(),
-                ])?;
+            let rows = stmt.query_map([extension], |row| {
+                Ok(ExtractedFile {
+                    id: row.get(0)?,
+                    pbo_id: row.get(1)?,
+                    relative_path: PathBuf::from(row.get::<_, String>(2)?),
+                    extension: row.get(3)?,
+                    file_name: row.get(4)?,
+                })
+            })?;
+            
+            let mut files = Vec::new();
+            for row_result in rows {
+                files.push(row_result?);
             }
             
-            Ok(())
-        })
-    }
-    
-    /// Clear all PBOs
-    pub fn clear_all(&self) -> Result<()> {
-        self.db.with_transaction(|tx| {
-            // Clear related tables
-            tx.execute("DELETE FROM extracted_files", [])?;
-            tx.execute("DELETE FROM failed_extractions", [])?;
-            
-            // Clear PBOs
-            tx.execute("DELETE FROM pbo_files", [])?;
-            
-            Ok(())
-        })
-    }
-    
-    /// Clear all PBOs of a specific type
-    pub fn clear_by_type(&self, pbo_type: PboType) -> Result<()> {
-        self.db.with_transaction(|tx| {
-            // Get IDs to delete
-            let ids: Vec<String> = tx.prepare(
-                "SELECT id FROM pbo_files WHERE pbo_type = ?1"
-            )?
-            .query_map([pbo_type.to_string()], |row| row.get(0))?
-            .collect::<std::result::Result<Vec<String>, _>>()?;
-            
-            if ids.is_empty() {
-                return Ok(());
-            }
-            
-            // Build query with placeholders
-            let placeholders = (1..=ids.len())
-                .map(|i| format!("?{}", i))
-                .collect::<Vec<_>>()
-                .join(",");
-                
-            // Build parameter list
-            let params: Vec<&dyn rusqlite::ToSql> = ids
-                .iter()
-                .map(|id| id as &dyn rusqlite::ToSql)
-                .collect();
-            
-            // Delete extracted files
-            let query = format!(
-                "DELETE FROM extracted_files WHERE pbo_id IN ({})",
-                placeholders
-            );
-            tx.execute(&query, params.as_slice())?;
-            
-            // Delete failed extractions
-            let query = format!(
-                "DELETE FROM failed_extractions WHERE pbo_id IN ({})",
-                placeholders
-            );
-            tx.execute(&query, params.as_slice())?;
-            
-            // Delete PBOs
-            tx.execute(
-                "DELETE FROM pbo_files WHERE pbo_type = ?1",
-                [pbo_type.to_string()],
-            )?;
-            
-            Ok(())
+            Ok(files)
         })
     }
     
@@ -548,6 +538,47 @@ impl<'a> PboRepository<'a> {
             pbo_type,
         })
     }
+    
+    /// Import file index mappings from GameDataClasses
+    pub fn import_file_index_mappings(&self, game_data: &arma3_tool_shared_models::GameDataClasses) -> Result<()> {
+        if game_data.file_sources.is_empty() {
+            return Ok(());
+        }
+        
+        debug!("Importing {} file index mappings", game_data.file_sources.len());
+        
+        self.db.with_transaction(|tx| {
+            // Prepare statement outside the loop
+            let mut stmt = tx.prepare(
+                "INSERT OR REPLACE INTO file_index_mapping (file_index, file_path, normalized_path, pbo_id)
+                 VALUES (?1, ?2, ?3, ?4)"
+            )?;
+            
+            // Insert all mappings in a single transaction
+            for (idx, path) in game_data.file_sources.iter().enumerate() {
+                let normalized_path = crate::models::pbo::normalize_path(path);
+                
+                // Try to find matching PBO in the database
+                let pbo_id = match tx.query_row(
+                    "SELECT id FROM pbo_files WHERE id = ?1",
+                    [&normalized_path],
+                    |row| row.get::<_, String>(0)
+                ).optional() {
+                    Ok(Some(id)) => Some(id),
+                    _ => None,
+                };
+                
+                stmt.execute(params![
+                    idx as i64,
+                    path.to_string_lossy().to_string(),
+                    normalized_path,
+                    pbo_id,
+                ])?;
+            }
+            
+            Ok(())
+        })
+    }
 }
 
 #[cfg(test)]
@@ -563,7 +594,7 @@ mod tests {
         
         // Create database
         let db = DatabaseManager::new(&db_path).unwrap();
-        let repo = PboRepository::new(&db);
+        let repo = Cache::new(&db);
         
         // Create test PBO
         let now = Utc::now();

@@ -1,3 +1,3 @@
 @echo off
 set RUST_LOG=info
-cargo run --release --bin arma3tool_cli -- --config scan_config.json process --db-path "./cache/arma3_assets.adb" 
+cargo run --release --bin arma3tool_cli -- --config scan_config.json process

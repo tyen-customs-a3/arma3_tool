@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// Database configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabaseConfig {
+pub struct CacheConfig {
     /// Path to the database file
     pub db_path: PathBuf,
     
@@ -32,7 +32,7 @@ pub struct DatabaseConfig {
     pub synchronous: i32,
 }
 
-impl DatabaseConfig {
+impl CacheConfig {
     /// Create a new configuration with the given database path and cache name
     pub fn new(db_path: impl Into<PathBuf>, cache_name: &str) -> Self {
         let db_path = db_path.into();
@@ -95,7 +95,7 @@ impl DatabaseConfig {
     }
 }
 
-impl Default for DatabaseConfig {
+impl Default for CacheConfig {
     fn default() -> Self {
         Self::new(
             PathBuf::from("arma3_cache.db"),
@@ -198,7 +198,7 @@ mod tests {
     
     #[test]
     fn test_config_defaults() {
-        let config = DatabaseConfig::default();
+        let config = CacheConfig::default();
         
         assert_eq!(config.db_path, PathBuf::from("arma3_cache.db"));
         assert_eq!(config.cache_dir, PathBuf::from("cache"));
@@ -212,7 +212,7 @@ mod tests {
     fn test_apply_pragmas() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        let config = DatabaseConfig::new(&db_path, "cache");
+        let config = CacheConfig::new(&db_path, "cache");
         
         let conn = Connection::open(&db_path).unwrap();
         config.apply_pragmas(&conn).unwrap();

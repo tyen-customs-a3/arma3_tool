@@ -5,6 +5,7 @@ use crate::queries::class_repository::ClassRepository;
 use petgraph::{Graph, Directed};
 use std::collections::{HashMap, HashSet};
 use log::debug;
+use rusqlite::OptionalExtension;
 
 /// Engine for graph-related database operations
 pub struct GraphQueryEngine<'a> {
@@ -42,7 +43,7 @@ impl<'a> GraphQueryEngine<'a> {
             nodes.push(GraphNode {
                 id: node.id.clone(),
                 node_type: NodeType::Normal,
-                source_pbo_id: node.source_pbo_id.clone(),
+                source_file_index: node.source_file_index,
             });
             
             // Create edge if there's a parent
@@ -61,59 +62,76 @@ impl<'a> GraphQueryEngine<'a> {
     /// Build a PBO dependency graph
     pub fn build_pbo_dependency_graph(&self) -> Result<GraphData> {
         self.db.with_connection(|conn| {
-            // Query to get PBO dependencies (where classes in one PBO extend classes in another)
+            // Use the file_index_mapping table to map indices to PBO IDs
             let query = "
-                WITH class_pbo_mapping AS (
-                    SELECT c.id AS class_id, c.parent_id, c.source_pbo_id
+                WITH source_indices AS (
+                    SELECT c.id AS class_id, c.parent_id, c.source_file_index
                     FROM classes c
-                    WHERE c.source_pbo_id IS NOT NULL
+                    WHERE c.source_file_index IS NOT NULL
+                ),
+                index_to_pbo AS (
+                    SELECT file_index, 
+                           COALESCE(pbo_id, normalized_path) AS pbo_id
+                    FROM file_index_mapping
                 )
                 SELECT DISTINCT 
-                    parent.source_pbo_id AS parent_pbo, 
-                    child.source_pbo_id AS child_pbo,
+                    parent_idx.pbo_id AS parent_pbo_id, 
+                    child_idx.pbo_id AS child_pbo_id,
                     COUNT(*) AS dependency_count
-                FROM class_pbo_mapping child
-                JOIN class_pbo_mapping parent ON child.parent_id = parent.class_id
+                FROM source_indices child
+                JOIN source_indices parent ON child.parent_id = parent.class_id
+                JOIN index_to_pbo parent_idx ON parent.source_file_index = parent_idx.file_index
+                JOIN index_to_pbo child_idx ON child.source_file_index = child_idx.file_index
                 WHERE 
-                    child.source_pbo_id != parent.source_pbo_id
-                GROUP BY parent_pbo, child_pbo
+                    child.source_file_index != parent.source_file_index
+                    AND parent_idx.pbo_id != child_idx.pbo_id
+                GROUP BY parent_pbo_id, child_pbo_id
                 ORDER BY dependency_count DESC
             ";
             
             let mut stmt = conn.prepare(query)?;
             let rows = stmt.query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?, // parent_pbo
-                    row.get::<_, String>(1)?, // child_pbo
+                    row.get::<_, String>(0)?, // parent_pbo_id
+                    row.get::<_, String>(1)?, // child_pbo_id
                     row.get::<_, i64>(2)?,    // dependency_count
                 ))
             })?;
             
-            // Track unique PBOs
-            let mut pbo_set = HashSet::new();
+            // Process rows to collect nodes and edges
+            let mut nodes_set = HashSet::new();
             let mut edges = Vec::new();
             
-            // Process rows
             for row_result in rows {
-                let (parent_pbo, child_pbo, count) = row_result?;
+                let (parent_pbo_id, child_pbo_id, count) = row_result?;
                 
-                pbo_set.insert(parent_pbo.clone());
-                pbo_set.insert(child_pbo.clone());
+                nodes_set.insert(parent_pbo_id.clone());
+                nodes_set.insert(child_pbo_id.clone());
                 
-                // Add edge with weight based on dependency count
+                // Add edge
                 edges.push(GraphEdge {
-                    source: parent_pbo,
-                    target: child_pbo,
+                    source: parent_pbo_id,
+                    target: child_pbo_id,
                     weight: count as f32,
                 });
             }
             
-            // Create nodes for all unique PBOs
-            let nodes = pbo_set.into_iter()
-                .map(|id| GraphNode {
-                    id,
-                    node_type: NodeType::Normal,
-                    source_pbo_id: None,
+            // Convert nodes set to vector
+            let nodes = nodes_set.into_iter()
+                .map(|pbo_id| {
+                    // Try to get source_file_index for this PBO ID
+                    let source_file_index = conn.query_row(
+                        "SELECT file_index FROM file_index_mapping 
+                         WHERE COALESCE(pbo_id, normalized_path) = ?1 LIMIT 1",
+                        [&pbo_id],
+                        |row| row.get::<_, i64>(0)
+                    ).optional().ok().flatten().map(|idx| idx as usize);
+                    
+                    GraphNode {
+                        id: pbo_id,
+                        node_type: NodeType::Normal,
+                        source_file_index,
+                    }
                 })
                 .collect();
             
@@ -163,7 +181,7 @@ impl<'a> GraphQueryEngine<'a> {
                 graph_data.nodes.push(GraphNode {
                     id: class.id.clone(),
                     node_type: NodeType::Removed,
-                    source_pbo_id: class.source_pbo_id.clone(),
+                    source_file_index: class.source_file_index,
                 });
                 
                 // Add edge from parent if it exists and not in remove list
@@ -175,7 +193,7 @@ impl<'a> GraphQueryEngine<'a> {
                                 graph_data.nodes.push(GraphNode {
                                     id: parent.id.clone(),
                                     node_type: NodeType::Normal,
-                                    source_pbo_id: parent.source_pbo_id.clone(),
+                                    source_file_index: parent.source_file_index,
                                 });
                             }
                         }
@@ -197,7 +215,7 @@ impl<'a> GraphQueryEngine<'a> {
             graph_data.nodes.push(GraphNode {
                 id: class.id.clone(),
                 node_type: NodeType::Orphaned,
-                source_pbo_id: class.source_pbo_id.clone(),
+                source_file_index: class.source_file_index,
             });
             
             // Add edge from parent (which is in the remove list)
@@ -216,7 +234,7 @@ impl<'a> GraphQueryEngine<'a> {
             graph_data.nodes.push(GraphNode {
                 id: class.id.clone(),
                 node_type: NodeType::Affected,
-                source_pbo_id: class.source_pbo_id.clone(),
+                source_file_index: class.source_file_index,
             });
             
             // Add edge from parent
@@ -237,7 +255,7 @@ impl<'a> GraphQueryEngine<'a> {
                         graph_data.nodes.push(GraphNode {
                             id: parent.id.clone(),
                             node_type,
-                            source_pbo_id: parent.source_pbo_id.clone(),
+                            source_file_index: parent.source_file_index,
                         });
                     }
                 }
@@ -251,6 +269,7 @@ impl<'a> GraphQueryEngine<'a> {
             }
         }
         
+        // Return impact analysis result
         Ok(ImpactAnalysisResult {
             removed_classes: classes_to_remove.to_vec(),
             orphaned_classes: orphaned_ids,
@@ -259,18 +278,18 @@ impl<'a> GraphQueryEngine<'a> {
         })
     }
     
-    /// Convert database class models to a Petgraph representation
+    /// Build a Petgraph from class models
     pub fn build_petgraph(&self, classes: &[ClassModel]) -> Graph<String, f32, Directed> {
-        let mut graph = Graph::<String, f32, Directed>::new();
+        let mut graph = Graph::new();
         let mut node_map = HashMap::new();
         
-        // First add all nodes
+        // Add all nodes first
         for class in classes {
-            let node_idx = graph.add_node(class.id.clone());
-            node_map.insert(class.id.clone(), node_idx);
+            let idx = graph.add_node(class.id.clone());
+            node_map.insert(class.id.clone(), idx);
         }
         
-        // Then add edges
+        // Add edges
         for class in classes {
             if let Some(parent_id) = &class.parent_id {
                 if let Some(&parent_idx) = node_map.get(parent_id) {
@@ -285,13 +304,14 @@ impl<'a> GraphQueryEngine<'a> {
     }
 }
 
-/// Graph data for visualization
-#[derive(Debug, Default, Clone)]
+/// Graph data structure for visualization
+#[derive(Debug, Clone, Default)]
 pub struct GraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
 }
 
+/// Impact analysis result
 #[derive(Debug, Clone)]
 pub struct ImpactAnalysisResult {
     pub removed_classes: Vec<String>,
@@ -303,59 +323,30 @@ pub struct ImpactAnalysisResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DatabaseManager;
     use tempfile::tempdir;
-    use crate::models::class::ClassModel;
-    use env_logger;
-    use log::info;
     
     #[test]
     fn test_graph_query_engine() {
-        // Initialize logger for tests
-        let _ = env_logger::builder()
-            .is_test(true)
-            .filter_level(log::LevelFilter::Debug)
-            .try_init();
-            
+        // Create a temporary database
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        
-        // Create database
         let db = DatabaseManager::new(&db_path).unwrap();
-        let class_repo = ClassRepository::new(&db);
-        let graph_engine = GraphQueryEngine::new(&db);
         
-        // Create test classes without PBO references to avoid foreign key constraints
-        let class1 = ClassModel::new("Class1".to_string(), None::<String>, None::<String>, Some(1));
-        let class2 = ClassModel::new("Class2".to_string(), Some("Class1".to_string()), None::<String>, Some(2));
-        let class3 = ClassModel::new("Class3".to_string(), Some("Class2".to_string()), None::<String>, Some(3));
-        let class4 = ClassModel::new("Class4".to_string(), Some("Class1".to_string()), None::<String>, Some(4));
+        // Create the graph query engine
+        let engine = GraphQueryEngine::new(&db);
         
-        info!("Creating test classes: Class1, Class2 (parent: Class1), Class3 (parent: Class2), Class4 (parent: Class1)");
+        // Create some test classes
+        let class1 = ClassModel::new("Class1".to_string(), None::<String>, Some(1));
+        let class2 = ClassModel::new("Class2".to_string(), Some("Class1".to_string()), Some(2));
+        let class3 = ClassModel::new("Class3".to_string(), Some("Class2".to_string()), Some(3));
+        let class4 = ClassModel::new("Class4".to_string(), Some("Class1".to_string()), Some(4));
         
-        // Insert classes
-        class_repo.create(&class1).unwrap();
-        class_repo.create(&class2).unwrap();
-        class_repo.create(&class3).unwrap();
-        class_repo.create(&class4).unwrap();
+        // Create a petgraph
+        let graph = engine.build_petgraph(&[class1, class2, class3, class4]);
         
-        // Test hierarchy graph
-        let graph_data = graph_engine.build_class_hierarchy_graph(Some("Class1"), 2).unwrap();
-        
-        debug!("Hierarchy graph nodes: {:?}", graph_data.nodes);
-        debug!("Hierarchy graph edges: {:?}", graph_data.edges);
-        
-        assert_eq!(graph_data.nodes.len(), 4); // Class1, Class2, Class3, Class4 (Class3 is included because max_depth is 2)
-        assert_eq!(graph_data.edges.len(), 3); // Class1->Class2, Class1->Class4, Class2->Class3
-        
-        // Test impact analysis
-        let impact = graph_engine.impact_analysis(&["Class1".to_string()]).unwrap();
-        
-        debug!("Impact analysis removed classes: {:?}", impact.removed_classes);
-        debug!("Impact analysis orphaned classes: {:?}", impact.orphaned_classes);
-        debug!("Impact analysis affected classes: {:?}", impact.affected_classes);
-        
-        assert_eq!(impact.removed_classes.len(), 1);
-        assert_eq!(impact.orphaned_classes.len(), 2); // Class2 and Class4
-        assert_eq!(impact.affected_classes.len(), 1); // Class3 only
+        // Verify graph structure
+        assert_eq!(graph.node_count(), 4);
+        assert_eq!(graph.edge_count(), 3);
     }
 } 

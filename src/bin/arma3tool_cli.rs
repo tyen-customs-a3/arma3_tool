@@ -1,21 +1,14 @@
 use anyhow::{anyhow, Context, Result};
 use arma3_tool::config::ScanConfig;
-use arma3_tool_report_writer::{
-    DependencyReportWriter, ComparisonReportWriter, FuzzySearchReportWriter, GraphReportWriter,
-    ensure_dir_exists, MissionDependencyBuilder, ScanReport
-};
-use arma3_tool_shared_models::{GameDataClasses, MissionData};
 use clap::{Parser, Subcommand};
-use log::{error, info, warn};
+use log::info;
 use arma3_tool_pbo_cache::{
     extract_game_data as pbo_extract_game_data, 
-    extract_mission as pbo_extract_mission, 
     ExtractionConfig, ExtractionManager
 };
 use std::path::PathBuf;
-use std::fs;
-use std::collections::HashMap;
-use chrono::Utc;
+use arma3_db::models::CacheConfig;
+use arma3_db::DatabaseManager;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -88,7 +81,7 @@ enum Commands {
 
 /// Get the default cache file path
 fn get_default_cache_path(cache_dir: &PathBuf) -> PathBuf {
-    cache_dir.clone()
+    cache_dir.join("arma3.db")
 }
 
 #[tokio::main]
@@ -108,7 +101,9 @@ async fn main() -> Result<()> {
             // Configure extraction
             let mut extraction_config = config.to_pbo_cache_config();
             if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir;
+                extraction_config.cache_dir = cache_dir.clone();
+                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
+                extraction_config.mission_cache_dir = cache_dir.join("missions");
             }
             
             run_extract(extraction_config).await?;
@@ -118,7 +113,9 @@ async fn main() -> Result<()> {
             // Configure processing
             let mut extraction_config = config.to_pbo_cache_config();
             if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir;
+                extraction_config.cache_dir = cache_dir.clone();
+                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
+                extraction_config.mission_cache_dir = cache_dir.join("missions");
             }
             
             let db_path = db_path.unwrap_or_else(|| {
@@ -132,11 +129,14 @@ async fn main() -> Result<()> {
             // Configure reporting
             let cache_dir = cache_dir.unwrap_or_else(|| config.cache_dir.clone());
             let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
-            
+            println!("cache_dir: {:?}", cache_dir);
+            println!("output_dir: {:?}", output_dir);
             // Determine database file path
             let db_path = db_path.unwrap_or_else(|| {
                 get_default_cache_path(&cache_dir)
             });
+
+            println!("db_path: {:?}", db_path);
             
             //run_report(db_path, output_dir)?;
         },
@@ -145,11 +145,15 @@ async fn main() -> Result<()> {
             // Configure for all operations
             let mut extraction_config = config.to_pbo_cache_config();
             if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir;
+                extraction_config.cache_dir = cache_dir.clone();
+                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
+                extraction_config.mission_cache_dir = cache_dir.join("missions");
             }
             
             let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
-            let db_path = db_path.unwrap_or_else(|| get_default_cache_path(&extraction_config.cache_dir).join("arma3.db"));
+            let db_path = db_path.unwrap_or_else(|| get_default_cache_path(&extraction_config.cache_dir));
+            println!("output_dir: {:?}", output_dir);
+            println!("db_path: {:?}", db_path);
             
             // Run all operations in sequence
             run_extract(extraction_config.clone()).await?;
@@ -160,7 +164,9 @@ async fn main() -> Result<()> {
             // Configure diagnostic scan
             let mut extraction_config = config.to_pbo_cache_config();
             if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir;
+                extraction_config.cache_dir = cache_dir.clone();
+                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
+                extraction_config.mission_cache_dir = cache_dir.join("missions");
             }
             
             run_diagnostic(extraction_config).await?;
@@ -172,6 +178,10 @@ async fn main() -> Result<()> {
 
 // Extract PBO files
 async fn run_extract(config: ExtractionConfig) -> Result<()> {
+    // Save paths for logging later
+    let game_data_cache_dir = config.game_data_cache_dir.clone();
+    let mission_cache_dir = config.mission_cache_dir.clone();
+    
     // Extract game data
     info!("Extracting game data...");
     let paths = pbo_extract_game_data(config.clone()).await?;
@@ -192,6 +202,8 @@ async fn run_extract(config: ExtractionConfig) -> Result<()> {
           total_missions, total_files);
     
     info!("Extraction complete");
+    info!("Game data extracted to: {}", game_data_cache_dir.display());
+    info!("Missions extracted to: {}", mission_cache_dir.display());
     Ok(())
 }
 
@@ -201,28 +213,31 @@ async fn run_process(config: ExtractionConfig, db_path: PathBuf) -> Result<()> {
     // Process extracted files
     info!("Processing extracted files...");
     
+    // Create database manager
+    let db_config = CacheConfig::with_cache_dirs(
+        db_path.clone(),
+        config.cache_dir.clone(),
+        config.game_data_cache_dir.clone(),
+        config.mission_cache_dir.clone()
+    );
+    let db_manager = DatabaseManager::with_config(db_config)
+        .map_err(|e| anyhow::anyhow!("Failed to create database manager: {}", e))?;
+    
     // Process extracted game data
-    info!("Processing game data files...");
-    let scanner = arma3_tool::scanner::gamedata::GameDataScanner::with_database(config.clone(), db_path.clone())?;
-    let game_data = scanner.scan_only(false).await?;
+    info!("Processing game data files from {}...", config.game_data_cache_dir.display());
+    let scanner = arma3_tool::scanner::gamedata::GameDataScanner::with_database(config.clone(), db_manager.clone())?;
+    let game_data = scanner.scan(false).await?;
     info!("Processed {} game data classes", game_data.classes.len());
     
     // Save game data to database
     scanner.save_to_database(&game_data)?;
     info!("Saved game data to database");
     
-    // Get PBO metadata from the extractor
-    let mut extractor = ExtractionManager::new(config.clone())?;
-    // Get the CacheIndex from IndexManager and then get the game data metadata
-    let pbo_metadata = extractor.get_index().get_index().get_game_data_metadata();
-    
     // Process extracted missions
-    info!("Processing mission files...");
-    let scanner = arma3_tool::scanner::mission::MissionScanner::new(config.clone())?;
-    let mission_data = scanner.scan_only(None).await?;
+    info!("Processing mission files from {}...", config.mission_cache_dir.display());
+    let scanner = arma3_tool::scanner::mission::MissionScanner::with_database(config.clone(), db_manager)?;
+    let mission_data = scanner.scan().await?;
     info!("Processed {} missions", mission_data.missions.len());
-    
-    // TODO: Save missions to database
     
     Ok(())
 }
@@ -232,10 +247,26 @@ async fn run_diagnostic(config: ExtractionConfig) -> Result<()> {
     // Create a path for the diagnostic database
     let diagnostics_db_path = config.cache_dir.join("diagnostics.db");
     
+    // Create database manager
+    let db_config = CacheConfig::with_cache_dirs(
+        diagnostics_db_path.clone(),
+        config.cache_dir.clone(),
+        config.game_data_cache_dir.clone(),
+        config.mission_cache_dir.clone()
+    );
+    let db_manager = DatabaseManager::with_config(db_config)
+        .map_err(|e| anyhow::anyhow!("Failed to create database manager: {}", e))?;
+    
+    // First, extract game data files
+    info!("Extracting game data for diagnostic scan...");
+    info!("Game data will be extracted to: {}", config.game_data_cache_dir.display());
+    let paths = pbo_extract_game_data(config.clone()).await?;
+    info!("Game data extraction complete: {} paths processed", paths.len());
+    
     // Run diagnostic scan on game data files
     info!("Running diagnostic scan on game data files...");
-    let scanner = arma3_tool::scanner::gamedata::GameDataScanner::with_database(config, diagnostics_db_path)?;
-    let game_data = scanner.scan_only(true).await?;
+    let scanner = arma3_tool::scanner::gamedata::GameDataScanner::with_database(config, db_manager)?;
+    let game_data = scanner.scan(true).await?;
     
     // Don't save diagnostic data to database
     info!("Diagnostic scan found {} classes", game_data.classes.len());

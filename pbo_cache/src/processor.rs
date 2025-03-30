@@ -6,7 +6,6 @@ use tokio::task;
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
-use indicatif::{ProgressBar, ProgressStyle};
 use pbo_tools::extract::ExtractOptions;
 use pbo_tools::core::api::{PboApi, PboApiOps};
 
@@ -48,7 +47,7 @@ impl PboProcessor {
         pbos: Vec<PathBuf>,
         cache_dir: &Path,
         extensions: Vec<String>,
-        progress: bool,
+        _verbose: bool,
         on_failed_extraction: &mut F,
     ) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> 
     where
@@ -59,18 +58,6 @@ impl PboProcessor {
         }
 
         info!("Extracting {} PBOs to cache", pbos.len());
-
-        // Setup progress bar if requested
-        let progress_bar = if progress {
-            let pb = ProgressBar::new(pbos.len() as u64);
-            pb.set_style(ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} PBOs ({eta})")
-                .unwrap()
-                .progress_chars("#>-"));
-            Some(Arc::new(pb))
-        } else {
-            None
-        };
 
         // Shared result collection
         let results = Arc::new(Mutex::new(Vec::with_capacity(pbos.len())));
@@ -89,7 +76,6 @@ impl PboProcessor {
             let extensions = extensions.clone();
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
-            let pb_clone = progress_bar.clone();
             let semaphore_clone = Arc::clone(&semaphore);
             let processor = self.pbo_api.clone();
 
@@ -183,11 +169,6 @@ impl PboProcessor {
                         record_failure(format!("Extraction error: {}", e));
                     }
                 }
-
-                // Update progress bar
-                if let Some(pb) = pb_clone {
-                    pb.inc(1);
-                }
             });
 
             tasks.push(task);
@@ -196,11 +177,6 @@ impl PboProcessor {
         // Wait for all tasks to complete
         for task in tasks {
             let _ = task.await;
-        }
-
-        // Finish progress bar
-        if let Some(pb) = progress_bar {
-            pb.finish_with_message("Extraction complete");
         }
 
         // Process failures and update the index using the callback

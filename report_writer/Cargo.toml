@@ -6,7 +6,6 @@ edition.workspace = true
 [dependencies]
 arma3_tool_shared_models = { workspace = true }
 dashmap = { workspace = true }
-indicatif = { workspace = true }
 log = { workspace = true }
 prettytable-rs = { workspace = true }
 rayon = { workspace = true }
@@ -14,5 +13,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 strsim = { workspace = true }
 thiserror = { workspace = true }
-uuid = { workspace = true }
-rand = { workspace = true }

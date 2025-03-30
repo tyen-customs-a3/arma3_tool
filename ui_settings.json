@@ -1,5 +1,6 @@
 {
-  "default_cache_dir": "./cache/pca_next",
+  "default_cache_dir": "D:\\pca\\git\\dep\\rs\\arma3_tool\\cache\\pca_next",
   "dark_mode": true,
-  "visualization_config_path": "visualization_config.json"
+  "visualization_config_path": "visualization_config.json",
+  "last_database_path": "D:\\pca\\git\\dep\\rs\\arma3_tool\\cache\\pca_next\\arma3.db"
 }

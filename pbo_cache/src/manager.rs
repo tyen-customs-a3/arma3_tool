@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
-use std::fs;
-use log::{info, warn};
+use log::info;
 
 use crate::models::{ExtractionConfig, PboMetadata, PboType};
 use crate::scanner::PboScanner;
@@ -9,6 +8,8 @@ use crate::processor::PboProcessor;
 use crate::db_manager::DbManager;
 use crate::utils;
 use crate::error::{Result, CacheError};
+
+use arma3_db::models::pbo::{PboModel, ExtractedFile};
 
 /// Manager for PBO extraction and caching
 pub struct ExtractionManager {
@@ -49,12 +50,11 @@ impl ExtractionManager {
             .map_err(|e| CacheError::CacheDirectory(format!("Failed to create mission cache directory: {}", e)))?;
         
         // Create database manager
-        let db_path = config.db_path.clone().unwrap_or_else(|| config.cache_dir.join("arma3.db"));
         let db_manager = DbManager::new(
             &config.cache_dir,
             &config.game_data_cache_dir,
             &config.mission_cache_dir,
-            &db_path,
+            &config.db_path,
         ).map_err(|e| CacheError::IndexOperation(format!("Failed to create database manager: {}", e)))?;
         
         // Create processor
@@ -68,6 +68,11 @@ impl ExtractionManager {
             db_manager,
             processor,
         })
+    }
+    
+    /// Get a reference to the database manager
+    pub fn get_db_manager(&self) -> &DbManager {
+        &self.db_manager
     }
     
     /// Helper method to determine if a PBO needs extraction
@@ -219,11 +224,7 @@ impl ExtractionManager {
         }
         
         // Check if extraction is needed
-        let needs_extraction = self.needs_extraction(
-            mission_path,
-            PboType::Mission,
-            &self.config.mission_extensions,
-        )?;
+        let needs_extraction = self.needs_extraction(mission_path, PboType::Mission, &self.config.mission_extensions)?;
         
         if !needs_extraction {
             info!("Mission PBO already extracted and up to date");
@@ -341,7 +342,7 @@ impl ExtractionManager {
             for model in mission_models {
                 // Get the extracted files for this PBO
                 let extracted_files = self.db_manager.pbo_repo.get_extracted_files(&model.id)
-                    .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files: {}", e)))?;
+                    .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files for {}: {}", model.id, e)))?;
                 
                 if !extracted_files.is_empty() {
                     // Convert from database model to full paths
@@ -409,7 +410,7 @@ impl ExtractionManager {
             
             // Get the extracted files for this PBO
             let extracted_files = self.db_manager.pbo_repo.get_extracted_files(&model.id)
-                .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files: {}", e)))?;
+                .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files for {}: {}", model.id, e)))?;
             
             if !extracted_files.is_empty() {
                 // Convert from database model to full paths
@@ -424,128 +425,19 @@ impl ExtractionManager {
         info!("Processed {} mission PBOs", results.len());
         Ok(results)
     }
-    
-    /// Cleanup the cache by removing files for PBOs that no longer exist
-    /// and removing orphaned cache files
-    pub fn cleanup_cache(&mut self) -> Result<()> {
-        info!("Cleaning up cache");
-        
-        let mut removed_count = 0;
-        let mut removed_files_count = 0;
-        
-        // Get all PBO models from the database
-        let game_data_models = self.db_manager.get_game_data_metadata()?;
-        let mission_models = self.db_manager.get_mission_metadata()?;
-        
-        // Check game data PBOs
-        for model in &game_data_models {
-            let full_path = &model.full_path;
-            
-            if !full_path.exists() {
-                info!("Removing cache entry for non-existent PBO: {}", full_path.display());
-                
-                // Remove PBO from database
-                if let Err(e) = self.db_manager.pbo_repo.delete(&model.id) {
-                    warn!("Failed to remove cache entry: {}", e);
-                    continue;
-                }
-                
-                // Remove cached files
-                let extracted_files = match self.db_manager.pbo_repo.get_extracted_files(&model.id) {
-                    Ok(files) => files,
-                    Err(e) => {
-                        warn!("Failed to get extracted files: {}", e);
-                        continue;
-                    }
-                };
-                
-                for file in &extracted_files {
-                    let full_path = file.get_full_path(&self.config.game_data_cache_dir);
-                    if full_path.exists() {
-                        if let Err(e) = fs::remove_file(&full_path) {
-                            warn!("Failed to remove cached file {}: {}", full_path.display(), e);
-                        } else {
-                            removed_files_count += 1;
-                        }
-                    }
-                }
-                
-                removed_count += 1;
-            }
-        }
-        
-        // Check mission PBOs
-        for model in &mission_models {
-            let full_path = &model.full_path;
-            
-            if !full_path.exists() {
-                info!("Removing cache entry for non-existent mission PBO: {}", full_path.display());
-                
-                // Remove PBO from database
-                if let Err(e) = self.db_manager.pbo_repo.delete(&model.id) {
-                    warn!("Failed to remove cache entry: {}", e);
-                    continue;
-                }
-                
-                // Remove cached files
-                let extracted_files = match self.db_manager.pbo_repo.get_extracted_files(&model.id) {
-                    Ok(files) => files,
-                    Err(e) => {
-                        warn!("Failed to get extracted files: {}", e);
-                        continue;
-                    }
-                };
-                
-                for file in &extracted_files {
-                    let full_path = file.get_full_path(&self.config.mission_cache_dir);
-                    if full_path.exists() {
-                        if let Err(e) = fs::remove_file(&full_path) {
-                            warn!("Failed to remove cached file {}: {}", full_path.display(), e);
-                        } else {
-                            removed_files_count += 1;
-                        }
-                    }
-                }
-                
-                // Try to remove empty directories
-                if !extracted_files.is_empty() {
-                    if let Some(first_file) = extracted_files.first() {
-                        if let Some(rel_dir) = first_file.relative_path.parent() {
-                            let full_dir = self.config.mission_cache_dir.join(rel_dir);
-                            if full_dir.exists() {
-                                if let Ok(entries) = fs::read_dir(&full_dir) {
-                                    if entries.count() == 0 {
-                                        if let Err(e) = fs::remove_dir(&full_dir) {
-                                            warn!("Failed to remove empty mission cache directory {}: {}", full_dir.display(), e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                removed_count += 1;
-            }
-        }
-        
-        if removed_count > 0 {
-            info!("Removed {} cache entries and {} cached files for non-existent PBOs", 
-                removed_count, removed_files_count);
-        } else {
-            info!("No cleanup needed, all cached PBOs still exist");
-        }
-        
-        Ok(())
-    }
 
     /// Update metadata in the database
     pub fn update_metadata(&mut self, metadata: PboMetadata) -> Result<()> {
         self.db_manager.update_metadata(metadata)
     }
 
-    /// Get the database manager
-    pub fn get_db_manager(&self) -> &DbManager {
-        &self.db_manager
+    /// Find the source PBO for a file path
+    pub fn find_pbo_for_file(&self, file_path: &Path) -> Result<Option<PboModel>> {
+        self.db_manager.find_pbo_for_file(file_path)
+    }
+    
+    /// Find all files with a specific extension
+    pub fn find_files_by_extension(&self, extension: &str) -> Result<Vec<ExtractedFile>> {
+        self.db_manager.find_files_by_extension(extension)
     }
 } 

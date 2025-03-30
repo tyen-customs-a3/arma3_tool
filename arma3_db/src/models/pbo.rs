@@ -175,21 +175,49 @@ pub struct ExtractedFile {
     
     /// Path relative to cache directory
     pub relative_path: PathBuf,
+    
+    /// File extension (cached for faster filtering)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension: Option<String>,
+    
+    /// File name without path (cached for faster lookups)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
 }
 
 impl ExtractedFile {
     /// Create a new extracted file
     pub fn new(pbo_id: impl Into<String>, relative_path: impl AsRef<Path>) -> Self {
+        let path_ref = relative_path.as_ref();
+        let extension = path_ref.extension().map(|e| e.to_string_lossy().to_string());
+        let file_name = path_ref.file_name().map(|f| f.to_string_lossy().to_string());
+        
         Self {
             id: None,
             pbo_id: pbo_id.into(),
-            relative_path: relative_path.as_ref().to_path_buf(),
+            relative_path: path_ref.to_path_buf(),
+            extension,
+            file_name,
         }
     }
     
     /// Get the full path by combining with a cache directory
     pub fn get_full_path(&self, cache_dir: impl AsRef<Path>) -> PathBuf {
         cache_dir.as_ref().join(&self.relative_path)
+    }
+    
+    /// Get the file extension (calculating it if not cached)
+    pub fn get_extension(&self) -> Option<String> {
+        self.extension.clone().or_else(|| {
+            self.relative_path.extension().map(|e| e.to_string_lossy().to_string())
+        })
+    }
+    
+    /// Get the file name without path (calculating it if not cached)
+    pub fn get_file_name(&self) -> Option<String> {
+        self.file_name.clone().or_else(|| {
+            self.relative_path.file_name().map(|f| f.to_string_lossy().to_string())
+        })
     }
 }
 

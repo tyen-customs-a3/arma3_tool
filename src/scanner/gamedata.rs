@@ -1,31 +1,22 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::collections::HashMap;
 use std::fs;
-use log::{info, warn, error};
+use log::{info, warn};
 use crate::error::{Result, ToolError};
-use arma3_tool_pbo_cache::ExtractionManager;
 use arma3_tool_shared_models::{GameDataClasses, GameDataClass, PropertyValue};
-use walkdir::WalkDir;
 use gamedata_scanner::{
     GameClass, 
-    ClassProperty, 
     PropertyValue as GameDataScannerPropertyValue,
     Scanner,
-    ScannerConfig,
-    ScannerResult
+    ScannerConfig
 };
-use gamedata_scanner::scanner::FileScanResult;
-use serde_json;
 use chrono::Utc;
-use std::collections::HashSet;
 use arma3_db::{DatabaseManager, repos::ClassRepository};
 
 /// Scanner for game data PBOs
 pub struct GameDataScanner {
     /// Cache directory
     cache_dir: PathBuf,
-    /// PBO extractor
-    extractor: ExtractionManager,
     /// Output directory for scan results
     output_dir: PathBuf,
     /// Use advanced scanner for more accurate but slower parsing
@@ -35,66 +26,47 @@ pub struct GameDataScanner {
 }
 
 impl GameDataScanner {
-    /// Create a new game data scanner
-    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
+    /// Helper function to create a new scanner with common initialization
+    fn create_scanner(
+        config: arma3_tool_pbo_cache::ExtractionConfig,
+        db_manager: Option<DatabaseManager>
+    ) -> Result<Self> {
         let cache_dir = config.cache_dir.clone();
         let output_dir = cache_dir.join("scan_results");
-        let extractor = ExtractionManager::new(config)
-            .map_err(|e| ToolError::CacheError(format!("Failed to create PBO extractor: {}", e)))?;
-            
+        
         // Ensure output directory exists
         fs::create_dir_all(&output_dir)
             .map_err(|e| ToolError::IoError(format!("Failed to create output directory: {}", e)))?;
             
         Ok(Self { 
             cache_dir, 
-            extractor, 
             output_dir,
             use_advanced_scanner: true,
-            db_manager: None,
+            db_manager,
         })
     }
+
+    /// Create a new game data scanner
+    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
+        Self::create_scanner(config, None)
+    }
     
-    /// Create a new game data scanner with database support
-    pub fn with_database(config: arma3_tool_pbo_cache::ExtractionConfig, db_path: PathBuf) -> Result<Self> {
-        let cache_dir = config.cache_dir.clone();
-        let output_dir = cache_dir.join("scan_results");
-        let extractor = ExtractionManager::new(config.clone())
-            .map_err(|e| ToolError::CacheError(format!("Failed to create PBO extractor: {}", e)))?;
-            
-        // Ensure output directory exists
-        fs::create_dir_all(&output_dir)
-            .map_err(|e| ToolError::IoError(format!("Failed to create output directory: {}", e)))?;
+    /// Create a new game data scanner with provided database manager
+    pub fn with_database(config: arma3_tool_pbo_cache::ExtractionConfig, db_manager: DatabaseManager) -> Result<Self> {
+        Self::create_scanner(config, Some(db_manager))
+    }
+    
+    /// Create a new game data scanner with database connection from the specified path
+    pub fn with_database_path(config: arma3_tool_pbo_cache::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
+        let db_config = arma3_db::models::CacheConfig::new(
+            db_path.to_str().unwrap_or("arma3.db"), 
+            config.cache_dir.to_str().unwrap_or("cache")
+        );
         
-        // Create database config and manager
-        let db_config = arma3_db::models::DatabaseConfig::new(db_path, cache_dir.clone());
         let db_manager = DatabaseManager::with_config(db_config)
             .map_err(|e| ToolError::DatabaseError(format!("Failed to create database manager: {}", e)))?;
             
-        Ok(Self { 
-            cache_dir, 
-            extractor, 
-            output_dir,
-            use_advanced_scanner: true,
-            db_manager: Some(db_manager),
-        })
-    }
-    
-    /// Set whether to use the advanced scanner
-    pub fn set_advanced_scanner(&mut self, use_advanced: bool) {
-        self.use_advanced_scanner = use_advanced;
-    }
-    
-    /// Extract PBOs without scanning (preparation step)
-    pub async fn extract_only(&mut self, dirs: Option<Vec<String>>) -> Result<Vec<PathBuf>> {
-        info!("Extracting game data PBOs...");
-        
-        // Process all game data PBOs
-        let extraction_results = self.extractor.process_game_data(false).await
-            .map_err(|e| ToolError::CacheError(format!("Failed to process game data: {}", e)))?;
-            
-        info!("Extracted {} game data files", extraction_results.len());
-        Ok(extraction_results)
+        Self::create_scanner(config, Some(db_manager))
     }
     
     /// Convert a GameDataScannerPropertyValue to PropertyValue
@@ -116,7 +88,7 @@ impl GameDataScanner {
             properties.insert(prop.name.clone(), Self::convert_property_value(&prop.value));
         }
         
-        let mut game_class = GameDataClass {
+        let game_class = GameDataClass {
             name: class.name.clone(),
             parent: class.parent.clone(),
             container_class: class.container_class.clone(),
@@ -127,8 +99,8 @@ impl GameDataScanner {
         Some(game_class)
     }
     
-    /// Scan classes from previously extracted PBOs
-    pub async fn scan_only(&self, diagnostic_mode: bool) -> Result<GameDataClasses> {
+    /// Scan classes from extracted PBOs
+    pub async fn scan(&self, diagnostic_mode: bool) -> Result<GameDataClasses> {
         let gamedata_dir = self.cache_dir.join("gamedata");
         info!("Scanning extracted game data PBOs in {}", gamedata_dir.display());
         
@@ -209,12 +181,6 @@ impl GameDataScanner {
         }
         
         Ok(classes)
-    }
-    
-    /// Scan game data
-    pub async fn scan(&mut self, dirs: Option<Vec<String>>, diagnostic_mode: bool) -> Result<GameDataClasses> {
-        let _extracted = self.extract_only(dirs).await?;
-        self.scan_only(diagnostic_mode).await
     }
     
     /// Save game data to database

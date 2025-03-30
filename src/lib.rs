@@ -2,14 +2,7 @@ pub mod config;
 pub mod error;
 pub mod scanner;
 pub mod types;
-pub mod ui;
-pub mod workflow;
 
-use std::path::{Path, PathBuf};
-use log::{debug, info, warn, error};
-use std::collections::HashMap;
-use arma3_tool_shared_models::{GameDataClasses, MissionData};
-use arma3_tool_pbo_cache::{ExtractionConfig, ExtractionManager};
 
 pub use error::{Result, ToolError};
 
@@ -19,57 +12,66 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use arma3_tool_pbo_cache::{
     PboMetadata,
     PboType,
-    CacheIndex,
 };
 
 pub mod bin {
     pub mod cache_builder {
-        use std::collections::HashMap;
-        use std::path::PathBuf;
+        
         use crate::error::Result;
-        use arma3_tool_shared_models::{GameDataClasses, MissionData};
-        use arma3_tool_pbo_cache::ExtractionConfig;
+        use arma3_tool_pbo_cache::{extract_game_data, ExtractionManager};
         use crate::scanner::gamedata::GameDataScanner;
         use crate::scanner::mission::MissionScanner;
+        use crate::config::ScanConfig;
         use log::info;
-        use arma3_db::DatabaseManager;
         
-        pub async fn build_cache(cache_dir: PathBuf) -> Result<()> {
-            let config = ExtractionConfig {
-                cache_dir: cache_dir.clone(),
-                game_data_cache_dir: cache_dir.join("gamedata"),
-                mission_cache_dir: cache_dir.join("missions"),
-                game_data_dirs: vec![PathBuf::from("./addons")],
-                game_data_extensions: vec!["hpp".into(), "cpp".into(), "sqf".into()],
-                mission_dirs: vec![PathBuf::from("./missions")],
-                mission_extensions: vec!["sqm".into(), "sqf".into()],
-                threads: num_cpus::get(),
-                timeout: 300,
-                verbose: true,
+        
+        pub async fn build_cache(config: ScanConfig) -> Result<()> {
+            let pbo_cache_config = config.to_pbo_cache_config();
+            let cache_dir = config.cache_dir.clone();
+            
+            // Determine database path from config
+            let db_path = match &config.database_path {
+                Some(path) => path.clone(),
+                None => cache_dir.join("arma3.db"),
             };
             
-            // Create database file path
-            let db_path = cache_dir.join("arma3.db");
+            info!("Using database at {}", db_path.display());
+            info!("Game data will be extracted to: {}", pbo_cache_config.game_data_cache_dir.display());
+            info!("Missions will be extracted to: {}", pbo_cache_config.mission_cache_dir.display());
+            
+            // First, extract all game data files
+            info!("Extracting game data...");
+            let game_data_paths = extract_game_data(pbo_cache_config.clone()).await
+                .map_err(|e| crate::error::ToolError::ExtractionError(format!("Failed to extract game data: {}", e)))?;
+            info!("Extracted {} game data files", game_data_paths.len());
+            
+            // Next, extract all mission files
+            info!("Extracting missions...");
+            let mut extraction_manager = ExtractionManager::new(pbo_cache_config.clone())
+                .map_err(|e| crate::error::ToolError::ExtractionError(format!("Failed to create extraction manager: {}", e)))?;
+            let mission_results = extraction_manager.process_all_missions(false).await
+                .map_err(|e| crate::error::ToolError::ExtractionError(format!("Failed to extract missions: {}", e)))?;
+            let total_missions = mission_results.len();
+            let total_files: usize = mission_results.values().map(|files| files.len()).sum();
+            info!("Extracted {} missions with {} total files", total_missions, total_files);
             
             // Create scanners with database support
-            let mut game_data_scanner = GameDataScanner::with_database(config.clone(), db_path.clone())?;
-            let mut mission_scanner = MissionScanner::new(config.clone())?;
+            let game_data_scanner = GameDataScanner::with_database_path(pbo_cache_config.clone(), &db_path)?;
+            let mission_scanner = MissionScanner::with_database_path(pbo_cache_config.clone(), &db_path)?;
             
-            // Extract and scan game data
-            info!("Scanning game data...");
-            let game_data = game_data_scanner.scan(None, false).await?;
+            // Scan game data
+            info!("Scanning game data from {}...", pbo_cache_config.game_data_cache_dir.display());
+            let game_data = game_data_scanner.scan(false).await?;
             
             // Save game data to database
-            info!("Saving game data to database...");
+            info!("Saving game data to database at {}...", db_path.display());
             game_data_scanner.save_to_database(&game_data)?;
             
-            // Extract and scan missions
-            info!("Scanning missions...");
-            let mission_data = mission_scanner.scan(None).await?;
+            // Scan missions
+            info!("Scanning missions from {}...", pbo_cache_config.mission_cache_dir.display());
+            let _mission_data = mission_scanner.scan().await?;
             
-            // Create database manager for mission data
-            info!("Saving mission data to database...");
-            // TODO: Add mission data database support
+            // Mission data is saved individually during the scan process
             
             info!("Cache building complete");
             

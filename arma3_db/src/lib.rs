@@ -9,6 +9,7 @@ pub mod error;
 pub mod models;
 pub mod schema;
 pub mod queries;
+pub mod repos;
 
 use std::path::{Path, PathBuf};
 use std::fs;
@@ -18,17 +19,20 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 
 pub use error::{Result, DatabaseError};
-pub use models::{DatabaseConfig, DatabaseStats};
+pub use models::{CacheConfig, DatabaseStats};
 pub use schema::initialize_schema;
 // Re-export repository types for easier access
-pub use queries::pbo_repository::PboRepository;
-pub use queries::class_repository::ClassRepository;
+pub use queries::cache::Cache;
+// Use our custom ClassRepository instead of the queries one
+// pub use queries::class_repository::ClassRepository;
 pub use queries::mission_repository::MissionRepository;
 pub use queries::graph_query_engine::GraphQueryEngine;
 // Re-export model types for easier access
 pub use models::pbo::{PboModel, PboType, ExtractedFile, FailedExtraction, normalize_path};
 pub use models::class::{ClassModel, ClassHierarchyNode};
 pub use models::mission::{MissionModel, MissionComponentModel, MissionDependencyModel};
+// Re-export repo types
+pub use repos::ClassRepository;
 
 /// Version of the crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -40,18 +44,18 @@ pub struct DatabaseManager {
     pool: Pool<SqliteConnectionManager>,
     
     /// Configuration
-    config: DatabaseConfig,
+    config: CacheConfig,
 }
 
 impl DatabaseManager {
     /// Create a new database manager with default configuration
     pub fn new(db_path: impl Into<PathBuf>) -> Result<Self> {
-        let config = DatabaseConfig::new(db_path, "cache");
+        let config = CacheConfig::new(db_path, "cache");
         Self::with_config(config)
     }
     
     /// Create a new database manager with custom configuration
-    pub fn with_config(config: DatabaseConfig) -> Result<Self> {
+    pub fn with_config(config: CacheConfig) -> Result<Self> {
         // Ensure parent directories exist
         if let Some(parent) = config.db_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
@@ -115,7 +119,7 @@ impl DatabaseManager {
     }
     
     /// Get the database configuration
-    pub fn config(&self) -> &DatabaseConfig {
+    pub fn config(&self) -> &CacheConfig {
         &self.config
     }
     
@@ -269,14 +273,6 @@ impl DatabaseManager {
         
         Ok(())
     }
-}
-
-/// Re-export repository types directly from the crate root for convenience
-pub mod repos {
-    pub use crate::queries::pbo_repository::PboRepository;
-    pub use crate::queries::class_repository::ClassRepository;
-    pub use crate::queries::mission_repository::MissionRepository;
-    pub use crate::queries::graph_query_engine::GraphQueryEngine;
 }
 
 #[cfg(test)]

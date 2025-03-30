@@ -43,7 +43,7 @@ async fn main() -> Result<()> {
         threads: 4,
         timeout: 60,
         verbose: true,
-        db_path: Some(cache_dir.join("pbo_cache.db")),
+        db_path: cache_dir.join("pbo_cache.db"),
     };
     
     // Create the extraction manager

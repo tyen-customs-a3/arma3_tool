@@ -1,6 +1,6 @@
 //! PBO Cache - A library for managing extraction and caching of Arma 3 PBO files
 //!
-//! This crate provides functionality for:
+//! This crate provides core functionality for:
 //! - Scanning directories for PBO files
 //! - Extracting PBO contents to a cache location
 //! - Managing cache validity based on file modifications and extension filters
@@ -19,6 +19,9 @@ pub use manager::ExtractionManager;
 pub use models::{PboMetadata, PboType, ExtractionConfig};
 pub use error::{CacheError, Result};
 pub use db_manager::DbManager;
+
+// Re-export Arma3DB models for convenience
+pub use arma3_db::models::pbo::{PboModel, ExtractedFile};
 
 // Convenience re-exports of core functionality
 pub use manager::{extract_game_data, extract_mission};

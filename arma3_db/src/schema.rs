@@ -3,7 +3,9 @@ use crate::error::{Result, DatabaseError};
 use log::{info, debug};
 
 /// Database schema version
-pub const SCHEMA_VERSION: i32 = 2;
+/// NOTE: We do not support migration between schema versions.
+/// If the database schema version doesn't match, the database needs to be deleted and recreated.
+pub const SCHEMA_VERSION: i32 = 5;
 
 /// Initialize database schema
 pub fn initialize_schema(conn: &mut Connection) -> Result<()> {
@@ -80,10 +82,8 @@ fn create_tables(tx: &rusqlite::Transaction) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS classes (
             id TEXT PRIMARY KEY,
             parent_id TEXT,
-            source_pbo_id TEXT,
             source_file_index INTEGER,
-            FOREIGN KEY(parent_id) REFERENCES classes(id),
-            FOREIGN KEY(source_pbo_id) REFERENCES pbo_files(id)
+            FOREIGN KEY(parent_id) REFERENCES classes(id)
         )",
         [],
     )?;
@@ -108,6 +108,8 @@ fn create_tables(tx: &rusqlite::Transaction) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pbo_id TEXT NOT NULL,
             relative_path TEXT NOT NULL,
+            extension TEXT,
+            file_name TEXT,
             FOREIGN KEY(pbo_id) REFERENCES pbo_files(id)
         )",
         [],
@@ -119,6 +121,18 @@ fn create_tables(tx: &rusqlite::Transaction) -> Result<()> {
             pbo_id TEXT PRIMARY KEY,
             timestamp TEXT NOT NULL,
             error_message TEXT NOT NULL,
+            FOREIGN KEY(pbo_id) REFERENCES pbo_files(id)
+        )",
+        [],
+    )?;
+    
+    // File index mapping table
+    tx.execute(
+        "CREATE TABLE IF NOT EXISTS file_index_mapping (
+            file_index INTEGER PRIMARY KEY,
+            file_path TEXT NOT NULL,
+            normalized_path TEXT NOT NULL,
+            pbo_id TEXT,
             FOREIGN KEY(pbo_id) REFERENCES pbo_files(id)
         )",
         [],
@@ -181,14 +195,28 @@ fn create_indexes(tx: &rusqlite::Transaction) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_classes_parent ON classes(parent_id)",
         [],
     )?;
+    
+    // Extracted files indexes
     tx.execute(
-        "CREATE INDEX IF NOT EXISTS idx_classes_pbo ON classes(source_pbo_id)",
+        "CREATE INDEX IF NOT EXISTS idx_extracted_files_pbo ON extracted_files(pbo_id)",
+        [],
+    )?;
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_extracted_files_path ON extracted_files(relative_path)",
+        [],
+    )?;
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_extracted_files_ext ON extracted_files(extension)",
+        [],
+    )?;
+    tx.execute(
+        "CREATE INDEX IF NOT EXISTS idx_extracted_files_name ON extracted_files(file_name)",
         [],
     )?;
     
-    // Extracted files index
+    // File index mapping indexes
     tx.execute(
-        "CREATE INDEX IF NOT EXISTS idx_extracted_files_pbo ON extracted_files(pbo_id)",
+        "CREATE INDEX IF NOT EXISTS idx_file_index_mapping_normalized_path ON file_index_mapping(normalized_path)",
         [],
     )?;
     

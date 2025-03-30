@@ -26,6 +26,7 @@ pub struct ScanConfig {
     pub mission_extensions: Vec<String>,
     pub cache_dir: PathBuf,
     pub report_dir: PathBuf,
+    pub database_path: Option<PathBuf>,
     pub threads: usize,
 }
 
@@ -38,6 +39,7 @@ impl Default for ScanConfig {
             mission_extensions: vec!["pbo".to_string()],
             cache_dir: PathBuf::from("cache"),
             report_dir: PathBuf::from("reports"),
+            database_path: None,
             threads: 4,
         }
     }
@@ -78,15 +80,26 @@ impl ScanConfig {
             .map(PathBuf::from)
             .collect();
 
-        ExtractionConfig::for_arma3_tool(
-            self.cache_dir.clone(),
-            game_data_dirs,
-            self.game_data_extensions.clone(),
-            mission_dirs,
-            self.mission_extensions.clone(),
-            self.threads,
-            60,
-        )
+        let mut config = ExtractionConfig::new(self.cache_dir.clone());
+        config.cache_dir = self.cache_dir.clone();
+        config.game_data_cache_dir = self.cache_dir.join("gamedata"); 
+        config.mission_cache_dir = self.cache_dir.join("missions");
+        config.game_data_dirs = game_data_dirs;
+        config.game_data_extensions = self.game_data_extensions.clone();
+        config.mission_dirs = mission_dirs;
+        config.mission_extensions = self.mission_extensions.clone();
+        config.threads = self.threads;
+        config.timeout = 60;
+        
+        // Set database path if available
+        if let Some(db_path) = &self.database_path {
+            config.db_path = db_path.clone();
+        } else {
+            // Default to a database file in the cache directory
+            config.db_path = self.cache_dir.join("arma3.db");
+        }
+        
+        config
     }
 }
 
@@ -96,6 +109,7 @@ pub struct UiSettings {
     pub default_cache_dir: Option<PathBuf>,
     pub dark_mode: bool,
     pub visualization_config_path: Option<PathBuf>,
+    pub last_database_path: Option<PathBuf>,
 }
 
 impl Default for UiSettings {
@@ -104,6 +118,7 @@ impl Default for UiSettings {
             default_cache_dir: None,
             dark_mode: true,
             visualization_config_path: Some(PathBuf::from("visualization_config.json")),
+            last_database_path: None,
         }
     }
 }

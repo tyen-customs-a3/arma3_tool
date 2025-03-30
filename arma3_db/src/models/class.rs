@@ -9,9 +9,6 @@ pub struct ClassModel {
     /// Parent class identifier (can be None for root classes)
     pub parent_id: Option<String>,
     
-    /// Reference to the PBO containing this class
-    pub source_pbo_id: Option<String>,
-    
     /// Original file index for compatibility with GameDataClass
     pub source_file_index: Option<usize>,
 }
@@ -21,37 +18,29 @@ impl ClassModel {
     pub fn new(
         id: impl Into<String>,
         parent_id: Option<impl Into<String>>,
-        source_pbo_id: Option<impl Into<String>>,
         source_file_index: Option<usize>,
     ) -> Self {
         Self {
             id: id.into(),
             parent_id: parent_id.map(Into::into),
-            source_pbo_id: source_pbo_id.map(Into::into),
             source_file_index,
         }
     }
     
     /// Convert from a GameDataClass
     pub fn from_game_data_class(
-        class: &arma3_tool_shared_models::GameDataClass,
-        pbo_map: &std::collections::HashMap<usize, String>,
+        class: &arma3_tool_shared_models::gamedata::GameDataClass,
     ) -> Self {
-        let source_pbo_id = class.source_file_index
-            .and_then(|idx| pbo_map.get(&idx))
-            .cloned();
-            
         Self {
             id: class.name.clone(),
             parent_id: class.parent.clone(),
-            source_pbo_id,
             source_file_index: class.source_file_index,
         }
     }
     
     /// Convert to a GameDataClass
-    pub fn to_game_data_class(&self) -> arma3_tool_shared_models::GameDataClass {
-        arma3_tool_shared_models::GameDataClass {
+    pub fn to_game_data_class(&self) -> arma3_tool_shared_models::gamedata::GameDataClass {
+        arma3_tool_shared_models::gamedata::GameDataClass {
             name: self.id.clone(),
             parent: self.parent_id.clone(),
             container_class: None,
@@ -73,8 +62,8 @@ pub struct ClassHierarchyNode {
     /// Depth in the hierarchy
     pub depth: i32,
     
-    /// Source PBO identifier
-    pub source_pbo_id: Option<String>,
+    /// Source file index
+    pub source_file_index: Option<usize>,
 }
 
 /// Graph node data structure for visualization
@@ -86,8 +75,8 @@ pub struct GraphNode {
     /// Node type/status
     pub node_type: NodeType,
     
-    /// Source PBO identifier
-    pub source_pbo_id: Option<String>,
+    /// Source file index
+    pub source_file_index: Option<usize>,
 }
 
 /// Node status/type for visualization
@@ -135,12 +124,11 @@ pub struct ImpactAnalysisResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     
     #[test]
     fn test_class_model_conversion() {
         // Create a GameDataClass
-        let game_data_class = arma3_tool_shared_models::GameDataClass {
+        let game_data_class = arma3_tool_shared_models::gamedata::GameDataClass {
             name: "TestClass".to_string(),
             parent: Some("ParentClass".to_string()),
             container_class: None,
@@ -148,16 +136,11 @@ mod tests {
             source_file_index: Some(1),
         };
         
-        // Create PBO mapping
-        let mut pbo_map = HashMap::new();
-        pbo_map.insert(1, "test.pbo".to_string());
-        
         // Convert to ClassModel
-        let class_model = ClassModel::from_game_data_class(&game_data_class, &pbo_map);
+        let class_model = ClassModel::from_game_data_class(&game_data_class);
         
         assert_eq!(class_model.id, "TestClass");
         assert_eq!(class_model.parent_id, Some("ParentClass".to_string()));
-        assert_eq!(class_model.source_pbo_id, Some("test.pbo".to_string()));
         assert_eq!(class_model.source_file_index, Some(1));
         
         // Convert back to GameDataClass

@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
         threads: num_cpus::get(),
         timeout: 60,
         verbose: true,
-        db_path: Some(PathBuf::from("./cache/pbo_cache.db")),
+        db_path: PathBuf::from("./cache/pbo_cache.db"),
     };
     
     // Create extraction manager
@@ -46,10 +46,6 @@ async fn main() -> Result<()> {
     info!("Processing missions...");
     let mission_files = manager.process_all_missions(false).await?;
     info!("Processed {} missions", mission_files.len());
-    
-    // Clean up cache
-    info!("Cleaning up cache...");
-    manager.cleanup_cache()?;
     
     info!("All done!");
     Ok(())

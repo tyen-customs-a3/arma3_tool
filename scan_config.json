@@ -20,5 +20,6 @@
   ],
   "cache_dir": "./cache/pca_next",
   "report_dir": "./reports_pca_next",
+  "database_path": "./cache/pca_next/arma3.db",
   "threads": 31
 }

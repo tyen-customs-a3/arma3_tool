@@ -2,7 +2,6 @@ use crate::utils;
 use crate::error::Result;
 use crate::utils::mission_dependency_builder::{Dependency, ScanReport};
 use arma3_tool_shared_models::GameDataClasses;
-use indicatif::{ProgressBar, ProgressStyle};
 use prettytable::{Row, Cell};
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -42,26 +41,14 @@ impl<'a> FuzzySearchReportWriter<'a> {
             similar_classes: HashMap::new(),
         };
 
-        // Create progress bar for the main process
-        let pb = ProgressBar::new(self.report.missing.len() as u64);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({percent}%) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message("Analyzing missing dependencies...");
-
         // Process each missing dependency
         for missing_dep in &self.report.missing {
-            pb.inc(1);
-            pb.set_message(format!("Analyzing: {}", missing_dep.class_name));
 
             let similar = self.find_similar_classes(&missing_dep.class_name);
             if !similar.is_empty() {
                 fuzzy_report.similar_classes.insert(missing_dep.class_name.clone(), similar);
             }
         }
-
-        pb.finish_with_message("Analysis complete!");
 
         // Write the report
         self.write_fuzzy_text_report(&fuzzy_report, output_path)?;

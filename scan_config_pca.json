@@ -10,5 +10,6 @@
     "mission_extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
     "cache_dir": "./cache",
     "report_dir": "./reports",
+    "database_path": "./cache/arma3_pca.db",
     "threads": 31
 }

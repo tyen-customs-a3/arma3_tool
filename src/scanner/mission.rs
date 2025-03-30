@@ -1,39 +1,66 @@
 use std::path::PathBuf;
 use std::fs;
-use log::{info, warn, error};
+use log::{info, error};
 use crate::error::{Result, ToolError};
-use arma3_tool_pbo_cache::ExtractionManager;
 use arma3_tool_shared_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
-use walkdir::WalkDir;
 use mission_scanner::{scan_mission, MissionScannerConfig, ReferenceType as ScannerReferenceType};
 use serde_json;
 use chrono::Utc;
 use num_cpus;
 use tokio::sync::Semaphore;
+use arma3_db::MissionRepository;
 
 /// Scanner for mission PBOs
 pub struct MissionScanner {
     /// Cache directory
     cache_dir: PathBuf,
-    /// PBO extractor
-    extractor: ExtractionManager,
     /// Output directory for scan results
     output_dir: PathBuf,
+    /// Database manager, if database storage is enabled
+    db_manager: Option<arma3_db::DatabaseManager>,
 }
 
 impl MissionScanner {
-    /// Create a new mission scanner
-    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
+    /// Helper function to create a new scanner with common initialization
+    fn create_scanner(
+        config: arma3_tool_pbo_cache::ExtractionConfig, 
+        db_manager: Option<arma3_db::DatabaseManager>
+    ) -> Result<Self> {
         let cache_dir = config.cache_dir.clone();
         let output_dir = cache_dir.join("scan_results");
-        let extractor = ExtractionManager::new(config)
-            .map_err(|e| ToolError::CacheError(format!("Failed to create PBO extractor: {}", e)))?;
-            
+        
         // Ensure output directory exists
         fs::create_dir_all(&output_dir)
             .map_err(|e| ToolError::IoError(format!("Failed to create output directory: {}", e)))?;
             
-        Ok(Self { cache_dir, extractor, output_dir })
+        Ok(Self { 
+            cache_dir, 
+            output_dir,
+            db_manager,
+        })
+    }
+
+    /// Create a new mission scanner
+    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
+        Self::create_scanner(config, None)
+    }
+    
+    /// Create a new mission scanner with a database manager
+    pub fn with_database(config: arma3_tool_pbo_cache::ExtractionConfig, db_manager: arma3_db::DatabaseManager) -> Result<Self> {
+        Self::create_scanner(config, Some(db_manager))
+    }
+    
+    /// Create a new mission scanner with database connection from the specified path
+    pub fn with_database_path(config: arma3_tool_pbo_cache::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
+        let db_config = arma3_db::models::CacheConfig::new(
+            db_path.to_str().unwrap_or("arma3.db"), 
+            config.cache_dir.to_str().unwrap_or("cache")
+        );
+        
+        let db_manager = arma3_db::DatabaseManager::with_config(db_config)
+            .map_err(|e| ToolError::DatabaseError(format!("Failed to create database manager: {}", e)))?;
+            
+        Self::create_scanner(config, Some(db_manager))
     }
     
     /// Convert scanner reference type to model reference type
@@ -45,26 +72,8 @@ impl MissionScanner {
         }
     }
     
-    /// Extract PBOs without scanning (preparation step)
-    pub async fn extract_only(&mut self, dirs: Option<Vec<String>>) -> Result<Vec<PathBuf>> {
-        info!("Extracting mission PBOs...");
-        
-        // Process all mission PBOs
-        let extraction_results = self.extractor.process_all_missions(false).await
-            .map_err(|e| ToolError::CacheError(format!("Failed to process missions: {}", e)))?;
-            
-        // Flatten results into a single vector of paths
-        let mut extracted = Vec::new();
-        for (_, paths) in extraction_results {
-            extracted.extend(paths);
-        }
-            
-        info!("Extracted {} mission files", extracted.len());
-        Ok(extracted)
-    }
-    
-    /// Scan missions from previously extracted PBOs
-    pub async fn scan_only(&self, _dirs: Option<Vec<String>>) -> Result<MissionData> {
+    /// Scan missions from extracted PBOs
+    pub async fn scan(&self) -> Result<MissionData> {
         let missions_dir = self.cache_dir.join("missions");
         info!("Scanning extracted mission PBOs in {}", missions_dir.display());
         
@@ -89,11 +98,7 @@ impl MissionScanner {
             return Ok(MissionData::new());
         }
         
-        // Calculate optimal thread distribution
         let total_threads = num_cpus::get();
-        let num_missions = mission_dirs.len();
-        
-        // Calculate concurrent missions based on available threads and limits
         let threads_per_mission = total_threads;
         
         // Create a semaphore to limit concurrent mission parsing
@@ -203,8 +208,17 @@ impl MissionScanner {
         for (mission_dir, task) in tasks {
             match task.await {
                 Ok(Ok(mission)) => {
-                    // Save individual mission results
-                    self.save_mission_results(&mission)?;
+                    // Save individual mission results to file
+                    if let Err(e) = self.save_mission_results(&mission) {
+                        error!("Failed to save JSON results for mission {}: {}", mission.name, e);
+                        // Continue processing other missions even if JSON saving fails
+                    }
+                    
+                    // Save individual mission results to database if available
+                    if let Err(e) = self.save_mission_to_db(&mission) {
+                        error!("Failed to save mission {} to database: {}", mission.name, e);
+                        // Log error but continue processing other missions
+                    }
                     
                     // Add to collection
                     mission_data.add_mission(mission);
@@ -221,7 +235,7 @@ impl MissionScanner {
         Ok(mission_data)
     }
     
-    /// Save scan results for a single mission
+    /// Save scan results for a single mission to a JSON file
     fn save_mission_results(&self, mission: &Mission) -> Result<()> {
         let mission_name = mission.name.replace(" ", "_").replace("/", "_");
         let output_file = self.output_dir.join(format!("mission_{}_{}.json", 
@@ -240,9 +254,26 @@ impl MissionScanner {
         Ok(())
     }
 
-    /// Scan missions
-    pub async fn scan(&mut self, dirs: Option<Vec<String>>) -> Result<MissionData> {
-        let _extracted = self.extract_only(dirs).await?;
-        self.scan_only(None).await
+    /// Save mission data to database
+    fn save_mission_to_db(&self, mission: &Mission) -> Result<()> {
+        // Check if database is available
+        let db_manager = match &self.db_manager {
+            Some(manager) => manager,
+            // If DB not configured, silently skip saving
+            None => return Ok(()),
+        };
+        
+        info!("Saving mission {} to database...", mission.name);
+        
+        // Create MissionRepository
+        let mission_repo = MissionRepository::new(db_manager);
+        
+        // Import mission data using the shared model
+        mission_repo.import_from_shared_model(mission)
+            .map_err(|e| ToolError::DatabaseError(format!("Failed to save mission {}: {}", mission.name, e)))?;
+            
+        info!("Saved mission {} to database", mission.name);
+        
+        Ok(())
     }
 } 

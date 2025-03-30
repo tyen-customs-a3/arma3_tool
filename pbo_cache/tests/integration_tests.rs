@@ -49,7 +49,7 @@ fn create_test_config() -> (tempfile::TempDir, ExtractionConfig) {
         threads: 1,
         timeout: 30,
         verbose: false,
-        db_path: Some(cache_dir.join("cache.db")),
+        db_path: cache_dir.join("cache.db"),
     };
     
     (temp_dir, config)
