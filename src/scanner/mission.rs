@@ -2,29 +2,25 @@ use std::path::PathBuf;
 use std::fs;
 use log::{info, error};
 use crate::error::{Result, ToolError};
-use arma3_tool_shared_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
+use arma3_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
 use mission_scanner::{scan_mission, MissionScannerConfig, ReferenceType as ScannerReferenceType};
-use serde_json;
-use chrono::Utc;
 use num_cpus;
 use tokio::sync::Semaphore;
-use arma3_db::MissionRepository;
+use arma3_database::MissionRepository;
 
 /// Scanner for mission PBOs
 pub struct MissionScanner {
     /// Cache directory
     cache_dir: PathBuf,
-    /// Output directory for scan results
-    output_dir: PathBuf,
     /// Database manager, if database storage is enabled
-    db_manager: Option<arma3_db::DatabaseManager>,
+    db_manager: Option<arma3_database::DatabaseManager>,
 }
 
 impl MissionScanner {
     /// Helper function to create a new scanner with common initialization
     fn create_scanner(
-        config: arma3_tool_pbo_cache::ExtractionConfig, 
-        db_manager: Option<arma3_db::DatabaseManager>
+        config: arma3_extractor::ExtractionConfig, 
+        db_manager: Option<arma3_database::DatabaseManager>
     ) -> Result<Self> {
         let cache_dir = config.cache_dir.clone();
         let output_dir = cache_dir.join("scan_results");
@@ -35,29 +31,28 @@ impl MissionScanner {
             
         Ok(Self { 
             cache_dir, 
-            output_dir,
             db_manager,
         })
     }
 
     /// Create a new mission scanner
-    pub fn new(config: arma3_tool_pbo_cache::ExtractionConfig) -> Result<Self> {
+    pub fn new(config: arma3_extractor::ExtractionConfig) -> Result<Self> {
         Self::create_scanner(config, None)
     }
     
     /// Create a new mission scanner with a database manager
-    pub fn with_database(config: arma3_tool_pbo_cache::ExtractionConfig, db_manager: arma3_db::DatabaseManager) -> Result<Self> {
+    pub fn with_database(config: arma3_extractor::ExtractionConfig, db_manager: arma3_database::DatabaseManager) -> Result<Self> {
         Self::create_scanner(config, Some(db_manager))
     }
     
     /// Create a new mission scanner with database connection from the specified path
-    pub fn with_database_path(config: arma3_tool_pbo_cache::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
-        let db_config = arma3_db::models::CacheConfig::new(
+    pub fn with_database_path(config: arma3_extractor::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
+        let db_config = arma3_database::models::CacheConfig::new(
             db_path.to_str().unwrap_or("arma3.db"), 
             config.cache_dir.to_str().unwrap_or("cache")
         );
         
-        let db_manager = arma3_db::DatabaseManager::with_config(db_config)
+        let db_manager = arma3_database::DatabaseManager::with_config(db_config)
             .map_err(|e| ToolError::DatabaseError(format!("Failed to create database manager: {}", e)))?;
             
         Self::create_scanner(config, Some(db_manager))
@@ -139,7 +134,14 @@ impl MissionScanner {
                             .unwrap_or_default()
                             .to_string_lossy()
                             .to_string();
-                        mission.source_pbo = Some(pbo_name);
+                        // Only set source_pbo if we're scanning from a PBO
+                        if mission_dir_clone.parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|n| n.to_str())
+                            .map(|n| n.ends_with(".pbo"))
+                            .unwrap_or(false) {
+                            mission.source_pbo = Some(pbo_name);
+                        }
                         
                         // Add dependencies from all sources
                         for dep in scan_result.class_dependencies {
@@ -155,7 +157,7 @@ impl MissionScanner {
                         if let Some(sqm_file) = scan_result.sqm_file {
                             let sqm_component = MissionComponent::new(
                                 "mission.sqm".to_string(),
-                                arma3_tool_shared_models::MissionComponentType::Other("SQM".to_string()),
+                                arma3_models::MissionComponentType::Other("SQM".to_string()),
                                 sqm_file
                             );
                             mission.add_component(sqm_component);
@@ -168,7 +170,7 @@ impl MissionScanner {
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .to_string(),
-                                arma3_tool_shared_models::MissionComponentType::Other("SQF".to_string()),
+                                arma3_models::MissionComponentType::Other("SQF".to_string()),
                                 sqf_file
                             );
                             mission.add_component(sqf_component);
@@ -181,7 +183,7 @@ impl MissionScanner {
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .to_string(),
-                                arma3_tool_shared_models::MissionComponentType::Other("CPP".to_string()),
+                                arma3_models::MissionComponentType::Other("CPP".to_string()),
                                 cpp_file
                             );
                             mission.add_component(cpp_component);
@@ -208,16 +210,9 @@ impl MissionScanner {
         for (mission_dir, task) in tasks {
             match task.await {
                 Ok(Ok(mission)) => {
-                    // Save individual mission results to file
-                    if let Err(e) = self.save_mission_results(&mission) {
-                        error!("Failed to save JSON results for mission {}: {}", mission.name, e);
-                        // Continue processing other missions even if JSON saving fails
-                    }
-                    
                     // Save individual mission results to database if available
                     if let Err(e) = self.save_mission_to_db(&mission) {
                         error!("Failed to save mission {} to database: {}", mission.name, e);
-                        // Log error but continue processing other missions
                     }
                     
                     // Add to collection
@@ -235,25 +230,6 @@ impl MissionScanner {
         Ok(mission_data)
     }
     
-    /// Save scan results for a single mission to a JSON file
-    fn save_mission_results(&self, mission: &Mission) -> Result<()> {
-        let mission_name = mission.name.replace(" ", "_").replace("/", "_");
-        let output_file = self.output_dir.join(format!("mission_{}_{}.json", 
-            mission_name,
-            Utc::now().format("%Y%m%d_%H%M%S").to_string()
-        ));
-        
-        info!("Saving mission scan results to {}", output_file.display());
-        
-        let json = serde_json::to_string_pretty(mission)
-            .map_err(|e| ToolError::JsonError(format!("Failed to serialize mission results: {}", e)))?;
-            
-        fs::write(&output_file, json)
-            .map_err(|e| ToolError::IoError(format!("Failed to write mission results: {}", e)))?;
-            
-        Ok(())
-    }
-
     /// Save mission data to database
     fn save_mission_to_db(&self, mission: &Mission) -> Result<()> {
         // Check if database is available

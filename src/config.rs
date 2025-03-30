@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
-use arma3_tool_pbo_cache::ExtractionConfig;
+use arma3_extractor::ExtractionConfig;
 
 /// Configuration for visualization features
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +70,7 @@ impl ScanConfig {
         }
     }
 
-    pub fn to_pbo_cache_config(&self) -> ExtractionConfig {
+    pub fn to_extractor_config(&self) -> ExtractionConfig {
         // Convert string paths to PathBuf
         let game_data_dirs = self.game_data_dirs.iter()
             .map(PathBuf::from)
@@ -100,51 +100,5 @@ impl ScanConfig {
         }
         
         config
-    }
-}
-
-/// Configuration for the application UI settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiSettings {
-    pub default_cache_dir: Option<PathBuf>,
-    pub dark_mode: bool,
-    pub visualization_config_path: Option<PathBuf>,
-    pub last_database_path: Option<PathBuf>,
-}
-
-impl Default for UiSettings {
-    fn default() -> Self {
-        Self {
-            default_cache_dir: None,
-            dark_mode: true,
-            visualization_config_path: Some(PathBuf::from("visualization_config.json")),
-            last_database_path: None,
-        }
-    }
-}
-
-impl UiSettings {
-    pub fn load(settings_path: &str) -> Self {
-        match fs::read_to_string(settings_path) {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(settings) => settings,
-                    Err(_) => Self::default(),
-                }
-            },
-            Err(_) => Self::default(),
-        }
-    }
-    
-    pub fn save(&self, settings_path: &str) -> Result<(), String> {
-        match serde_json::to_string_pretty(self) {
-            Ok(json) => {
-                match fs::write(settings_path, json) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(format!("Failed to write settings file: {}", e)),
-                }
-            },
-            Err(e) => Err(format!("Failed to serialize settings: {}", e)),
-        }
     }
 }

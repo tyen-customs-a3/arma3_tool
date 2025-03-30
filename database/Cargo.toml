@@ -1,0 +1,23 @@
+[package]
+name = "arma3_database"
+version.workspace = true
+edition.workspace = true
+description = "SQLite database integration for Arma 3 Tool"
+
+[dependencies]
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.27.0"
+rusqlite = { version = "0.34.0", features = ["bundled", "chrono", "functions"] }
+
+arma3_models = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+petgraph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

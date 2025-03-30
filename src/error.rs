@@ -87,14 +87,14 @@ impl From<serde_json::Error> for ToolError {
     }
 }
 
-impl From<arma3_tool_pbo_cache::CacheError> for ToolError {
-    fn from(err: arma3_tool_pbo_cache::CacheError) -> Self {
+impl From<arma3_extractor::CacheError> for ToolError {
+    fn from(err: arma3_extractor::CacheError) -> Self {
         ToolError::CacheError(err.to_string())
     }
 }
 
-impl From<arma3_db::error::DatabaseError> for ToolError {
-    fn from(err: arma3_db::error::DatabaseError) -> Self {
+impl From<arma3_database::error::DatabaseError> for ToolError {
+    fn from(err: arma3_database::error::DatabaseError) -> Self {
         ToolError::DatabaseError(err.to_string())
     }
 }

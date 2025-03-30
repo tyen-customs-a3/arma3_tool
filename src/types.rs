@@ -62,8 +62,8 @@ pub struct WorkflowOptions {
 /// Options for extraction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionOptions {
-    /// Whether to use pbo_cache
-    pub use_pbo_cache: bool,
+    /// Whether to use extractor
+    pub use_extractor: bool,
     
     /// Specific directories to process
     pub directories: Option<Vec<String>>,
@@ -115,28 +115,6 @@ pub struct ReportingOptions {
     
     /// Include missing dependencies in report
     pub include_missing_dependencies: bool,
-}
-
-/// Summary of a workflow execution
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkflowSummary {
-    /// Workflow that was executed
-    pub workflow: Workflow,
-    
-    /// Extraction summary
-    pub extraction: Option<ExtractionSummary>,
-    
-    /// Processing summary
-    pub processing: Option<ProcessingSummary>,
-    
-    /// Reporting summary
-    pub reporting: Option<ReportingSummary>,
-    
-    /// Total elapsed time
-    pub elapsed_time: Duration,
-    
-    /// Errors encountered during workflow execution
-    pub errors: Vec<String>,
 }
 
 /// Summary of extraction
