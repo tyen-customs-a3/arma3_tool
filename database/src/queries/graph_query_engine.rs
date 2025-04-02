@@ -6,6 +6,7 @@ use petgraph::{Graph, Directed};
 use std::collections::{HashMap, HashSet};
 use log::debug;
 use rusqlite::OptionalExtension;
+use serde::Serialize;
 
 /// Engine for graph-related database operations
 pub struct GraphQueryEngine<'a> {
@@ -305,14 +306,14 @@ impl<'a> GraphQueryEngine<'a> {
 }
 
 /// Graph data structure for visualization
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct GraphData {
     pub nodes: Vec<GraphNode>,
     pub edges: Vec<GraphEdge>,
 }
 
 /// Impact analysis result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ImpactAnalysisResult {
     pub removed_classes: Vec<String>,
     pub orphaned_classes: Vec<String>,
