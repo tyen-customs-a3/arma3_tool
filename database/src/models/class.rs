@@ -93,6 +93,15 @@ pub struct GraphNode {
     
     /// Source file index
     pub source_file_index: Option<usize>,
+
+    /// Parent class identifier
+    pub parent_id: Option<String>,
+
+    /// Container class (if this is a nested class)
+    pub container_class: Option<String>,
+
+    /// Source file path
+    pub source_path: Option<String>,
 }
 
 /// Node status/type for visualization

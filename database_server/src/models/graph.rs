@@ -6,6 +6,9 @@ pub struct Node {
     pub name: Option<String>,
     pub depth: Option<i32>,
     pub color: Option<String>,
+    pub parent_id: Option<String>,
+    pub container_class: Option<String>,
+    pub source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,16 +23,3 @@ pub struct GraphData {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
 }
-
-#[derive(Debug, Clone)]
-pub struct GraphConfig {
-    pub node_count: usize,
-}
-
-impl Default for GraphConfig {
-    fn default() -> Self {
-        Self {
-            node_count: 10000,
-        }
-    }
-} 

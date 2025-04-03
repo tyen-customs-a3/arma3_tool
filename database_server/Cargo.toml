@@ -16,6 +16,7 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 rayon.workspace = true
 rand = "0.9.0"
 parking_lot = "0.12.1"
+log.workspace = true
 
 # Add database crate dependency
 arma3_database.workspace = true

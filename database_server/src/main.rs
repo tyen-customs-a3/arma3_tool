@@ -5,10 +5,10 @@ use axum::{
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::{cors::CorsLayer, services::ServeDir};
+use std::env;
 
 mod models;
 mod handlers;
-mod services;
 
 use handlers::websocket::ws_handler;
 use arma3_database::{DatabaseManager, CacheConfig};
@@ -21,8 +21,18 @@ async fn main() {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
+    // Get database path from command line arguments or use default
+    let args: Vec<String> = env::args().collect();
+    let db_path = if args.len() > 1 {
+        PathBuf::from(&args[1])
+    } else {
+        PathBuf::from("data/database.db")
+    };
+
+    println!("Loading database from: {:?}", db_path);
+
     // Initialize database
-    let config = CacheConfig::new(PathBuf::from("data/database.db"), "cache");
+    let config = CacheConfig::new(db_path, "cache");
     let db = DatabaseManager::with_config(config).expect("Failed to initialize database");
     let db = Arc::new(db);
 

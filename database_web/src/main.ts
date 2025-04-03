@@ -1,18 +1,16 @@
 import './style.css';
-import { GraphConfig } from './modules/types';
+import { GraphQueryParams } from './modules/types';
 import { WebSocketService } from './modules/websocket';
-import { GraphManager } from './modules/graphManager';
 import { UIManager } from './modules/uiManager';
-import { getRandomInRange } from './modules/utils';
-import { SimulationConfig, defaultConfig, createGraphConfig } from './modules/config';
+import { CosmographManager } from './lib/graph';
+import { createGraphConfig } from './lib/graph/config';
 
 // Initialize managers
-const div = document.getElementById('graph') as HTMLDivElement;
-const uiManager = new UIManager(togglePause, restartSimulation);
+const graphContainer = document.getElementById('graph') as HTMLDivElement;
+const uiManager = new UIManager();
 const wsService = new WebSocketService('ws://localhost:3000/ws');
 
 // Get control elements
-const nodeCountInput = document.getElementById('node-count') as HTMLInputElement;
 const minDistanceInput = document.getElementById('min-distance') as HTMLInputElement;
 const pointSizeInput = document.getElementById('point-size') as HTMLInputElement;
 const linkWidthInput = document.getElementById('link-width') as HTMLInputElement;
@@ -20,264 +18,282 @@ const curvedLinesInput = document.getElementById('curved-lines') as HTMLInputEle
 const spaceSizeInput = document.getElementById('space-size') as HTMLInputElement;
 
 // Get simulation control elements
+const disableSimulationInput = document.getElementById('disable-simulation') as HTMLInputElement;
 const gravityInput = document.getElementById('gravity') as HTMLInputElement;
 const repulsionInput = document.getElementById('repulsion') as HTMLInputElement;
 const linkSpringInput = document.getElementById('link-spring') as HTMLInputElement;
 const decayInput = document.getElementById('decay') as HTMLInputElement;
-const disableSimulationInput = document.getElementById('disable-simulation') as HTMLInputElement;
 
-// Initialize UI with default values
-function initializeUI(config: SimulationConfig) {
-  nodeCountInput.value = config.nodeCount.toString();
-  minDistanceInput.value = config.minDistance.toString();
-  pointSizeInput.value = config.pointSize.toString();
-  linkWidthInput.value = config.linkWidth.toString();
-  curvedLinesInput.checked = config.curvedLines;
-  spaceSizeInput.value = config.spaceSize.toString();
-  gravityInput.value = config.gravity.toString();
-  repulsionInput.value = config.repulsion.toString();
-  linkSpringInput.value = config.linkSpring.toString();
-  decayInput.value = config.decay.toString();
-  disableSimulationInput.checked = config.disableSimulation;
+// Get source filter elements
+const excludePatternsInput = document.getElementById('exclude-patterns') as HTMLInputElement;
+const impactClassesInput = document.getElementById('impact-classes') as HTMLInputElement;
+const orphanedNodesList = document.getElementById('orphaned-nodes-list') as HTMLDivElement;
+
+// Get or create label control elements
+let showLabelsInput = document.getElementById('show-labels') as HTMLInputElement;
+if (!showLabelsInput) {
+  // Create the label control if it doesn't exist
+  const actionsDiv = document.querySelector('.actions') as HTMLDivElement;
+  if (actionsDiv) {
+    const labelSection = document.createElement('div');
+    labelSection.innerHTML = `
+      <div class="actions-header">Label Settings</div>
+      <div class="checkbox-group">
+        <label for="show-labels">Show Labels</label>
+        <input type="checkbox" id="show-labels" checked>
+      </div>
+    `;
+    actionsDiv.appendChild(labelSection);
+    showLabelsInput = document.getElementById('show-labels') as HTMLInputElement;
+  }
 }
 
-// Function to get current config from UI
-function getCurrentSimConfig(): SimulationConfig {
-  return {
-    ...defaultConfig,
-    nodeCount: parseInt(nodeCountInput.value),
-    minDistance: parseFloat(minDistanceInput.value),
-    pointSize: parseFloat(pointSizeInput.value),
-    linkWidth: parseFloat(linkWidthInput.value),
-    curvedLines: curvedLinesInput.checked,
-    spaceSize: parseInt(spaceSizeInput.value),
-    disableSimulation: disableSimulationInput.checked,
-    gravity: parseFloat(gravityInput.value),
-    repulsion: parseFloat(repulsionInput.value),
-    linkSpring: parseFloat(linkSpringInput.value),
-    decay: parseFloat(decayInput.value)
-  };
+// Initialize UI with default values
+function initializeUI() {
+  // Set default values for UI controls
+  if (minDistanceInput) minDistanceInput.value = '50';
+  if (pointSizeInput) pointSizeInput.value = '5';
+  if (linkWidthInput) linkWidthInput.value = '1';
+  if (curvedLinesInput) curvedLinesInput.checked = true;
+  if (spaceSizeInput) spaceSizeInput.value = '8192';
+  if (disableSimulationInput) disableSimulationInput.checked = false;
+  if (gravityInput) gravityInput.value = '0.1';
+  if (repulsionInput) repulsionInput.value = '0.5';
+  if (linkSpringInput) linkSpringInput.value = '0.1';
+  if (decayInput) decayInput.value = '100';
+  if (showLabelsInput) showLabelsInput.checked = true;
 }
 
 // Function to get current graph config
-function getConfig(): GraphConfig {
-  return createGraphConfig(getCurrentSimConfig(), (node, index) => {
-    if (node && index !== undefined) {
-      graphManager.selectNodeById(node.id);
-      graphManager.zoomToNodeById(node.id);
-      const childNodes = graphManager.findChildNodes(node.id);
-      uiManager.updateNodeDetails({
-        name: node.name || '-',
-        id: node.id,
-        depth: node.depth?.toString() || '-',
-        children: childNodes.length.toString()
-      });
-    } else {
-      uiManager.clearNodeDetails();
-    }
+function getConfig() {
+  const spaceSize = spaceSizeInput ? parseInt(spaceSizeInput.value) : 1000;
+  return createGraphConfig(
+    (index: number | undefined) => {
+      if (index !== undefined) {
+        const node = cosmographManager.getNodeByIndex(index);
+        if (node) {
+          cosmographManager.focusNode(node);
+          const childNodes = cosmographManager.findChildNodes(node.id);
+          uiManager.updateNodeDetails({
+            name: node.name || '-',
+            id: node.id,
+            depth: node.depth?.toString() || '-',
+            children: childNodes.length.toString(),
+            parent: node.parent_id || '-',
+            container: node.container_class || '-',
+            source: node.source_path || '-'
+          });
+        }
+      } else {
+        cosmographManager.clearFocus();
+        uiManager.clearNodeDetails();
+      }
+    },
+    spaceSize
+  );
+}
+
+// Initialize graph manager with the container and initial config
+const cosmographManager = new CosmographManager({ 
+  container: graphContainer, 
+  config: createGraphConfig(undefined, spaceSizeInput ? parseInt(spaceSizeInput.value) : 1000)
+});
+
+// Initialize UI with default values
+initializeUI();
+
+// Function to get source filter patterns
+function getSourceFilters(): { excludeSourcePatterns: string[] } {
+  const excludeInput = document.getElementById('exclude-patterns') as HTMLInputElement;
+  const excludePatterns = excludeInput.value
+    .split(',')
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  return {
+    excludeSourcePatterns: excludePatterns
+  };
+}
+
+// Function to update orphaned nodes list
+function updateOrphanedNodesList(orphanedClasses: string[]) {
+  orphanedNodesList.innerHTML = '';
+  orphanedClasses.forEach((className: string) => {
+    const div = document.createElement('div');
+    div.className = 'orphaned-node-item';
+    div.textContent = className;
+    div.addEventListener('click', () => {
+      cosmographManager.selectNodeById(className);
+    });
+    orphanedNodesList.appendChild(div);
   });
 }
 
-// Initialize graph manager
-const graphManager = new GraphManager(div, getConfig());
+// Function to request impact analysis
+async function requestImpactAnalysis() {
+  const classesToRemove = impactClassesInput.value
+    .split(',')
+    .map(c => c.trim())
+    .filter(c => c.length > 0);
 
-// Initialize UI with default values
-initializeUI(defaultConfig);
+  if (classesToRemove.length === 0) {
+    console.warn('No classes specified for impact analysis');
+    return;
+  }
+
+  const filters = getSourceFilters();
+  try {
+    await wsService.requestImpactAnalysis({
+      classesToRemove,
+      excludeSourcePatterns: filters.excludeSourcePatterns
+    });
+  } catch (error) {
+    console.error('Error requesting impact analysis:', error);
+  }
+}
 
 // Setup WebSocket handlers
-wsService.on('graph_data', (data) => {
-  graphManager.updateGraph(data);
+wsService.on('graph_data', async (data) => {
+  console.log('Received graph data:', data);
+  await cosmographManager.updateGraph(data);
+});
+
+wsService.on('database_response', async (data) => {
+  console.log('Received database response:', data);
+  if (data.success && data.data) {
+    const result = data.data;
+    if (result.graphData) {
+      // Update graph with impact analysis data
+      await cosmographManager.updateGraph(result.graphData);
+      // Update orphaned nodes list
+      updateOrphanedNodesList(result.orphanedClasses);
+    }
+  }
+});
+
+// Request initial data after setting up handlers
+const initialFilters = getSourceFilters();
+void wsService.requestFullGraphData({
+  excludeSourcePatterns: initialFilters.excludeSourcePatterns,
+  maxDepth: 100
+}).catch(error => {
+  console.error('Error requesting initial graph data:', error);
 });
 
 // Function to request graph data
-function requestGraphData() {
-  const config = getCurrentSimConfig();
-  wsService.requestGraphData(config.nodeCount, 100);
+async function requestGraphData() {
+  const filters = getSourceFilters();
+  const params: GraphQueryParams = {
+    excludeSourcePatterns: filters.excludeSourcePatterns,
+    maxDepth: 100
+  };
+  try {
+    await wsService.requestFullGraphData(params);
+  } catch (error) {
+    console.error('Error requesting graph data:', error);
+  }
 }
 
-// Function to load CSV file
-function loadCsvFile() {
-  const filePath = uiManager.getFilePath();
-  if (!filePath) {
-    console.warn('Please enter a file path');
-    return;
+// Add event listeners for UI controls
+minDistanceInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (!disableSimulationInput.checked) {
+    await cosmographManager.restart();
   }
-  wsService.loadCsvFile(filePath);
-}
+});
 
-// Function to search nodes
-function searchNodes() {
-  const searchTerm = uiManager.getSearchTerm();
-  if (!searchTerm) {
-    graphManager.unselectPoints();
-    uiManager.clearNodeDetails();
-    return;
-  }
+pointSizeInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+});
 
-  const searchType = uiManager.getSearchType();
-  const nodes = graphManager.getCurrentGraphData()?.nodes || [];
-  
-  const matchingNodes = nodes.filter((node: any) => {
-    if (searchType === 'name') {
-      return node.name?.toLowerCase().includes(searchTerm);
-    } else {
-      return node.id?.toLowerCase().includes(searchTerm);
-    }
+linkWidthInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+});
+
+curvedLinesInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+});
+
+spaceSizeInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+});
+
+// Add event listener for label checkbox
+if (showLabelsInput) {
+  showLabelsInput.addEventListener('change', () => {
+    cosmographManager.toggleLabels(showLabelsInput.checked);
   });
-
-  if (matchingNodes.length === 0) {
-    graphManager.unselectPoints();
-    uiManager.clearNodeDetails();
-    return;
-  }
-
-  const allNodesToHighlight = new Set<string>();
-  matchingNodes.forEach((node: any) => {
-    allNodesToHighlight.add(node.id);
-    const childNodes = graphManager.findChildNodes(node.id);
-    childNodes.forEach(childId => allNodesToHighlight.add(childId));
-  });
-
-  const indices = Array.from(allNodesToHighlight).map(id => 
-    nodes.findIndex((n: any) => n.id === id)
-  ).filter(i => i !== -1);
-
-  graphManager.selectPointsByIndices(indices);
-  graphManager.fitView();
-  
-  const firstMatchingNodeIndex = nodes.findIndex((node: any) => node.id === matchingNodes[0].id);
-  const node = nodes[firstMatchingNodeIndex];
-  if (node) {
-    const childNodes = graphManager.findChildNodes(node.id);
-    uiManager.updateNodeDetails({
-      name: node.name || '-',
-      id: node.id,
-      depth: node.depth?.toString() || '-',
-      children: childNodes.length.toString()
-    });
-  }
 }
-
-// Add event listeners for controls
-nodeCountInput.addEventListener('change', () => {
-  requestGraphData();
-});
-
-minDistanceInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-pointSizeInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-linkWidthInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-curvedLinesInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-spaceSizeInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
 
 // Add event listeners for simulation controls
-disableSimulationInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-gravityInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-repulsionInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-linkSpringInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-decayInput.addEventListener('change', () => {
-  graphManager.setConfig(getConfig());
-});
-
-// Simulation Controls
-function togglePause() {
-  if (uiManager.isGraphPaused()) {
-    graphManager.start();
+disableSimulationInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (disableSimulationInput.checked) {
+    cosmographManager.pause();
   } else {
-    graphManager.pause();
+    cosmographManager.start();
   }
-}
+});
 
-function restartSimulation() {
-  graphManager.restart();
-}
-
-// Add simulation progress update
-function updateSimulationProgress() {
-  const progress = graphManager.getSimulationProgress();
-  if (progress !== undefined) {
-    uiManager.updateSimulationProgress(progress);
+gravityInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (!disableSimulationInput.checked) {
+    await cosmographManager.restart();
   }
-  if (graphManager.isSimulationRunning()) {
-    requestAnimationFrame(updateSimulationProgress);
+});
+
+repulsionInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (!disableSimulationInput.checked) {
+    await cosmographManager.restart();
   }
-}
+});
 
-// Demo Actions
-function zoomIn() {
-  const pointIndex = graphManager.getRandomPointIndex();
-  graphManager.zoomToPointByIndex(pointIndex);
-  graphManager.selectPointByIndex(pointIndex);
-  graphManager.pause();
-}
+linkSpringInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (!disableSimulationInput.checked) {
+    await cosmographManager.restart();
+  }
+});
 
-function selectPoint() {
-  const pointIndex = graphManager.getRandomPointIndex();
-  graphManager.selectPointByIndex(pointIndex);
-  graphManager.fitView();
-  graphManager.pause();
-}
+decayInput?.addEventListener('change', async () => {
+  await cosmographManager.setConfig(getConfig());
+  if (!disableSimulationInput.checked) {
+    await cosmographManager.restart();
+  }
+});
 
-function selectPointsInArea() {
-  const w = div.clientWidth;
-  const h = div.clientHeight;
-  const left = getRandomInRange([w / 4, w / 2]);
-  const right = getRandomInRange([left, (w * 3) / 4]);
-  const top = getRandomInRange([h / 4, h / 2]);
-  const bottom = getRandomInRange([top, (h * 3) / 4]);
-  graphManager.pause();
-  graphManager.selectPointsInRange([[left, top], [right, bottom]]);
-}
+// Add event listeners for source filters
+excludePatternsInput?.addEventListener('change', () => {
+  void requestGraphData();
+});
 
 // Add event listeners for buttons
-document.getElementById('regenerate')?.addEventListener('click', requestGraphData);
-document.getElementById('fit-view')?.addEventListener('click', () => graphManager.fitView());
-document.getElementById('zoom')?.addEventListener('click', zoomIn);
-document.getElementById('select-point')?.addEventListener('click', selectPoint);
-document.getElementById('select-points-in-area')?.addEventListener('click', selectPointsInArea);
-document.getElementById('search')?.addEventListener('click', searchNodes);
-document.getElementById('load-file')?.addEventListener('click', loadCsvFile);
-
-// Add keyboard event listeners
-uiManager.nodeSearchInput?.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    searchNodes();
-  }
+document.getElementById('regenerate')?.addEventListener('click', () => {
+  void requestGraphData();
 });
 
-uiManager.filePathInput?.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    loadCsvFile();
-  }
+// Add event listener for impact analysis button
+document.getElementById('analyze-impact')?.addEventListener('click', () => {
+  void requestImpactAnalysis();
 });
 
-// Request initial graph data
-requestGraphData();
-
-// Start progress update loop
-updateSimulationProgress();
+// Add event listeners for buttons
+document.getElementById('fit-view')?.addEventListener('click', () => cosmographManager.fitView());
+document.getElementById('select-point')?.addEventListener('click', () => {
+  const randomIndex = cosmographManager.getRandomPointIndex();
+  const randomNode = cosmographManager.getNodeByIndex(randomIndex);
+  if (randomNode) {
+    cosmographManager.focusNode(randomNode);
+    const childNodes = cosmographManager.findChildNodes(randomNode.id);
+    uiManager.updateNodeDetails({
+      name: randomNode.name || '-',
+      id: randomNode.id,
+      depth: randomNode.depth?.toString() || '-',
+      children: childNodes.length.toString(),
+      parent: randomNode.parent_id || '-',
+      container: randomNode.container_class || '-',
+      source: randomNode.source_path || '-'
+    });
+  }
+});

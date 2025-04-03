@@ -5,11 +5,19 @@ use axum::{
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::sync::Arc;
 use tokio::{sync::broadcast, task};
+use serde::Deserialize;
+use log::debug;
 
-use crate::models::graph::{GraphData, GraphConfig};
-use crate::models::websocket::{WebSocketMessage, GenerateRequest, DatabaseQuery, QueryType, ClassHierarchyRequest, ClassImpactRequest, DatabaseResponse};
-use crate::services::graph_generator::generate_graph;
+use crate::models::graph::{self as ws_graph};
+use crate::models::websocket::{WebSocketMessage, DatabaseQuery, QueryType, ClassHierarchyRequest, ClassImpactRequest, DatabaseResponse};
 use arma3_database::{DatabaseManager, GraphQueryEngine, MissionRepository};
+
+#[derive(Debug, Deserialize)]
+struct GraphQueryParams {
+    exclude_source_patterns: Option<Vec<String>>,
+    max_depth: Option<i32>,
+    root_class: Option<String>,
+}
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -59,10 +67,17 @@ async fn handle_socket(socket: WebSocket, tx: Arc<broadcast::Sender<String>>, db
 
 async fn handle_message(ws_msg: WebSocketMessage, tx: Arc<broadcast::Sender<String>>, db: Arc<DatabaseManager>) {
     match ws_msg.action.as_str() {
-        "generate" => {
+        "get_full_graph" => {
             if let Some(data) = ws_msg.data {
-                if let Ok(request) = serde_json::from_value::<GenerateRequest>(data) {
-                    handle_generate(request, tx).await;
+                if let Ok(params) = serde_json::from_value::<GraphQueryParams>(data) {
+                    handle_get_full_graph(params, tx, db).await;
+                } else {
+                    // If no valid params provided, use defaults
+                    handle_get_full_graph(GraphQueryParams {
+                        exclude_source_patterns: None,
+                        max_depth: Some(100),
+                        root_class: None,
+                    }, tx, db).await;
                 }
             }
         }
@@ -79,6 +94,77 @@ async fn handle_message(ws_msg: WebSocketMessage, tx: Arc<broadcast::Sender<Stri
     }
 }
 
+async fn handle_get_full_graph(params: GraphQueryParams, tx: Arc<broadcast::Sender<String>>, db: Arc<DatabaseManager>) {
+    debug!("Received graph query params: {:?}", params);
+    let response = task::spawn_blocking(move || {
+        let engine = GraphQueryEngine::new(&db);
+        let result = engine.build_class_hierarchy_graph(
+            params.root_class.as_deref(),
+            params.max_depth.unwrap_or(100),
+            params.exclude_source_patterns.as_deref(),
+        );
+
+        match result {
+            Ok(db_graph_data) => {
+                // Convert database graph data to websocket graph data
+                let ws_graph_data = ws_graph::GraphData {
+                    nodes: db_graph_data.nodes.into_iter().map(|node| {
+                        let id = node.id.clone();
+                        ws_graph::Node {
+                            id: node.id,
+                            name: Some(id),
+                            depth: Some(0),
+                            color: match node.node_type {
+                                arma3_database::models::class::NodeType::Normal => None,
+                                arma3_database::models::class::NodeType::Removed => Some("#FF0000".to_string()),
+                                arma3_database::models::class::NodeType::Orphaned => Some("#FFA500".to_string()),
+                                arma3_database::models::class::NodeType::Affected => Some("#FFFF00".to_string()),
+                            },
+                            parent_id: node.parent_id,
+                            container_class: node.container_class,
+                            source_path: node.source_path,
+                        }
+                    }).collect(),
+                    edges: db_graph_data.edges.into_iter().map(|edge| ws_graph::Edge {
+                        source: edge.source,
+                        target: edge.target,
+                        color: None,
+                    }).collect(),
+                };
+                
+                let ws_response = WebSocketMessage {
+                    action: "graph_data".to_string(),
+                    data: Some(serde_json::to_value(ws_graph_data).unwrap()),
+                };
+                serde_json::to_string(&ws_response).unwrap()
+            },
+            Err(e) => {
+                let error_response = WebSocketMessage {
+                    action: "graph_data".to_string(),
+                    data: Some(serde_json::to_value(DatabaseResponse {
+                        success: false,
+                        data: None,
+                        error: Some(e.to_string()),
+                    }).unwrap()),
+                };
+                serde_json::to_string(&error_response).unwrap()
+            },
+        }
+    }).await.unwrap_or_else(|e| {
+        let error_response = WebSocketMessage {
+            action: "graph_data".to_string(),
+            data: Some(serde_json::to_value(DatabaseResponse {
+                success: false,
+                data: None,
+                error: Some(format!("Task error: {}", e)),
+            }).unwrap()),
+        };
+        serde_json::to_string(&error_response).unwrap()
+    });
+
+    let _ = tx.send(response);
+}
+
 async fn handle_database_query(query: DatabaseQuery, tx: Arc<broadcast::Sender<String>>, db: Arc<DatabaseManager>) {
     let response = task::spawn_blocking(move || {
         match query.query_type {
@@ -86,7 +172,11 @@ async fn handle_database_query(query: DatabaseQuery, tx: Arc<broadcast::Sender<S
                 if let Some(params) = query.parameters {
                     if let Ok(request) = serde_json::from_value::<ClassHierarchyRequest>(params) {
                         let engine = GraphQueryEngine::new(&db);
-                        match engine.build_class_hierarchy_graph(request.root_class.as_deref(), request.max_depth) {
+                        match engine.build_class_hierarchy_graph(
+                            request.root_class.as_deref(),
+                            request.max_depth,
+                            None,  // exclude_patterns
+                        ) {
                             Ok(graph_data) => DatabaseResponse {
                                 success: true,
                                 data: Some(serde_json::to_value(graph_data).unwrap()),
@@ -205,34 +295,3 @@ async fn handle_database_query(query: DatabaseQuery, tx: Arc<broadcast::Sender<S
     let json = serde_json::to_string(&ws_response).unwrap();
     let _ = tx.send(json);
 }
-
-async fn handle_generate(request: GenerateRequest, tx: Arc<broadcast::Sender<String>>) {
-    let graph_data = task::spawn_blocking(move || {
-        generate_graph_from_request(&request)
-    }).await.unwrap_or_else(|e| {
-        eprintln!("Error generating graph: {}", e);
-        GraphData { nodes: vec![], edges: vec![] }
-    });
-    
-    broadcast_graph_data(graph_data, tx).await;
-}
-
-async fn broadcast_graph_data(graph_data: GraphData, tx: Arc<broadcast::Sender<String>>) {
-    let response = WebSocketMessage {
-        action: "graph_data".to_string(),
-        data: Some(serde_json::to_value(&graph_data).unwrap()),
-    };
-    
-    let json = serde_json::to_string(&response).unwrap();
-    let _ = tx.send(json);
-}
-
-fn generate_graph_from_request(request: &GenerateRequest) -> GraphData {
-    println!("Generating tree structure with {} nodes", request.node_count);
-    
-    let config = GraphConfig {
-        node_count: request.node_count,
-    };
-    
-    generate_graph(config)
-} 

@@ -422,6 +422,20 @@ impl<'a> ClassRepository<'a> {
             properties: HashMap::new(),
         })
     }
+    
+    /// Get source file path for a given file index
+    pub fn get_source_path(&self, file_index: usize) -> Result<Option<String>> {
+        self.db.with_connection(|conn| {
+            conn.query_row(
+                "SELECT COALESCE(pbo_id, normalized_path) as source_path 
+                 FROM file_index_mapping 
+                 WHERE file_index = ?1",
+                [file_index as i64],
+                |row| row.get::<_, String>(0)
+            ).optional()
+            .map_err(|e| e.into())
+        })
+    }
 }
 
 // Function that converts Option<usize> to Option<i64> properly

@@ -4,9 +4,11 @@ use crate::models::class::{ClassModel, GraphNode, GraphEdge, NodeType};
 use crate::queries::class_repository::ClassRepository;
 use petgraph::{Graph, Directed};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use log::debug;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
+use rayon::prelude::*;
 
 /// Engine for graph-related database operations
 pub struct GraphQueryEngine<'a> {
@@ -24,6 +26,7 @@ impl<'a> GraphQueryEngine<'a> {
         &self,
         root_class: Option<&str>,
         max_depth: i32,
+        exclude_patterns: Option<&[String]>,
     ) -> Result<GraphData> {
         // Create repositories
         let class_repo = ClassRepository::new(self.db);
@@ -34,17 +37,100 @@ impl<'a> GraphQueryEngine<'a> {
         } else {
             class_repo.get_full_hierarchy(max_depth)?
         };
+
+        debug!("Found {} total classes in hierarchy", hierarchy_nodes.len());
         
-        // Convert to graph data
-        let mut nodes = Vec::new();
-        let mut edges = Vec::new();
-        
-        // Create nodes
-        for node in &hierarchy_nodes {
+        // Print the exclude patterns
+        debug!("Exclude patterns: {:?}", exclude_patterns);
+
+        // Pre-process exclude patterns if any exist
+        let exclude_patterns = if let Some(patterns) = exclude_patterns {
+            Some(Arc::new(patterns.iter()
+                .map(|p| p.to_lowercase())
+                .collect::<Vec<_>>()))
+        } else {
+            None
+        };
+
+        // Batch fetch all source paths upfront
+        let source_paths = if exclude_patterns.is_some() {
+            let source_indices: Vec<_> = hierarchy_nodes.iter()
+                .filter_map(|node| node.source_file_index)
+                .collect();
+            
+            if !source_indices.is_empty() {
+                let mut path_map = HashMap::new();
+                for idx in source_indices {
+                    if let Ok(Some(path)) = class_repo.get_source_path(idx) {
+                        path_map.insert(idx, path.to_lowercase());
+                    }
+                }
+                Some(Arc::new(path_map))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Process nodes in parallel
+        let filtered_nodes: Vec<_> = hierarchy_nodes.par_iter()
+            .filter_map(|node| {
+                // Check if we should include this node based on source patterns
+                let should_include = if let Some(patterns) = &exclude_patterns {
+                    let node_id_lower = node.id.to_lowercase();
+                    
+                    // Check if node ID matches any pattern
+                    let matches_id = patterns.par_iter()
+                        .any(|pattern| node_id_lower.contains(pattern));
+                    
+                    // Check if source path matches any pattern
+                    let matches_source = if let Some(source_idx) = node.source_file_index {
+                        if let Some(paths) = &source_paths {
+                            if let Some(path) = paths.get(&source_idx) {
+                                patterns.par_iter().any(|pattern| path.contains(pattern))
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    !(matches_id || matches_source)
+                } else {
+                    true
+                };
+
+                if should_include {
+                    // Get source path if available
+                    let source_path = if let Some(source_idx) = node.source_file_index {
+                        class_repo.get_source_path(source_idx).ok().flatten()
+                    } else {
+                        None
+                    };
+
+                    Some((node, source_path))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Build nodes and edges from filtered results
+        let mut nodes = Vec::with_capacity(filtered_nodes.len());
+        let mut edges = Vec::with_capacity(filtered_nodes.len());
+
+        for (node, source_path) in filtered_nodes {
             nodes.push(GraphNode {
                 id: node.id.clone(),
                 node_type: NodeType::Normal,
                 source_file_index: node.source_file_index,
+                parent_id: node.parent_id.clone(),
+                container_class: node.container_class.clone(),
+                source_path,
             });
             
             // Create edge if there's a parent
@@ -55,6 +141,15 @@ impl<'a> GraphQueryEngine<'a> {
                     weight: 1.0,
                 });
             }
+        }
+
+        let filtered_count = hierarchy_nodes.len() - nodes.len();
+        if let Some(exclude) = &exclude_patterns {
+            debug!("Excluded {} out of {} classes using patterns: {:?}", 
+                filtered_count, 
+                hierarchy_nodes.len(),
+                exclude
+            );
         }
         
         Ok(GraphData { nodes, edges })
@@ -132,6 +227,9 @@ impl<'a> GraphQueryEngine<'a> {
                         id: pbo_id,
                         node_type: NodeType::Normal,
                         source_file_index,
+                        parent_id: None,
+                        container_class: None,
+                        source_path: None,
                     }
                 })
                 .collect();
@@ -183,6 +281,9 @@ impl<'a> GraphQueryEngine<'a> {
                     id: class.id.clone(),
                     node_type: NodeType::Removed,
                     source_file_index: class.source_file_index,
+                    parent_id: class.parent_id.clone(),
+                    container_class: class.container_class.clone(),
+                    source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                 });
                 
                 // Add edge from parent if it exists and not in remove list
@@ -195,6 +296,9 @@ impl<'a> GraphQueryEngine<'a> {
                                     id: parent.id.clone(),
                                     node_type: NodeType::Normal,
                                     source_file_index: parent.source_file_index,
+                                    parent_id: parent.parent_id.clone(),
+                                    container_class: parent.container_class.clone(),
+                                    source_path: parent.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                                 });
                             }
                         }
@@ -217,6 +321,9 @@ impl<'a> GraphQueryEngine<'a> {
                 id: class.id.clone(),
                 node_type: NodeType::Orphaned,
                 source_file_index: class.source_file_index,
+                parent_id: class.parent_id.clone(),
+                container_class: class.container_class.clone(),
+                source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
             });
             
             // Add edge from parent (which is in the remove list)
@@ -236,6 +343,9 @@ impl<'a> GraphQueryEngine<'a> {
                 id: class.id.clone(),
                 node_type: NodeType::Affected,
                 source_file_index: class.source_file_index,
+                parent_id: class.parent_id.clone(),
+                container_class: class.container_class.clone(),
+                source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
             });
             
             // Add edge from parent
@@ -255,8 +365,11 @@ impl<'a> GraphQueryEngine<'a> {
                         
                         graph_data.nodes.push(GraphNode {
                             id: parent.id.clone(),
-                            node_type,
+                            node_type: node_type,
                             source_file_index: parent.source_file_index,
+                            parent_id: parent.parent_id.clone(),
+                            container_class: parent.container_class.clone(),
+                            source_path: parent.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                         });
                     }
                 }

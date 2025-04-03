@@ -1,16 +1,20 @@
-import { CosmographInputConfig } from '@cosmograph/cosmograph';
-
 export interface Node {
   id: string;
   name?: string;
   depth?: number;
   color?: string;
+  parent_id?: string;
+  container_class?: string;
+  source_path?: string;
+  node_type?: 'normal' | 'removed' | 'orphaned' | 'affected';
+  [key: string]: unknown;
 }
 
 export interface Link {
   source: string;
   target: string;
   color?: string;
+  [key: string]: unknown;
 }
 
 export interface GraphData {
@@ -23,25 +27,22 @@ export interface WebSocketMessage {
   data: any;
 }
 
-export interface GraphConfig extends CosmographInputConfig<Node, Link> {
-  simulation: {
-    repulsion: number;
-    gravity: number;
-    linkSpring: number;
-    linkDistance: number;
-    decay: number;
-    disabled: boolean;
-  };
-  renderLinks: boolean;
-  linkWidth: number;
-  linkColor: string;
-  nodeColor: string;
-  nodeSize: number;
-  backgroundColor: string;
-  curvedLinks: boolean;
-  events: {
-    onClick: (node: Node | undefined, index: number | undefined) => void;
-  };
+export interface GraphQueryParams {
+  excludeSourcePatterns?: string[];  // Patterns to exclude from source paths
+  maxDepth?: number;                 // Maximum depth to traverse
+  rootClass?: string;                // Optional root class to start from
+}
+
+export interface ImpactAnalysisParams {
+  classesToRemove: string[];
+  excludeSourcePatterns?: string[];
+}
+
+export interface ImpactAnalysisResult {
+  removedClasses: string[];
+  orphanedClasses: string[];
+  affectedClasses: string[];
+  graphData: GraphData;
 }
 
 export interface NodeDetails {
@@ -49,4 +50,7 @@ export interface NodeDetails {
   id: string;
   depth: string;
   children: string;
+  parent: string;
+  container: string;
+  source: string;
 } 
