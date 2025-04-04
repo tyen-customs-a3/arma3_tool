@@ -4,11 +4,7 @@ use serde::{Serialize, Deserialize};
 pub struct Node {
     pub id: String,
     pub name: Option<String>,
-    pub depth: Option<i32>,
     pub color: Option<String>,
-    pub parent_id: Option<String>,
-    pub container_class: Option<String>,
-    pub source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -16,6 +12,14 @@ pub struct Edge {
     pub source: String,
     pub target: String,
     pub color: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NodeMetadata {
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub container_class: Option<String>,
+    pub source_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -8,7 +8,7 @@ description = "SQLite database integration for Arma 3 Tool"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.27.0"
 rusqlite = { version = "0.34.0", features = ["bundled", "chrono", "functions"] }
-rayon = "1.8.0"
+rayon = "1.10.0"
 
 arma3_models = { workspace = true }
 
@@ -22,3 +22,11 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+criterion = "0.5.1"
+rand = "0.9.0"
+env_logger = "0.11.8"
+fake = { version = "4.2.0", features = ["derive"] }
+
+[[bench]]
+name = "query_bench"
+harness = false

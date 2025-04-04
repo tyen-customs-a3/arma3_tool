@@ -1,30 +1,33 @@
 {
-  "name": "cosmos-usage-example",
-  "private": true,
-  "version": "0.0.0",
-  "description": "How to use @cosmograph/cosmos",
-  "type": "module",
+  "name": "database_web",
+  "version": "1.0.0",
+  "description": "Cosmograph node graph visualization for database",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
-  },
-  "devDependencies": {
-    "@types/d3-drag": "3.0.7",
-    "@types/d3-ease": "3.0.2",
-    "@types/d3-selection": "3.0.11",
-    "@types/d3-zoom": "3.0.8",
-    "typescript": "5.8.2",
-    "vite": "6.2.4"
-  },
-  "dependencies": {
-    "@cosmograph/cosmograph": "^2.0.0-beta.19"
+    "build": "webpack --mode production",
+    "dev": "webpack serve --mode development",
+    "start": "webpack serve --mode production",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "network",
-    "force graph",
-    "webgl",
-    "simulation",
-    "data visualization"
-  ]
+    "cosmograph",
+    "visualization",
+    "graph",
+    "database"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@cosmograph/cosmograph": "^1.4.2",
+    "html-webpack-plugin": "^5.6.3",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.2",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.1"
+  },
+  "devDependencies": {
+    "css-loader": "^7.1.2",
+    "style-loader": "^4.0.0"
+  }
 }

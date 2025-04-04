@@ -10,6 +10,22 @@ use rusqlite::OptionalExtension;
 use serde::Serialize;
 use rayon::prelude::*;
 
+/// Raw graph data without any transformations
+#[derive(Debug)]
+pub struct RawGraphData {
+    pub nodes: HashSet<String>,
+    pub edges: Vec<(String, String)>,  // (source, target)
+}
+
+impl Default for RawGraphData {
+    fn default() -> Self {
+        Self {
+            nodes: HashSet::new(),
+            edges: Vec::new(),
+        }
+    }
+}
+
 /// Engine for graph-related database operations
 pub struct GraphQueryEngine<'a> {
     db: &'a DatabaseManager,
@@ -392,6 +408,52 @@ impl<'a> GraphQueryEngine<'a> {
         })
     }
     
+    pub fn get_full_graph_fast(&self) -> Result<RawGraphData> {
+        self.db.with_connection(|conn| {
+            let query = r#"
+                WITH RECURSIVE hierarchy(id, parent_id, depth) AS (
+                    SELECT id, parent_id, 0
+                    FROM classes 
+                    WHERE parent_id IS NULL
+                    
+                    UNION ALL
+                    
+                    SELECT c.id, c.parent_id, h.depth + 1
+                    FROM classes c
+                    JOIN hierarchy h ON c.parent_id = h.id
+                    WHERE h.depth < 100
+                )
+                SELECT id, parent_id
+                FROM hierarchy
+                ORDER BY depth, id
+            "#;
+
+            let mut stmt = conn.prepare(query)?;
+            let mut nodes = HashSet::new();
+            let mut edges = Vec::new();
+
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?, // id
+                    row.get::<_, Option<String>>(1)?, // parent_id
+                ))
+            })?;
+
+            // Process results in a single pass
+            for result in rows {
+                let (id, parent_id) = result?;
+                nodes.insert(id.clone());
+                
+                if let Some(parent) = parent_id {
+                    nodes.insert(parent.clone());
+                    edges.push((parent, id));
+                }
+            }
+
+            Ok(RawGraphData { nodes, edges })
+        })
+    }
+
     /// Build a Petgraph from class models
     pub fn build_petgraph(&self, classes: &[ClassModel]) -> Graph<String, f32, Directed> {
         let mut graph = Graph::new();
@@ -483,4 +545,4 @@ mod tests {
         assert_eq!(graph.node_count(), 4);
         assert_eq!(graph.edge_count(), 3);
     }
-} 
+}

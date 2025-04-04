@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Node Graph</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #graph-container {
+            width: 100%;
+            height: 100vh;
+            background-color: #121212;
+        }
+        #toolbar {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+            z-index: 100;
+        }
+        button {
+            background-color: #2a2a2a;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #3a3a3a;
+        }
+        .connection-status {
+            margin: 5px;
+            padding: 5px;
+            font-size: 0.8em;
+        }
+        .connected {
+            color: #7ED321;
+        }
+        .disconnected {
+            color: #FF3B30;
+        }
+        #impact-analysis {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+        }
+        input[type="text"] {
+            background-color: #2a2a2a;
+            color: white;
+            border: 1px solid #444;
+            padding: 5px;
+            width: 200px;
+            border-radius: 3px;
+        }
+        .legend {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+            font-size: 0.8em;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 3px 0;
+        }
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <button id="fit-view">Fit View</button>
+        <button id="toggle-simulation">Pause Simulation</button>
+        <button id="reconnect">Reconnect</button>
+        <span id="connection-status" class="connection-status disconnected">Disconnected</span>
+        <div id="ws-url" class="connection-status" style="font-size: 0.7em; word-break: break-all; max-width: 200px;"></div>
+        
+        <div id="impact-analysis">
+            <div>Impact Analysis:</div>
+            <input type="text" id="classes-to-prune" placeholder="Enter class names (comma separated)">
+            <button id="analyze-impact">Analyze Impact</button>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item"><div class="legend-color" style="background: #88C6FF;"></div> Normal</div>
+            <div class="legend-item"><div class="legend-color" style="background: #FF0000;"></div> Removed</div>
+            <div class="legend-item"><div class="legend-color" style="background: #FFA500;"></div> Orphaned</div>
+            <div class="legend-item"><div class="legend-color" style="background: #FFFF00;"></div> Affected</div>
+        </div>
+    </div>
+    <div id="graph-container"></div>
+</body>
+</html> 
