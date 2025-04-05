@@ -1,3 +1,6 @@
+#![warn(dead_code, unused_imports, unused_variables, deprecated_in_future)]
+#![deny(clippy::all)]
+
 use axum::{
     routing::get,
     Router,
@@ -8,9 +11,9 @@ use tower_http::{cors::CorsLayer, services::ServeDir};
 use std::env;
 
 mod models;
-mod handlers;
+mod websocket;
 
-use handlers::websocket::ws_handler;
+use websocket::ws_handler;
 use arma3_database::{DatabaseManager, CacheConfig};
 use std::path::PathBuf;
 
@@ -51,4 +54,4 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await.unwrap();
     println!("Server running on http://127.0.0.1:3000");
     axum::serve(listener, app).await.unwrap();
-} 
+}

@@ -4,19 +4,20 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { version = "0.8.3", features = ["ws"] }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tower-http = { version = "0.6.2", features = ["cors", "fs"] }
-tower = "0.5.2"
+log.workspace = true
+rayon.workspace = true
+axum = { version = "0.8.3", features = ["ws"] }
 futures = "0.3.31"
+parking_lot = "0.12.3"
+rand = "0.9.0"
+tower = "0.5.2"
+tower-http = { version = "0.6.2", features = ["cors", "fs"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-rayon.workspace = true
-rand = "0.9.0"
-parking_lot = "0.12.1"
-log.workspace = true
+uuid = { version = "1.16.0", features = ["v4"] }
 
-# Add database crate dependency
 arma3_database.workspace = true
+arma3_models.workspace = true

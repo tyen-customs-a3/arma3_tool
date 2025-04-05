@@ -1,3 +1,0 @@
-change the graph to return simple data for the nodes and hierarchy
-lazy load the metadata for the selected points
-use filtering on the rust side for the analysis
