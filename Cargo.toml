@@ -34,7 +34,6 @@ members = [
     "models",
     "extractor",
     "database",
-    "database_server",
 ]
 
 [[bin]]
@@ -83,7 +82,7 @@ actix-web = "4.0"
 actix-files = "0.6"
 rusqlite = "0.34.0"
 
-[lints.rust]
+[workspace.lints.rust]
 dead_code = "deny"
 unused_parens = "allow"
 unused_imports = "deny"
