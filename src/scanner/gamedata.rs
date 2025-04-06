@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use log::{info, warn};
 use crate::error::{Result, ToolError};
@@ -46,8 +46,8 @@ impl GameDataScanner {
         Self::create_scanner(config, Some(db_manager))
     }
     
-    /// Create a new game data scanner with database connection from the specified path
-    pub fn with_database_path(config: arma3_extractor::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
+    /// Create a new scanner with a specific database path
+    pub fn with_database_path(config: arma3_extractor::ExtractionConfig, db_path: &Path) -> Result<Self> {
         let db_config = arma3_database::models::CacheConfig::new(
             db_path.to_str().unwrap_or("arma3.db"), 
             config.cache_dir.to_str().unwrap_or("cache")

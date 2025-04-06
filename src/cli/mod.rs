@@ -9,7 +9,7 @@ pub use process::run_process;
 pub use report::run_report;
 
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -23,6 +23,6 @@ pub struct Cli {
 }
 
 /// Get the default cache file path
-pub fn get_default_cache_path(cache_dir: &PathBuf) -> PathBuf {
+pub fn get_default_cache_path(cache_dir: &Path) -> PathBuf {
     cache_dir.join("arma3.db")
-} 
+}

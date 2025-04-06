@@ -59,7 +59,7 @@ impl<'a> DependencyAnalyzer<'a> {
                 // Add to mission's missing dependencies
                 missing_dependencies
                     .entry(dep.mission_id.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(dep.class_name);
                 total_missing += 1;
             }
@@ -148,4 +148,4 @@ mod tests {
         assert_eq!(mission_missing.len(), 1);
         assert!(mission_missing.contains("MissingClass"));
     }
-} 
+}

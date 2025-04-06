@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::{Write, BufWriter};
 use std::collections::HashMap;
@@ -14,9 +14,9 @@ pub struct ClassHierarchyWriter {
 
 impl ClassHierarchyWriter {
     /// Create a new class hierarchy writer
-    pub fn new(output_dir: &PathBuf) -> Self {
+    pub fn new(output_dir: &Path) -> Self {
         Self {
-            output_dir: output_dir.clone(),
+            output_dir: output_dir.to_path_buf(),
         }
     }
 
@@ -104,7 +104,7 @@ impl ClassHierarchyWriter {
         for class in &classes {
             if let Some(parent_id) = &class.parent_id {
                 child_map.entry(parent_id.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(class.id.clone());
             }
         }

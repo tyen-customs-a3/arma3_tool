@@ -1,20 +1,20 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use chrono::Utc;
 use log::info;
 
-use crate::reporter::error::{Result as ReporterResult, ReporterError};
+use crate::reporter::error::{ReporterError, Result as ReporterResult};
 use crate::reporter::models::DependencyReport;
 
-/// Handles writing reports to files
+/// Creates report files in different formats
 pub struct ReportWriter {
     output_dir: PathBuf,
 }
 
 impl ReportWriter {
-    /// Create a new report writer
-    pub fn new(output_dir: &PathBuf) -> Self {
+    /// Create a new report writer with the specified output directory
+    pub fn new(output_dir: &Path) -> Self {
         Self {
-            output_dir: output_dir.clone(),
+            output_dir: output_dir.to_path_buf(),
         }
     }
 
@@ -81,7 +81,7 @@ impl ReportWriter {
             for class in missing_classes {
                 content.push_str(&format!("  - {}\n", class));
             }
-            content.push_str("\n");
+            content.push('\n');
         }
 
         content
@@ -108,7 +108,7 @@ mod tests {
         let report = DependencyReport::new(missing_deps, 1, 1, 100, 5);
         
         // Create writer and write report
-        let writer = ReportWriter::new(&output_dir);
+        let writer = ReportWriter::new(output_dir.as_path());
         writer.write_report(&report).unwrap();
         
         // Verify report file was created
@@ -127,4 +127,4 @@ mod tests {
         assert!(content.contains("Mission: test_mission"));
         assert!(content.contains("- MissingClass"));
     }
-} 
+}

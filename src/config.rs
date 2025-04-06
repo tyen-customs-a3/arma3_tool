@@ -4,17 +4,10 @@ use serde::{Deserialize, Serialize};
 use arma3_extractor::ExtractionConfig;
 
 /// Configuration for visualization features
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VisualizationConfig {
     pub preserved_classes: Vec<String>,
-}
-
-impl Default for VisualizationConfig {
-    fn default() -> Self {
-        Self {
-            preserved_classes: Vec::new(),
-        }
-    }
+    pub excluded_classes: Vec<String>,
 }
 
 /// Configuration for the application scan settings

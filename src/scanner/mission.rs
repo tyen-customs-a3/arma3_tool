@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs;
 use log::{info, error};
 use crate::error::{Result, ToolError};
@@ -46,7 +46,7 @@ impl MissionScanner {
     }
     
     /// Create a new mission scanner with database connection from the specified path
-    pub fn with_database_path(config: arma3_extractor::ExtractionConfig, db_path: &PathBuf) -> Result<Self> {
+    pub fn with_database_path(config: arma3_extractor::ExtractionConfig, db_path: &Path) -> Result<Self> {
         let db_config = arma3_database::models::CacheConfig::new(
             db_path.to_str().unwrap_or("arma3.db"), 
             config.cache_dir.to_str().unwrap_or("cache")
@@ -252,4 +252,4 @@ impl MissionScanner {
         
         Ok(())
     }
-} 
+}
