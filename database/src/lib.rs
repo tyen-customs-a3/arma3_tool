@@ -10,6 +10,14 @@ pub mod models;
 pub mod schema;
 pub mod queries;
 pub mod repos;
+pub mod analysis;
+
+#[cfg(feature = "trim_analysis")]
+pub mod bin {
+    pub mod trim_analysis {
+        pub use crate::analysis::trim_analysis::analyze_pbo_impact;
+    }
+}
 
 use std::path::{Path, PathBuf};
 use std::fs;
