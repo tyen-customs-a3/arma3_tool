@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
             "sqm".to_string()
         ],
         threads: num_cpus::get(),
-        timeout: 60,
+        timeout: 340,
         verbose: true,
         db_path: PathBuf::from("./cache/extractor.db"),
     };

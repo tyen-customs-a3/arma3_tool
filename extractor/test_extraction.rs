@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
         mission_dirs: vec![mission_path.clone()],
         mission_extensions: vec!["hpp".to_string(), "sqf".to_string(), "xml".to_string(), "paa".to_string()],
         threads: 4,
-        timeout: 60,
+        timeout: 340,
         verbose: true,
         db_path: cache_dir.join("extractor.db"),
     };

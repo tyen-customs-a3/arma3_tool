@@ -117,6 +117,9 @@ impl PboProcessor {
                 // Try to extract the PBO
                 match processor.extract_with_options(&pbo_path, temp_dir.path(), options) {
                     Ok(_) => {
+                        // Add a small delay to ensure file handles are released
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                        
                         // Find all extracted files
                         match tokio::task::spawn_blocking(move || PboProcessor::catalog_files(&temp_dir_path)).await {
                             Ok(Ok(extracted_files)) => {
@@ -144,13 +147,32 @@ impl PboProcessor {
                                     }
 
                                     // Copy the file
-                                    if let Err(e) = fs::copy(file_path, &target_path) {
-                                        warn!("Failed to copy {} to {}: {}", file_path.display(), target_path.display(), e);
-                                        continue;
+                                    let mut retries = 3;
+                                    let mut last_error = None;
+                                    
+                                    while retries > 0 {
+                                        match fs::copy(file_path, &target_path) {
+                                            Ok(_) => {
+                                                // Store only the relative path, not the full cache path
+                                                cache_paths.push(PathBuf::from(rel_path));
+                                                break;
+                                            },
+                                            Err(e) => {
+                                                last_error = Some(e);
+                                                retries -= 1;
+                                                if retries > 0 {
+                                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                                }
+                                            }
+                                        }
                                     }
-
-                                    // Store only the relative path, not the full cache path
-                                    cache_paths.push(PathBuf::from(rel_path));
+                                    
+                                    if retries == 0 {
+                                        if let Some(e) = last_error {
+                                            warn!("Failed to copy {} to {} after 3 retries: {}", 
+                                                file_path.display(), target_path.display(), e);
+                                        }
+                                    }
                                 }
 
                                 // Store the result
