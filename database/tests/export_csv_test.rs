@@ -173,6 +173,7 @@ fn create_test_classes() -> Vec<ClassModel> {
             parent_id: None,
             container_class: None,
             source_file_index: None,
+            is_forward_declaration: false,
             properties: HashMap::new(),
         },
         
@@ -181,6 +182,7 @@ fn create_test_classes() -> Vec<ClassModel> {
             parent_id: None,
             container_class: None,
             source_file_index: None,
+            is_forward_declaration: false,
             properties: HashMap::new(),
         },
         
@@ -190,6 +192,7 @@ fn create_test_classes() -> Vec<ClassModel> {
             parent_id: Some("CfgVehicles".to_string()),
             container_class: Some("CfgVehicles".to_string()),
             source_file_index: Some(2), // Maps to A3/Soft_F
+            is_forward_declaration: false,
             properties: {
                 let mut props = HashMap::new();
                 props.insert("displayName".to_string(), PropertyValue::String("Car".to_string()));
@@ -204,6 +207,7 @@ fn create_test_classes() -> Vec<ClassModel> {
             parent_id: Some("CfgWeapons".to_string()),
             container_class: Some("CfgWeapons".to_string()),
             source_file_index: Some(1), // Maps to A3/Weapons_F
+            is_forward_declaration: false,
             properties: {
                 let mut props = HashMap::new();
                 props.insert("displayName".to_string(), PropertyValue::String("Rifle Base".to_string()));
@@ -219,6 +223,7 @@ fn create_test_classes() -> Vec<ClassModel> {
             parent_id: Some("Rifle_Base_F".to_string()),
             container_class: Some("CfgWeapons".to_string()),
             source_file_index: Some(1), // Maps to A3/Weapons_F
+            is_forward_declaration: false,
             properties: {
                 let mut props = HashMap::new();
                 props.insert("displayName".to_string(), PropertyValue::String("MX Base".to_string()));

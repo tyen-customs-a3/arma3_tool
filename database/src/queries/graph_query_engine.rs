@@ -146,6 +146,7 @@ impl<'a> GraphQueryEngine<'a> {
                 source_file_index: node.source_file_index,
                 parent_id: node.parent_id.clone(),
                 container_class: node.container_class.clone(),
+                is_forward_declaration: node.is_forward_declaration,
                 source_path,
             });
             
@@ -245,6 +246,7 @@ impl<'a> GraphQueryEngine<'a> {
                         source_file_index,
                         parent_id: None,
                         container_class: None,
+                        is_forward_declaration: false,
                         source_path: None,
                     }
                 })
@@ -299,6 +301,7 @@ impl<'a> GraphQueryEngine<'a> {
                     source_file_index: class.source_file_index,
                     parent_id: class.parent_id.clone(),
                     container_class: class.container_class.clone(),
+                    is_forward_declaration: class.is_forward_declaration,
                     source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                 });
                 
@@ -314,6 +317,7 @@ impl<'a> GraphQueryEngine<'a> {
                                     source_file_index: parent.source_file_index,
                                     parent_id: parent.parent_id.clone(),
                                     container_class: parent.container_class.clone(),
+                                    is_forward_declaration: parent.is_forward_declaration,
                                     source_path: parent.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                                 });
                             }
@@ -339,6 +343,7 @@ impl<'a> GraphQueryEngine<'a> {
                 source_file_index: class.source_file_index,
                 parent_id: class.parent_id.clone(),
                 container_class: class.container_class.clone(),
+                is_forward_declaration: class.is_forward_declaration,
                 source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
             });
             
@@ -361,6 +366,7 @@ impl<'a> GraphQueryEngine<'a> {
                 source_file_index: class.source_file_index,
                 parent_id: class.parent_id.clone(),
                 container_class: class.container_class.clone(),
+                is_forward_declaration: class.is_forward_declaration,
                 source_path: class.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
             });
             
@@ -385,6 +391,7 @@ impl<'a> GraphQueryEngine<'a> {
                             source_file_index: parent.source_file_index,
                             parent_id: parent.parent_id.clone(),
                             container_class: parent.container_class.clone(),
+                            is_forward_declaration: parent.is_forward_declaration,
                             source_path: parent.source_file_index.and_then(|idx| class_repo.get_source_path(idx).ok().flatten()),
                         });
                     }
@@ -517,25 +524,29 @@ mod tests {
             "Class1".to_string(), 
             None::<String>,
             None::<String>,
-            Some(1)
+            Some(1),
+            false
         );
         let class2 = ClassModel::new(
             "Class2".to_string(), 
             Some("Class1".to_string()),
             None::<String>,
-            Some(2)
+            Some(2),
+            false
         );
         let class3 = ClassModel::new(
             "Class3".to_string(), 
             Some("Class2".to_string()),
             None::<String>,
-            Some(3)
+            Some(3),
+            false
         );
         let class4 = ClassModel::new(
             "Class4".to_string(), 
             Some("Class1".to_string()),
             None::<String>,
-            Some(4)
+            Some(4),
+            false
         );
         
         // Create a petgraph

@@ -17,6 +17,9 @@ pub struct ClassModel {
     /// Original file index for compatibility with GameDataClass
     pub source_file_index: Option<usize>,
 
+    /// Whether this class represents a forward declaration
+    pub is_forward_declaration: bool,
+
     /// Properties of the class
     pub properties: HashMap<String, PropertyValue>,
 }
@@ -28,12 +31,14 @@ impl ClassModel {
         parent_id: Option<impl Into<String>>,
         container_class: Option<impl Into<String>>,
         source_file_index: Option<usize>,
+        is_forward_declaration: bool,
     ) -> Self {
         Self {
             id: id.into(),
             parent_id: parent_id.map(Into::into),
             container_class: container_class.map(Into::into),
             source_file_index,
+            is_forward_declaration,
             properties: HashMap::new(),
         }
     }
@@ -47,6 +52,7 @@ impl ClassModel {
             parent_id: class.parent.clone(),
             container_class: class.container_class.clone(),
             source_file_index: class.source_file_index,
+            is_forward_declaration: class.is_forward_declaration,
             properties: class.properties.clone(),
         }
     }
@@ -59,6 +65,7 @@ impl ClassModel {
             container_class: self.container_class.clone(),
             properties: self.properties.clone(),
             source_file_index: self.source_file_index,
+            is_forward_declaration: self.is_forward_declaration,
         }
     }
 }
@@ -80,6 +87,9 @@ pub struct ClassHierarchyNode {
     
     /// Source file index
     pub source_file_index: Option<usize>,
+
+    /// Whether this node represents a forward declaration
+    pub is_forward_declaration: bool,
 }
 
 /// Graph node data structure for visualization
@@ -93,6 +103,9 @@ pub struct GraphNode {
     
     /// Source file index
     pub source_file_index: Option<usize>,
+
+    /// Whether this node represents a forward declaration
+    pub is_forward_declaration: bool,
 
     /// Parent class identifier
     pub parent_id: Option<String>,
@@ -159,6 +172,7 @@ mod tests {
             container_class: None,
             properties: std::collections::HashMap::new(),
             source_file_index: Some(1),
+            is_forward_declaration: true,
         };
         
         // Convert to ClassModel
@@ -167,6 +181,7 @@ mod tests {
         assert_eq!(class_model.id, "TestClass");
         assert_eq!(class_model.parent_id, Some("ParentClass".to_string()));
         assert_eq!(class_model.source_file_index, Some(1));
+        assert_eq!(class_model.is_forward_declaration, true);
         
         // Convert back to GameDataClass
         let converted_class = class_model.to_game_data_class();
@@ -174,5 +189,6 @@ mod tests {
         assert_eq!(converted_class.name, game_data_class.name);
         assert_eq!(converted_class.parent, game_data_class.parent);
         assert_eq!(converted_class.source_file_index, game_data_class.source_file_index);
+        assert_eq!(converted_class.is_forward_declaration, game_data_class.is_forward_declaration);
     }
 } 

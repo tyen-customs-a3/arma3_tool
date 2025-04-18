@@ -35,7 +35,7 @@ cargo run --features "trim_analysis" --bin trim_analysis -- --database path/to/a
 # Watch mode (automatically rerun when input file changes)
 cargo run --features "trim_analysis" --bin trim_analysis -- --database path/to/arma3.db --input classes_to_trim.txt --output analysis.json --watch
 ```
-cargo run --features "trim_analysis" --bin trim_analysis -- --database "D:/pca/git/dep/rs/arma3_tool/cache/pca_next/arma3.db" --input D:/pca/git/dep/rs/arma3_tool/database/example_classes_to_trim.txt --output analysis.json --watch
+
 ## Input Format
 
 The input file should contain one class name per line. You can use:

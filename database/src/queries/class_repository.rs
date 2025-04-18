@@ -21,12 +21,14 @@ impl<'a> ClassRepository<'a> {
     pub fn create(&self, class: &ClassModel) -> Result<()> {
         self.db.with_connection(|conn| {
             conn.execute(
-                "INSERT OR REPLACE INTO classes (id, parent_id, source_file_index)
-                 VALUES (?1, ?2, ?3)",
+                "INSERT OR REPLACE INTO classes (id, parent_id, container_class, source_file_index, is_forward_declaration)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
                     class.id,
                     class.parent_id,
+                    class.container_class,
                     convert_opt_usize_to_i64(class.source_file_index),
+                    class.is_forward_declaration,
                 ],
             )?;
             
@@ -38,7 +40,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get(&self, id: &str) -> Result<Option<ClassModel>> {
         self.db.with_connection(|conn| {
             let result = conn.query_row(
-                "SELECT id, parent_id, container_class, source_file_index
+                "SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                  FROM classes WHERE id = ?1",
                 [id],
                 |row| self.map_row_to_class(row),
@@ -52,13 +54,14 @@ impl<'a> ClassRepository<'a> {
     pub fn update(&self, class: &ClassModel) -> Result<()> {
         self.db.with_connection(|conn| {
             let rows_affected = conn.execute(
-                "UPDATE classes SET parent_id = ?2, container_class = ?3, source_file_index = ?4
+                "UPDATE classes SET parent_id = ?2, container_class = ?3, source_file_index = ?4, is_forward_declaration = ?5
                  WHERE id = ?1",
                 params![
                     class.id,
                     class.parent_id,
                     class.container_class,
                     convert_opt_usize_to_i64(class.source_file_index),
+                    class.is_forward_declaration,
                 ],
             )?;
             
@@ -96,7 +99,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get_all(&self) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, container_class, source_file_index
+                "SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                  FROM classes ORDER BY id"
             )?;
             
@@ -115,7 +118,7 @@ impl<'a> ClassRepository<'a> {
     pub fn find_by_parent(&self, parent_id: &str) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, container_class, source_file_index
+                "SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                  FROM classes WHERE parent_id = ?1"
             )?;
             
@@ -139,7 +142,7 @@ impl<'a> ClassRepository<'a> {
     pub fn get_root_classes(&self) -> Result<Vec<ClassModel>> {
         self.db.with_connection(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, parent_id, container_class, source_file_index
+                "SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                  FROM classes WHERE parent_id IS NULL"
             )?;
             
@@ -159,19 +162,19 @@ impl<'a> ClassRepository<'a> {
         self.db.with_connection(|conn| {
             // Use recursive CTE to get hierarchy
             let mut stmt = conn.prepare(
-                "WITH RECURSIVE hierarchy(id, parent_id, container_class, source_file_index, depth) AS (
-                    SELECT id, parent_id, container_class, source_file_index, 0
+                "WITH RECURSIVE hierarchy(id, parent_id, container_class, source_file_index, is_forward_declaration, depth) AS (
+                    SELECT id, parent_id, container_class, source_file_index, is_forward_declaration, 0
                     FROM classes
                     WHERE id = ?1
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, h.depth + 1
+                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, c.is_forward_declaration, h.depth + 1
                     FROM classes c
                     JOIN hierarchy h ON c.parent_id = h.id
                     WHERE h.depth < ?2
                 )
-                SELECT id, parent_id, container_class, source_file_index, depth
+                SELECT id, parent_id, container_class, source_file_index, is_forward_declaration, depth
                 FROM hierarchy
                 ORDER BY depth, id"
             )?;
@@ -182,7 +185,8 @@ impl<'a> ClassRepository<'a> {
                     parent_id: row.get(1)?,
                     container_class: row.get(2)?,
                     source_file_index: convert_i64_to_usize(row.get(3)?),
-                    depth: row.get(4)?,
+                    is_forward_declaration: row.get(4)?,
+                    depth: row.get(5)?,
                 })
             })?;
             
@@ -218,19 +222,19 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "WITH RECURSIVE hierarchy(id, parent_id, container_class, source_file_index, depth) AS (
-                    SELECT id, parent_id, container_class, source_file_index, 0
+                "WITH RECURSIVE hierarchy(id, parent_id, container_class, source_file_index, is_forward_declaration, depth) AS (
+                    SELECT id, parent_id, container_class, source_file_index, is_forward_declaration, 0
                     FROM classes
                     WHERE id IN ({})
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, h.depth + 1
+                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, c.is_forward_declaration, h.depth + 1
                     FROM classes c
                     JOIN hierarchy h ON c.parent_id = h.id
                     WHERE h.depth < ?1
                 )
-                SELECT id, parent_id, container_class, source_file_index, depth
+                SELECT id, parent_id, container_class, source_file_index, is_forward_declaration, depth
                 FROM hierarchy
                 ORDER BY depth, id",
                 root_list
@@ -244,7 +248,8 @@ impl<'a> ClassRepository<'a> {
                     parent_id: row.get(1)?,
                     container_class: row.get(2)?,
                     source_file_index: convert_i64_to_usize(row.get(3)?),
-                    depth: row.get(4)?,
+                    is_forward_declaration: row.get(4)?,
+                    depth: row.get(5)?,
                 })
             })?;
             
@@ -271,7 +276,7 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "SELECT id, parent_id, container_class, source_file_index
+                "SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                  FROM classes
                  WHERE parent_id IN ({})",
                 placeholders
@@ -310,19 +315,19 @@ impl<'a> ClassRepository<'a> {
                 .join(",");
                 
             let query = format!(
-                "WITH RECURSIVE affected_hierarchy(id, parent_id, container_class, source_file_index, depth) AS (
-                    SELECT id, parent_id, container_class, source_file_index, 0
+                "WITH RECURSIVE affected_hierarchy(id, parent_id, container_class, source_file_index, is_forward_declaration, depth) AS (
+                    SELECT id, parent_id, container_class, source_file_index, is_forward_declaration, 0
                     FROM classes
                     WHERE id IN ({})
                     
                     UNION ALL
                     
-                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, a.depth + 1
+                    SELECT c.id, c.parent_id, c.container_class, c.source_file_index, c.is_forward_declaration, a.depth + 1
                     FROM classes c
                     JOIN affected_hierarchy a ON c.parent_id = a.id
                     WHERE a.depth < ?{}
                 )
-                SELECT id, parent_id, container_class, source_file_index
+                SELECT id, parent_id, container_class, source_file_index, is_forward_declaration
                 FROM affected_hierarchy
                 WHERE depth > 0",  // Exclude the starting classes
                 placeholders,
@@ -362,8 +367,8 @@ impl<'a> ClassRepository<'a> {
         self.db.with_transaction(|tx| {
             // Prepare statement outside the loop
             let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO classes (id, parent_id, container_class, source_file_index)
-                 VALUES (?1, ?2, ?3, ?4)"
+                "INSERT OR REPLACE INTO classes (id, parent_id, container_class, source_file_index, is_forward_declaration)
+                 VALUES (?1, ?2, ?3, ?4, ?5)"
             )?;
             
             // Insert all classes in a single transaction
@@ -373,6 +378,7 @@ impl<'a> ClassRepository<'a> {
                     class.parent_id,
                     class.container_class,
                     convert_opt_usize_to_i64(class.source_file_index),
+                    class.is_forward_declaration,
                 ])?;
             }
             
@@ -412,24 +418,27 @@ impl<'a> ClassRepository<'a> {
     
     /// Convert a database row to a ClassModel
     fn map_row_to_class(&self, row: &Row) -> rusqlite::Result<ClassModel> {
-        let source_file_index: Option<i64> = row.get(2)?;
+        let source_file_index: Option<i64> = row.get(3)?;
         
         Ok(ClassModel {
             id: row.get(0)?,
             parent_id: row.get(1)?,
             container_class: row.get(2)?,
             source_file_index: source_file_index.map(|idx| idx as usize),
+            is_forward_declaration: row.get(4)?,
             properties: HashMap::new(),
         })
     }
     
-    /// Get source file path for a given file index
+    /// Get source file path for a given file index, preferring non-forward declarations
     pub fn get_source_path(&self, file_index: usize) -> Result<Option<String>> {
         self.db.with_connection(|conn| {
             conn.query_row(
                 "SELECT COALESCE(pbo_id, normalized_path) as source_path 
                  FROM file_index_mapping 
-                 WHERE file_index = ?1",
+                 WHERE file_index = ?1
+                 ORDER BY is_forward_declaration ASC -- Prioritize non-forward declarations (assuming 0=false, 1=true)
+                 LIMIT 1",
                 [file_index as i64],
                 |row| row.get::<_, String>(0)
             ).optional()
@@ -467,21 +476,24 @@ mod tests {
             "Class1".to_string(), 
             None::<String>,
             None::<String>,
-            Some(1)
+            Some(1),
+            false
         );
         
         let class2 = ClassModel::new(
             "Class2".to_string(), 
             Some("Class1".to_string()),
             None::<String>,
-            Some(2)
+            Some(2),
+            false
         );
         
         let class3 = ClassModel::new(
             "Class3".to_string(), 
             Some("Class2".to_string()),
             None::<String>,
-            Some(3)
+            Some(3),
+            true
         );
         
         // Insert classes
@@ -502,6 +514,8 @@ mod tests {
         // Test get_hierarchy
         let hierarchy = repo.get_hierarchy("Class1", 2).unwrap();
         assert_eq!(hierarchy.len(), 3);
+        assert!(hierarchy.iter().any(|n| n.id == "Class3" && n.is_forward_declaration)); // Check flag
+        assert!(hierarchy.iter().any(|n| n.id == "Class2" && !n.is_forward_declaration)); // Check flag
         
         // Test find_orphaned_by_parent_removal
         let orphaned = repo.find_orphaned_by_parent_removal(&["Class1".to_string()]).unwrap();
@@ -510,6 +524,8 @@ mod tests {
         
         // Test find_affected_children
         let affected = repo.find_affected_children(&["Class1".to_string()], 10).unwrap();
-        assert_eq!(affected.len(), 2);
+        assert_eq!(affected.len(), 2); // Should find Class2 and Class3
+        assert!(affected.iter().any(|c| c.id == "Class3" && c.is_forward_declaration)); // Check flag
+        assert!(affected.iter().any(|c| c.id == "Class2" && !c.is_forward_declaration)); // Check flag
     }
 } 

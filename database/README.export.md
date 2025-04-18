@@ -17,6 +17,8 @@ cargo run --bin export_csv -- -d /path/to/arma3_data.db -f "CfgVehicles,CfgWeapo
 # Limit the number of exported classes
 cargo run --bin export_csv -- -d /path/to/arma3_data.db -l 1000
 ```
+cargo run --bin export_csv -- -d "E:\pca\git\rs\arma3_tool\cache\pca_current\arma3.db" -o my_export.csv
+
 
 ## Output Format
 

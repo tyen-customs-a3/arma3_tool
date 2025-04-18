@@ -113,6 +113,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Apply filters and process classes
     let mut exported_count = 0;
     for class in classes {
+        // Skip forward declarations
+        if class.is_forward_declaration {
+            continue;
+        }
+        
         // Apply parent filter if specified
         if !parent_filters.is_empty() {
             if let Some(parent) = &class.parent_id {
@@ -146,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Write CSV line
         writeln!(
             file,
-            "{},{},{},{},{},{},\"{}\"",
+            "{},{},{},{},{},{},{}",
             escape_csv(&class.id),
             escape_csv(&display_name),
             "class",

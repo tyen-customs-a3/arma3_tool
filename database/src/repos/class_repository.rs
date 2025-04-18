@@ -284,6 +284,7 @@ impl<'a> ClassRepository<'a> {
                         parent_id,
                         container_class,
                         source_file_index.map(|idx| idx as usize),
+                        false
                     )
                 });
                 

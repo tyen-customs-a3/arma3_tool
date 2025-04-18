@@ -1,12 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use log::{info, warn, debug};
+use log::info;
 use csv::Reader;
 use serde::Deserialize;
 #[cfg(feature = "class_mapping")]
-use notify::{Watcher, RecursiveMode, Event, EventKind};
-use std::sync::mpsc::channel;
-use std::time::Duration;
+use notify::{RecommendedWatcher, Watcher, RecursiveMode, Event, EventKind, Config};
 use std::fs::File;
 use std::io::Write;
 
@@ -25,14 +23,24 @@ pub struct ClassMappingAnalysis {
     db: DatabaseManager,
     mappings: HashMap<String, ClassMapping>,
     output_file: Option<String>,
+    existing_classes: HashSet<String>,
 }
 
 impl ClassMappingAnalysis {
     pub fn new(db: DatabaseManager) -> Self {
+        let class_repo = ClassRepository::new(&db);
+        // Pre-load all existing classes for case-insensitive lookup
+        let existing_classes = class_repo.get_all()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| c.id.to_lowercase())
+            .collect();
+
         Self {
             db,
             mappings: HashMap::new(),
             output_file: None,
+            existing_classes,
         }
     }
 
@@ -48,7 +56,7 @@ impl ClassMappingAnalysis {
 
         for result in rdr.deserialize() {
             let mapping: ClassMapping = result?;
-            self.mappings.insert(mapping.original_class.clone(), mapping);
+            self.mappings.insert(mapping.original_class.to_lowercase(), mapping);
         }
 
         info!("Loaded {} class mappings", self.mappings.len());
@@ -67,9 +75,18 @@ impl ClassMappingAnalysis {
         Ok(())
     }
 
+    /// Check if a class exists (case-insensitive)
+    fn class_exists(&self, class_name: &str) -> bool {
+        self.existing_classes.contains(&class_name.to_lowercase())
+    }
+
+    /// Check if a class has a mapping (case-insensitive)
+    fn has_mapping(&self, class_name: &str) -> bool {
+        self.mappings.contains_key(&class_name.to_lowercase())
+    }
+
     /// Analyze missions for missing classes and generate a report
     pub fn analyze_missions(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let class_repo = ClassRepository::new(&self.db);
         let mission_repo = MissionRepository::new(&self.db);
 
         // Get all missions
@@ -79,53 +96,64 @@ impl ClassMappingAnalysis {
 
         // Track missing classes across all missions
         let mut all_missing_classes = HashSet::new();
-        let mut mission_missing_classes = HashMap::new();
+        let mut unmapped_classes = HashSet::new();
+        let mut mission_unmapped_classes = HashMap::new();
 
         for mission in missions {
             // Get all dependencies for this mission
             let dependencies = mission_repo.get_dependencies(&mission.id)?;
             
-            // Track missing classes for this mission
-            let mut missing_classes = Vec::new();
+            // Track unmapped classes for this mission
+            let mut mission_missing = Vec::new();
 
             for dep in dependencies {
-                // Check if the class exists in the database
-                if class_repo.get(&dep.class_name)?.is_none() {
-                    missing_classes.push(dep.class_name.clone());
-                    all_missing_classes.insert(dep.class_name.clone());
+                // Skip ignored classes
+
+                // Check if the class exists in the database (case-insensitive)
+                if !self.class_exists(&dep.class_name) {
+                    // Only add to all_missing_classes if it's not already there
+                    if all_missing_classes.insert(dep.class_name.clone()) {
+                        // Only track classes that don't have a mapping
+                        if !self.has_mapping(&dep.class_name) {
+                            unmapped_classes.insert(dep.class_name.clone());
+                            mission_missing.push(dep.class_name.clone());
+                        }
+                    }
                 }
             }
 
-            if !missing_classes.is_empty() {
-                mission_missing_classes.insert(mission.name.clone(), missing_classes);
+            if !mission_missing.is_empty() {
+                mission_unmapped_classes.insert(mission.name.clone(), mission_missing);
             }
         }
 
         // Generate report content
         let mut report = String::new();
-        report.push_str("\n# Mission Class Dependency Analysis Report\n\n");
+        report.push_str("\n# Missing Class Dependencies Analysis Report\n\n");
         report.push_str("## Summary\n");
         report.push_str(&format!("- Total Missions: {}\n", total_missions));
-        report.push_str(&format!("- Missions with Missing Classes: {}\n", mission_missing_classes.len()));
-        report.push_str(&format!("- Total Unique Missing Classes: {}\n\n", all_missing_classes.len()));
+        report.push_str(&format!("- Missions with Unmapped Classes: {}\n", mission_unmapped_classes.len()));
+        report.push_str(&format!("- Total Unique Missing Classes: {}\n", all_missing_classes.len()));
+        report.push_str(&format!("- Unique Unmapped Classes: {}\n", unmapped_classes.len()));
+        report.push_str(&format!("- Unique Mapped Classes: {}\n", all_missing_classes.len() - unmapped_classes.len()));
 
-        report.push_str("## Missing Classes by Mission\n");
-        for (mission_name, missing_classes) in mission_missing_classes {
-            report.push_str(&format!("\n### {}\n", mission_name));
-            for class in missing_classes {
-                if let Some(mapping) = self.mappings.get(&class) {
-                    report.push_str(&format!("- {} -> {} ({})\n", class, mapping.replacement_class, mapping.notes));
-                } else {
-                    report.push_str(&format!("- {} (No mapping found)\n", class));
+        // Only show missions with unmapped classes
+        if !mission_unmapped_classes.is_empty() {
+            report.push_str("## Unmapped Classes by Mission\n");
+            for (mission_name, classes) in &mission_unmapped_classes {
+                report.push_str(&format!("\n### {}\n", mission_name));
+                for class in classes {
+                    report.push_str(&format!("{}\n", class));
                 }
             }
         }
 
-        report.push_str("\n## Unmapped Classes\n");
-        for class in all_missing_classes {
-            if !self.mappings.contains_key(&class) {
-                report.push_str(&format!("- {}\n", class));
-            }
+        // List all unmapped classes alphabetically
+        report.push_str("\n## All Unmapped Classes\n");
+        let mut sorted_unmapped = unmapped_classes.into_iter().collect::<Vec<_>>();
+        sorted_unmapped.sort();
+        for class in sorted_unmapped {
+            report.push_str(&format!("{}\n", class));
         }
 
         // Write the report to the specified output
@@ -141,7 +169,7 @@ impl ClassMappingAnalysis {
         let (tx, rx) = channel();
 
         // Create a watcher object, delivering debounced events
-        let mut watcher = notify::watcher(tx, Duration::from_secs(2))?;
+        let mut watcher: RecommendedWatcher = Watcher::new(tx, Config::default().with_poll_interval(Duration::from_secs(2)))?;
 
         // Add a path to be watched
         watcher.watch(csv_path, RecursiveMode::NonRecursive)?;
@@ -156,13 +184,17 @@ impl ClassMappingAnalysis {
         // Watch for changes
         loop {
             match rx.recv() {
-                Ok(Event { kind: EventKind::Modify(_), .. }) => {
+                Ok(Ok(Event { kind: EventKind::Modify(_), .. })) => {
                     println!("\nFile changed, reloading mappings and reanalyzing...");
                     self.load_mappings(csv_path)?;
                     self.analyze_missions()?;
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     warn!("Watch error: {:?}", e);
+                    break;
+                }
+                Err(e) => {
+                    warn!("Channel error: {:?}", e);
                     break;
                 }
                 _ => {}

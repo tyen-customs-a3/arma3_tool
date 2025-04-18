@@ -81,3 +81,7 @@ The database tracks schema version in the `metadata` table. If a database with a
 ## License
 
 This crate is part of the Arma 3 Tool project. 
+
+cargo run --features "trim_analysis" --bin trim_analysis -- --database "D:/pca/git/dep/rs/arma3_tool/cache/pca_next/arma3.db" --input D:/pca/git/dep/rs/arma3_tool/database/example_classes_to_trim.txt --output analysis.json --watch
+
+cargo run --bin find_similar_classes -- -d "D:/pca/git/dep/rs/arma3_tool/cache/pca_next/arma3.db" -o output.csv
