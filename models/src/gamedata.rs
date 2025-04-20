@@ -55,6 +55,9 @@ pub struct GameDataClass {
     /// Properties
     pub properties: HashMap<String, PropertyValue>,
     
+    /// Whether this class represents a forward declaration
+    pub is_forward_declaration: bool,
+
     /// Source file index in the file list
     pub source_file_index: Option<usize>,
 }
@@ -67,6 +70,7 @@ impl GameDataClass {
             parent,
             container_class: None,
             properties: HashMap::new(),
+            is_forward_declaration: false,
             source_file_index: None,
         }
     }

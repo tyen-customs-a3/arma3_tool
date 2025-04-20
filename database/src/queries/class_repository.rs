@@ -434,10 +434,11 @@ impl<'a> ClassRepository<'a> {
     pub fn get_source_path(&self, file_index: usize) -> Result<Option<String>> {
         self.db.with_connection(|conn| {
             conn.query_row(
-                "SELECT COALESCE(pbo_id, normalized_path) as source_path 
-                 FROM file_index_mapping 
-                 WHERE file_index = ?1
-                 ORDER BY is_forward_declaration ASC -- Prioritize non-forward declarations (assuming 0=false, 1=true)
+                "SELECT COALESCE(fim.pbo_id, fim.normalized_path) as source_path 
+                 FROM file_index_mapping fim
+                 JOIN classes c ON fim.file_index = c.source_file_index
+                 WHERE fim.file_index = ?1
+                 ORDER BY c.is_forward_declaration ASC -- Prioritize non-forward declarations from classes table
                  LIMIT 1",
                 [file_index as i64],
                 |row| row.get::<_, String>(0)

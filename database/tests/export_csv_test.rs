@@ -104,10 +104,10 @@ fn test_csv_export() {
         // Create a label (use class ID if no display name is available)
         let display_name = class.properties.get("displayName")
             .map(|v| match v {
-                PropertyValue::String(s) => s.clone(),
-                _ => class.id.clone(),
+                PropertyValue::String(s) => s.as_str(),
+                _ => class.id.as_str(),
             })
-            .unwrap_or_else(|| class.id.clone());
+            .unwrap_or_else(|| class.id.as_str());
         
         // Convert properties to JSON
         let properties_json = serde_json::to_string(&class.properties)

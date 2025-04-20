@@ -15,8 +15,6 @@ use crate::queries::mission_repository::MissionRepository;
 #[derive(Debug, Deserialize)]
 struct ClassMapping {
     original_class: String,
-    replacement_class: String,
-    notes: String,
 }
 
 pub struct ClassMappingAnalysis {

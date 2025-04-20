@@ -5,7 +5,7 @@ use log::{info, debug};
 /// Database schema version
 /// NOTE: We do not support migration between schema versions.
 /// If the database schema version doesn't match, the database needs to be deleted and recreated.
-pub const SCHEMA_VERSION: i32 = 6;
+pub const SCHEMA_VERSION: i32 = 7;
 
 /// Initialize database schema
 pub fn initialize_schema(conn: &mut Connection) -> Result<()> {
@@ -84,6 +84,7 @@ fn create_tables(tx: &rusqlite::Transaction) -> Result<()> {
             parent_id TEXT,
             container_class TEXT,
             source_file_index INTEGER,
+            is_forward_declaration BOOLEAN NOT NULL DEFAULT 0,
             FOREIGN KEY(parent_id) REFERENCES classes(id)
         )",
         [],
