@@ -5,11 +5,9 @@ use log::info;
 use crate::models::{ExtractionConfig, PboMetadata, PboType};
 use crate::scanner::PboScanner;
 use crate::processor::PboProcessor;
-use crate::db_manager::DbManager;
+use crate::file_db::{FileDbManager, PboRecord, ExtractedFileInfo};
 use crate::utils;
 use crate::error::{Result, CacheError};
-
-use arma3_database::models::pbo::{PboModel, ExtractedFile};
 
 /// Manager for PBO extraction and caching
 pub struct ExtractionManager {
@@ -17,7 +15,7 @@ pub struct ExtractionManager {
     config: ExtractionConfig,
     
     /// The database manager for tracking cache state
-    db_manager: DbManager,
+    db_manager: FileDbManager,
     
     /// The processor for extracting PBOs
     processor: PboProcessor,
@@ -50,12 +48,8 @@ impl ExtractionManager {
             .map_err(|e| CacheError::CacheDirectory(format!("Failed to create mission cache directory: {}", e)))?;
         
         // Create database manager
-        let db_manager = DbManager::new(
-            &config.cache_dir,
-            &config.game_data_cache_dir,
-            &config.mission_cache_dir,
-            &config.db_path,
-        ).map_err(|e| CacheError::IndexOperation(format!("Failed to create database manager: {}", e)))?;
+        let db_manager = FileDbManager::new(&config.db_path)
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to create database manager: {}", e)))?;
         
         // Create processor
         let processor = PboProcessor::new(
@@ -70,9 +64,9 @@ impl ExtractionManager {
         })
     }
     
-    /// Get a reference to the database manager
-    pub fn get_db_manager(&self) -> &DbManager {
-        &self.db_manager
+    /// Get a mutable reference to the database manager
+    pub fn get_db_manager(&mut self) -> &mut FileDbManager {
+        &mut self.db_manager
     }
     
     /// Helper method to determine if a PBO needs extraction
@@ -211,36 +205,47 @@ impl ExtractionManager {
         mission_path: &Path,
         skip_extraction: bool
     ) -> Result<Vec<PathBuf>> {
+        info!("Processing mission PBO: {}", mission_path.display());
+        
+        // Check if the PBO exists
         if !mission_path.exists() {
             return Err(CacheError::FileOperation(format!("Mission PBO not found: {}", mission_path.display())));
         }
         
-        info!("Processing mission PBO: {}", mission_path.display());
-        
-        // Skip extraction if requested
+        // Check if extraction is needed
         if skip_extraction {
             info!("Skipping extraction as requested");
             return Ok(Vec::new());
         }
         
-        // Check if extraction is needed
+        // Check if PBO extraction previously failed
+        if let Some((timestamp, message)) = self.db_manager.is_failed_extraction(mission_path)? {
+            return Err(CacheError::PboExtractionFailed {
+                pbo_path: mission_path.to_path_buf(),
+                timestamp,
+                message,
+            });
+        }
+        
+        // Check if PBO needs extraction
         let needs_extraction = self.needs_extraction(mission_path, PboType::Mission, &self.config.mission_extensions)?;
         
         if !needs_extraction {
-            info!("Mission PBO already extracted and up to date");
+            info!("PBO doesn't need extraction: {}", mission_path.display());
             
-            // Get the normalized path to query the database
-            let pbo_id = mission_path.to_string_lossy().to_string().replace('\\', "/");
+            // Get extracted files for this PBO
+            let pbo_record = self.db_manager.find_pbo_for_file(mission_path)?;
             
-            // Get extracted files from the database
-            let extraction_result = self.db_manager.pbo_repo.get_extracted_files(&pbo_id)
-                .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files: {}", e)))?;
-            
-            if !extraction_result.is_empty() {
-                // Return the full paths
-                return Ok(extraction_result.iter()
-                    .map(|file| file.get_full_path(&self.config.mission_cache_dir))
-                    .collect());
+            if let Some(record) = pbo_record {
+                // Return full paths to existing extracted files
+                let cache_dir = self.config.mission_cache_dir.clone();
+                let full_paths: Vec<PathBuf> = record.extracted_files.iter()
+                    .map(|path| cache_dir.join(path))
+                    .collect();
+                
+                return Ok(full_paths);
+            } else {
+                info!("No record found for PBO that doesn't need extraction, this is unexpected");
             }
             
             return Ok(Vec::new());
@@ -336,20 +341,16 @@ impl ExtractionManager {
             let mut results = HashMap::new();
             
             // Get all mission metadata from the database
-            let mission_models = self.db_manager.get_mission_metadata()
-                .map_err(|e| CacheError::IndexOperation(format!("Failed to get mission metadata: {}", e)))?;
+            let mission_models = self.db_manager.get_mission_metadata()?;
             
             for model in mission_models {
-                // Get the extracted files for this PBO
-                let extracted_files = self.db_manager.pbo_repo.get_extracted_files(&model.id)
-                    .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files for {}: {}", model.id, e)))?;
+                // Add to results with full paths
+                let cache_dir = self.config.mission_cache_dir.clone();
+                let full_paths: Vec<PathBuf> = model.extracted_files.iter()
+                    .map(|path| cache_dir.join(path))
+                    .collect();
                 
-                if !extracted_files.is_empty() {
-                    // Convert from database model to full paths
-                    let full_paths: Vec<PathBuf> = extracted_files.iter()
-                        .map(|file| file.get_full_path(&cache_dir))
-                        .collect();
-                    
+                if !full_paths.is_empty() {
                     results.insert(model.full_path, full_paths);
                 }
             }
@@ -398,8 +399,7 @@ impl ExtractionManager {
         }
         
         // Then add any already extracted PBOs
-        let mission_models = self.db_manager.get_mission_metadata()
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to get mission metadata: {}", e)))?;
+        let mission_models = self.db_manager.get_mission_metadata()?;
         
         for model in mission_models {
             let path_buf = model.full_path.clone();
@@ -408,16 +408,12 @@ impl ExtractionManager {
                 continue; // Already processed
             }
             
-            // Get the extracted files for this PBO
-            let extracted_files = self.db_manager.pbo_repo.get_extracted_files(&model.id)
-                .map_err(|e| CacheError::IndexOperation(format!("Failed to get extracted files for {}: {}", model.id, e)))?;
+            // Add to results with full paths
+            let full_paths: Vec<PathBuf> = model.extracted_files.iter()
+                .map(|path| cache_dir.join(path))
+                .collect();
             
-            if !extracted_files.is_empty() {
-                // Convert from database model to full paths
-                let full_paths: Vec<PathBuf> = extracted_files.iter()
-                    .map(|file| file.get_full_path(&cache_dir))
-                    .collect();
-                
+            if !full_paths.is_empty() {
                 results.insert(path_buf, full_paths);
             }
         }
@@ -432,12 +428,12 @@ impl ExtractionManager {
     }
 
     /// Find the source PBO for a file path
-    pub fn find_pbo_for_file(&self, file_path: &Path) -> Result<Option<PboModel>> {
+    pub fn find_pbo_for_file(&self, file_path: &Path) -> Result<Option<PboRecord>> {
         self.db_manager.find_pbo_for_file(file_path)
     }
     
     /// Find all files with a specific extension
-    pub fn find_files_by_extension(&self, extension: &str) -> Result<Vec<ExtractedFile>> {
+    pub fn find_files_by_extension(&self, extension: &str) -> Result<Vec<ExtractedFileInfo>> {
         self.db_manager.find_files_by_extension(extension)
     }
 } 

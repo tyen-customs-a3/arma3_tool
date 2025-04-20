@@ -5,6 +5,8 @@ use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::Duration;
+use std::sync::Arc;
+use std::collections::HashSet;
 
 use arma3_extractor::{
     ExtractionConfig,
@@ -12,6 +14,14 @@ use arma3_extractor::{
     PboMetadata,
     PboType,
 };
+
+/// Helper function to get the base path of the fixtures directory
+fn get_fixtures_dir() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests");
+    path.push("fixtures");
+    path
+}
 
 /// Helper function to create a mock PBO file
 fn create_mock_pbo(dir: impl AsRef<std::path::Path>, name: &str) -> PathBuf {
@@ -68,12 +78,12 @@ fn test_manager_creation() -> Result<()> {
 }
 
 #[test]
-fn test_db_manager_integration() -> Result<()> {
+fn test_file_db_manager_integration() -> Result<()> {
     // Setup test environment
     let (temp_dir, config) = create_test_config();
     
     // Create the extraction manager
-    let manager = ExtractionManager::new(config.clone())?;
+    let mut manager = ExtractionManager::new(config.clone())?;
     
     // Get the db_manager through the extraction manager
     let db_manager = manager.get_db_manager();
@@ -138,7 +148,7 @@ fn test_file_modification_triggers_extraction() -> Result<()> {
     let (temp_dir, config) = create_test_config();
     
     // Create the extraction manager
-    let manager = ExtractionManager::new(config.clone())?;
+    let mut manager = ExtractionManager::new(config.clone())?;
     let db_manager = manager.get_db_manager();
     
     // Create a small mock PBO file
@@ -193,7 +203,7 @@ fn test_extension_changes_trigger_extraction() -> Result<()> {
     let (temp_dir, config) = create_test_config();
     
     // Create the extraction manager
-    let manager = ExtractionManager::new(config.clone())?;
+    let mut manager = ExtractionManager::new(config.clone())?;
     let db_manager = manager.get_db_manager();
     
     // Create a mock PBO file
@@ -244,7 +254,7 @@ fn test_extension_order_doesnt_matter() -> Result<()> {
     let (temp_dir, config) = create_test_config();
     
     // Create the extraction manager
-    let manager = ExtractionManager::new(config.clone())?;
+    let mut manager = ExtractionManager::new(config.clone())?;
     let db_manager = manager.get_db_manager();
     
     // Create a mock PBO file
@@ -288,7 +298,7 @@ fn test_pbo_model_validation() -> Result<()> {
     let (temp_dir, config) = create_test_config();
     
     // Create the extraction manager just to access DbManager
-    let manager = ExtractionManager::new(config.clone())?;
+    let mut manager = ExtractionManager::new(config.clone())?;
     let db_manager = manager.get_db_manager();
     
     // Create valid metadata and update
@@ -340,5 +350,146 @@ fn test_pbo_model_validation() -> Result<()> {
     
     assert!(needs_extraction, "Non-existent PBO should need extraction");
     
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_extract_headgear_pumpkin_fixture() -> Result<()> {
+    // Setup test environment
+    let (_temp_dir, mut config) = create_test_config(); // Mark temp_dir as unused
+    let fixtures_dir = get_fixtures_dir();
+    let pbo_dir = fixtures_dir.join("modfolder/@tc_headgear_pumpkin/addons");
+    let _pbo_path = pbo_dir.join("headgear_pumpkin.pbo"); // Mark pbo_path as unused for now
+
+    // Configure game data directory
+    // Request cpp, but not bin explicitly
+    config.game_data_dirs = vec![pbo_dir.clone()];
+    config.game_data_extensions = vec!["hpp".to_string(), "cpp".to_string(), "paa".to_string(), "rvmat".to_string(), "p3d".to_string()];
+
+    // Define expected files (relative to PBO root, normalized paths)
+    // With the new processor logic, we expect config.cpp if cpp is requested,
+    // and other .bin files (like texHeaders.bin) should be filtered out post-extraction.
+    // $PBOPREFIX$.txt should also be filtered out as it has no matching extension.
+    let expected_relative_files: HashSet<PathBuf> = [
+        // "$PBOPREFIX$.txt", // Should be filtered out by post-processing
+        "config.cpp", // Should be included due to rename + cpp filter
+        "data/pumpkin_halloween.rvmat",
+        "data/pumpkin_halloween_co.paa",
+        "data/pumpkin_halloween_e.paa",
+        "data/pumpkin_halloween_glow.rvmat",
+        "data/pumpkin_halloween_nohq.paa",
+        "data/pumpkin_halloween_smdi.paa",
+        "halloween_pumpkin.p3d",
+        "logo.paa",
+        "logo_small.paa",
+    ].iter().map(PathBuf::from).collect();
+
+    // Construct expected full paths in the cache
+    // The processor adds the PBO prefix path segments found inside the PBO
+    let pbo_prefix = PathBuf::from("tc/headgear_pumpkin");
+    let expected_cache_base = config.game_data_cache_dir.join(pbo_prefix);
+    let expected_full_paths: HashSet<PathBuf> = expected_relative_files.iter()
+        .map(|rel_path| expected_cache_base.join(rel_path))
+        .collect();
+
+    // Create the extraction manager
+    let mut manager = ExtractionManager::new(config.clone())?;
+
+    // Run game data extraction
+    let extracted_files_vec = manager.process_game_data(false).await?;
+    let extracted_files_set: HashSet<PathBuf> = extracted_files_vec.into_iter().collect();
+
+    // Assert that the extracted files match the expected files
+    assert_eq!(extracted_files_set.len(), expected_full_paths.len(),
+               "Expected {} files, but found {}", expected_full_paths.len(), extracted_files_set.len());
+    assert_eq!(extracted_files_set, expected_full_paths,
+               "The set of extracted files does not match the expected set.");
+
+    // Optional: Further check db state if needed
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_extract_joust_mission_fixture() -> Result<()> {
+    // Setup test environment
+    let (_temp_dir, mut config) = create_test_config(); // Mark temp_dir as unused
+    let fixtures_dir = get_fixtures_dir();
+    let pbo_dir = fixtures_dir.join("missions");
+    let pbo_path = pbo_dir.join("adv48_Joust.VR.pbo");
+
+    // Configure mission directory
+    config.mission_dirs = vec![pbo_dir.clone()];
+    config.mission_extensions = vec!["hpp".to_string(), "sqf".to_string(), "sqm".to_string(), "ext".to_string(), "briefing.html".to_string()];
+
+    // Define expected files (relative paths, normalized)
+    let expected_relative_files: HashSet<PathBuf> = [
+        "briefing/admin.sqf", "briefing/briefing_blufor.sqf", "cba_settings.sqf", "description.ext",
+        "functions/ai/action/fn_doAttackPoint.sqf", "functions/ai/action/fn_doFlankPoint.sqf",
+        "functions/ai/action/fn_doHideInCover.sqf", "functions/ai/action/fn_doSeekCover.sqf",
+        "functions/ai/attribute/fn_assignFactionRole.sqf", "functions/ai/attribute/fn_assignGearCurated.sqf",
+        "functions/ai/attribute/fn_setUnitSkills.sqf", "functions/ai/attribute/fn_unlimitedAmmo.sqf",
+        "functions/ai/cache/fn_groupCache.sqf", "functions/ai/cache/fn_unitCache.sqf",
+        "functions/ai/cache/fn_unitCacheDeactivate.sqf", "functions/ai/common/fn_deleteGroup.sqf",
+        "functions/ai/common/fn_enemyInRadius.sqf", "functions/ai/common/fn_findClosestTarget.sqf",
+        "functions/ai/common/fn_findReadyUnits.sqf", "functions/ai/common/fn_generateBuildingWaypoints.sqf",
+        "functions/ai/common/fn_isAlive.sqf", "functions/ai/common/fn_isIndoor.sqf",
+        "functions/ai/common/fn_playerInRadius.sqf", "functions/ai/common/fn_unitCheckLOS.sqf",
+        "functions/ai/common/fn_unitShareInformation.sqf", "functions/ai/data/fn_applyWaypoints.sqf",
+        "functions/ai/data/fn_saveCrew.sqf", "functions/ai/data/fn_saveGroup.sqf",
+        "functions/ai/data/fn_saveUnit.sqf", "functions/ai/data/fn_saveVehicle.sqf",
+        "functions/ai/data/fn_saveWaypoints.sqf", "functions/ai/data/fn_spawnGroup.sqf",
+        "functions/ai/data/fn_spawnUnit.sqf", "functions/ai/data/fn_spawnVehicle.sqf",
+        "functions/ai/spawn/fn_createGarrison.sqf", "functions/ai/spawn/fn_createGroupSync.sqf",
+        "functions/ai/spawn/fn_createSquad.sqf", "functions/ai/spawn/fn_createVehicle.sqf",
+        "functions/ai/task/fn_assaultPoint.sqf", "functions/ai/task/fn_attackPoint.sqf",
+        "functions/ai/task/fn_clearBuildings.sqf", "functions/ai/task/fn_flankAttack.sqf",
+        "functions/ai/task/fn_flankPoint.sqf", "functions/ai/task/fn_garrisonArea.sqf",
+        "functions/ai/task/fn_garrisonPoint.sqf", "functions/ai/task/fn_hideInCover.sqf",
+        "functions/ai/task/fn_huntTargets.sqf", "functions/ai/task/fn_moveToBuildings.sqf",
+        "functions/ai/task/fn_patrolArea.sqf", "functions/ai/task/fn_patrolAreaPolygon.sqf",
+        "functions/ai/task/fn_shockAttack.sqf", "functions/cfgFunctions.hpp",
+        "functions/common/fn_drawObjectMapMarker.sqf", "functions/common/fn_findBuildings.sqf",
+        "functions/common/fn_findOverwatch.sqf", "functions/common/fn_nearbyBuildings.sqf",
+        "functions/common/fn_removeEventHandlers.sqf", "functions/player/eh/fn_explosionEH.sqf",
+        "functions/player/eh/fn_hitEH.sqf", "functions/player/jip/fn_jipChooseTarget.sqf",
+        "functions/player/jip/fn_jipEmptySeat.sqf", "functions/player/jipTeleport.sqf",
+        "functions/player/loadout/fn_curatedArsenal.sqf", "functions/player/medicalHelpNotification.sqf",
+        "init.sqf", "initplayerlocal.sqf", "initserver.sqf", "loadouts/_macros.hpp",
+        "loadouts/blufor_loadout.hpp", "loadouts/opfor_loadout.hpp", "mission.sqm",
+        "XEH_PostInit.sqf", "XEH_PreInit.sqf"
+    ].iter().map(PathBuf::from).collect();
+
+    // Construct expected full paths in the cache
+    // The processor adds the PBO name (minus extension) as a subdirectory
+    let expected_cache_base = config.mission_cache_dir.join("adv48_Joust.VR");
+    let expected_full_paths: HashSet<PathBuf> = expected_relative_files.iter()
+        .map(|rel_path| expected_cache_base.join(rel_path))
+        .collect();
+
+    // Create the extraction manager
+    let mut manager = ExtractionManager::new(config.clone())?;
+
+    // Run mission extraction
+    let results_map = manager.process_all_missions(false).await?;
+
+    // Assert that extraction was attempted and hopefully successful for our PBO
+    assert!(!results_map.is_empty(), "Extraction results map should not be empty");
+
+    // Find the result for our specific PBO
+    let pbo_result_option = results_map.get(&pbo_path);
+    assert!(pbo_result_option.is_some(), "Did not find result for adv48_Joust.VR.pbo in the map");
+
+    let extracted_files_vec = pbo_result_option.unwrap();
+    let extracted_files_set: HashSet<PathBuf> = extracted_files_vec.iter().cloned().collect();
+
+    // Assert that the extracted files match the expected files
+    assert_eq!(extracted_files_set.len(), expected_full_paths.len(),
+               "Expected {} files for {}, but found {}", expected_full_paths.len(), pbo_path.display(), extracted_files_set.len());
+    assert_eq!(extracted_files_set, expected_full_paths,
+               "The set of extracted files for {} does not match the expected set.", pbo_path.display());
+
+    // Optional: Further check db state if needed
+
     Ok(())
 }

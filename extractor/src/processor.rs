@@ -8,6 +8,7 @@ use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
 use pbo_tools::extract::ExtractOptions;
 use pbo_tools::core::api::{PboApi, PboApiOps};
+use std::collections::HashSet;
 
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
@@ -56,8 +57,12 @@ impl PboProcessor {
         if pbos.is_empty() {
             return Ok(Vec::new());
         }
+        let initial_pbo_count = pbos.len(); // Store initial count
 
-        info!("Extracting {} PBOs to cache", pbos.len());
+        info!("Extracting {} PBOs to cache", initial_pbo_count);
+
+        // Convert original extensions to HashSet for efficient lookup later
+        let original_extensions_set: HashSet<String> = extensions.iter().cloned().collect();
 
         // Shared result collection
         let results = Arc::new(Mutex::new(Vec::with_capacity(pbos.len())));
@@ -74,6 +79,7 @@ impl PboProcessor {
         for pbo_path in pbos {
             let cache_dir = cache_dir.to_path_buf();
             let extensions = extensions.clone();
+            let original_extensions_set = original_extensions_set.clone();
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
             let semaphore_clone = Arc::clone(&semaphore);
@@ -109,10 +115,21 @@ impl PboProcessor {
                     ..Default::default()
                 };
 
-                // Set file extension filter if provided
-                if !extensions.is_empty() {
-                    options.file_filter = Some(extensions.join(","));
+                // --- Filter Augmentation for pbo_tools ---
+                let mut pbo_tool_extensions = extensions.clone();
+                let user_wants_cpp = extensions.iter().any(|e| e == "cpp");
+                let bin_already_requested = extensions.iter().any(|e| e == "bin");
+
+                if user_wants_cpp && !bin_already_requested {
+                    info!("User requested 'cpp', adding 'bin' to pbo_tools filter for PBO: {}", pbo_path.display());
+                    pbo_tool_extensions.push("bin".to_string());
                 }
+
+                // Set file extension filter for pbo_tools
+                if !pbo_tool_extensions.is_empty() {
+                    options.file_filter = Some(pbo_tool_extensions.join(","));
+                }
+                // -----------------------------------------
 
                 // Try to extract the PBO
                 match processor.extract_with_options(&pbo_path, temp_dir.path(), options) {
@@ -123,18 +140,60 @@ impl PboProcessor {
                         // Find all extracted files
                         match tokio::task::spawn_blocking(move || PboProcessor::catalog_files(&temp_dir_path)).await {
                             Ok(Ok(extracted_files)) => {
-                                // Create cache subdirectories and move files
                                 let mut cache_paths = Vec::new();
                                 let temp_path_str = temp_dir.path().to_string_lossy();
 
+                                // --- Post-Extraction Filtering Loop ---
                                 for file_path in &extracted_files {
-                                    // Compute the relative path
-                                    let rel_path = file_path.to_string_lossy()
+                                    let file_name = match file_path.file_name() {
+                                        Some(name) => name.to_string_lossy().to_lowercase(),
+                                        None => continue, // Skip if no filename
+                                    };
+
+                                    let mut rename_to_cpp = false;
+                                    let effective_extension: String;
+
+                                    // Handle config.bin potential rename
+                                    if file_name == "config.bin" {
+                                        if user_wants_cpp {
+                                            rename_to_cpp = true;
+                                            effective_extension = "cpp".to_string();
+                                        } else {
+                                            continue; // Skip config.bin if user didn't ask for cpp
+                                        }
+                                    } else {
+                                        // Get the actual extension for other files
+                                        effective_extension = match file_path.extension() {
+                                            Some(ext) => ext.to_string_lossy().to_lowercase(),
+                                            None => continue, // Skip files without extensions
+                                        };
+                                    }
+
+                                    // Check against user's *original* requested extensions
+                                    if !original_extensions_set.contains(&effective_extension) {
+                                        // info!("Skipping file {} (effective ext: {}) as it's not in requested set: {:?}", file_path.display(), effective_extension, original_extensions_set);
+                                        continue; // Skip file if its effective extension wasn't requested
+                                    }
+
+                                    // --- File matches original filter (or is config.bin treated as cpp) ---
+
+                                    // Compute the relative path from temp dir
+                                    let rel_path_str = file_path.to_string_lossy()
                                         .replace(&*temp_path_str, "")
                                         .trim_start_matches(['/', '\\'])
                                         .to_string();
 
-                                    let target_path = cache_dir.join(&rel_path);
+                                    let final_rel_path: PathBuf;
+                                    if rename_to_cpp {
+                                        // Create path ending in .cpp
+                                        let mut temp_path = PathBuf::from(rel_path_str);
+                                        temp_path.set_extension("cpp");
+                                        final_rel_path = temp_path;
+                                    } else {
+                                        final_rel_path = PathBuf::from(rel_path_str);
+                                    }
+
+                                    let target_path = cache_dir.join(&final_rel_path);
 
                                     // Ensure the target directory exists
                                     if let Some(parent) = target_path.parent() {
@@ -146,15 +205,16 @@ impl PboProcessor {
                                         }
                                     }
 
-                                    // Copy the file
+                                    // Copy the file (from original temp path to final target path)
                                     let mut retries = 3;
                                     let mut last_error = None;
-                                    
+
                                     while retries > 0 {
                                         match fs::copy(file_path, &target_path) {
                                             Ok(_) => {
-                                                // Store only the relative path, not the full cache path
-                                                cache_paths.push(PathBuf::from(rel_path));
+                                                // Store the final relative path (e.g., .../config.cpp)
+                                                cache_paths.push(final_rel_path);
+                                                last_error = None; // Clear error on success
                                                 break;
                                             },
                                             Err(e) => {
@@ -166,18 +226,18 @@ impl PboProcessor {
                                             }
                                         }
                                     }
-                                    
-                                    if retries == 0 {
-                                        if let Some(e) = last_error {
-                                            warn!("Failed to copy {} to {} after 3 retries: {}", 
-                                                file_path.display(), target_path.display(), e);
-                                        }
-                                    }
-                                }
 
-                                // Store the result
-                                let mut result_guard = results.lock().unwrap();
-                                result_guard.push((pbo_path, cache_paths));
+                                    if let Some(e) = last_error {
+                                         warn!("Failed to copy {} to {} after 3 retries: {}",
+                                             file_path.display(), target_path.display(), e);
+                                    }
+                                } // --- End Post-Extraction Filtering Loop ---
+
+                                // Store the result (filtered paths)
+                                if !cache_paths.is_empty() { // Only store if we actually kept some files
+                                    let mut result_guard = results.lock().unwrap();
+                                    result_guard.push((pbo_path, cache_paths));
+                                }
                             },
                             Ok(Err(e)) => {
                                 record_failure(format!("Failed to catalog extracted files: {}", e));
@@ -219,7 +279,7 @@ impl PboProcessor {
             .into_inner()
             .expect("Failed to get inner results");
 
-        info!("Successfully extracted {} PBOs", final_results.len());
+        info!("Successfully processed {} PBOs ({} might have failed or yielded no matching files)", initial_pbo_count, initial_pbo_count - final_results.len());
         Ok(final_results)
     }
 }

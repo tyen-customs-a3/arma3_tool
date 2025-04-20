@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use serde::{Serialize, Deserialize};
-use chrono::{DateTime, Utc};
 use crate::error::{Result, CacheError};
-use arma3_database::models::pbo::PboMetadataConversion;
 
 /// Type of PBO being processed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,54 +142,6 @@ impl PboMetadata {
             .map(|path| cache_dir.join(path))
             .collect()
     }
-    
-    // Convert SystemTime to DateTime<Utc>
-    fn system_time_to_datetime(system_time: SystemTime) -> DateTime<Utc> {
-        let duration = system_time
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default();
-        let secs = duration.as_secs() as i64;
-        let nsecs = duration.subsec_nanos();
-        DateTime::<Utc>::from_timestamp(secs, nsecs).unwrap_or_else(|| Utc::now())
-    }
-}
-
-// Implement PboMetadataConversion trait for PboMetadata
-impl PboMetadataConversion for PboMetadata {
-    fn get_path(&self) -> PathBuf {
-        self.path.clone()
-    }
-    
-    fn get_full_path(&self) -> PathBuf {
-        self.get_full_path()
-    }
-    
-    fn get_base_dir(&self) -> Option<&PathBuf> {
-        if self.base_dir.as_os_str().is_empty() {
-            None
-        } else {
-            Some(&self.base_dir)
-        }
-    }
-    
-    fn get_file_size(&self) -> u64 {
-        self.file_size
-    }
-    
-    fn get_last_modified(&self) -> DateTime<Utc> {
-        Self::system_time_to_datetime(self.last_modified)
-    }
-    
-    fn get_extraction_time(&self) -> DateTime<Utc> {
-        Self::system_time_to_datetime(self.extraction_time)
-    }
-    
-    fn get_pbo_type(&self) -> &str {
-        match self.pbo_type {
-            PboType::GameData => "GameData",
-            PboType::Mission => "Mission",
-        }
-    }
 }
 
 /// Configuration for PBO extraction and caching
@@ -248,7 +198,55 @@ impl ExtractionConfig {
             threads: num_cpus::get(),
             timeout: 400,
             verbose: false,
-            db_path: cache_dir.join("arma3.db"),
+            db_path: cache_dir.join("cache.db"),
         }
+    }
+    
+    /// Add a game data directory to scan
+    pub fn add_game_data_dir(mut self, dir: PathBuf) -> Self {
+        self.game_data_dirs.push(dir);
+        self
+    }
+    
+    /// Add a mission directory to scan
+    pub fn add_mission_dir(mut self, dir: PathBuf) -> Self {
+        self.mission_dirs.push(dir);
+        self
+    }
+    
+    /// Set the game data extensions to extract
+    pub fn with_game_data_extensions(mut self, extensions: Vec<String>) -> Self {
+        self.game_data_extensions = extensions;
+        self
+    }
+    
+    /// Set the mission extensions to extract
+    pub fn with_mission_extensions(mut self, extensions: Vec<String>) -> Self {
+        self.mission_extensions = extensions;
+        self
+    }
+    
+    /// Set the number of threads to use
+    pub fn with_threads(mut self, threads: usize) -> Self {
+        self.threads = threads;
+        self
+    }
+    
+    /// Set the timeout in seconds
+    pub fn with_timeout(mut self, timeout: u64) -> Self {
+        self.timeout = timeout;
+        self
+    }
+    
+    /// Enable verbose logging
+    pub fn with_verbose(mut self, verbose: bool) -> Self {
+        self.verbose = verbose;
+        self
+    }
+    
+    /// Set custom database path
+    pub fn with_db_path(mut self, db_path: PathBuf) -> Self {
+        self.db_path = db_path;
+        self
     }
 }
