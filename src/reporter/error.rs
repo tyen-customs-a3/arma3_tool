@@ -10,16 +10,16 @@ pub enum ReporterError {
         path: PathBuf,
         source: std::io::Error,
     },
-    
+
     #[error("Failed to create report directory {path}: {source}")]
     CreateDirError {
         path: PathBuf,
         source: std::io::Error,
     },
-    
+
     #[error("Database error: {0}")]
     DatabaseError(#[from] arma3_database::error::DatabaseError),
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-} 
+}

@@ -1,9 +1,8 @@
-use std::collections::{HashMap, HashSet};
 use log::info;
+use std::collections::{HashMap, HashSet};
 
 use arma3_database::queries::{
-    class_repository::ClassRepository,
-    mission_repository::MissionRepository,
+    class_repository::ClassRepository, mission_repository::MissionRepository,
 };
 
 use crate::reporter::error::Result as ReporterResult;
@@ -32,7 +31,9 @@ impl<'a> DependencyAnalyzer<'a> {
         info!("Starting dependency analysis...");
 
         // Get all game data classes
-        let game_data_classes: HashSet<String> = self.class_repo.get_all()?
+        let game_data_classes: HashSet<String> = self
+            .class_repo
+            .get_all()?
             .into_iter()
             .map(|c| c.id)
             .collect();
@@ -47,7 +48,10 @@ impl<'a> DependencyAnalyzer<'a> {
         // Get all dependencies in bulk
         let all_dependencies = self.mission_repo.get_all_dependencies()?;
         let total_dependencies = all_dependencies.len();
-        info!("Found {} total dependencies across all missions", total_dependencies);
+        info!(
+            "Found {} total dependencies across all missions",
+            total_dependencies
+        );
 
         // Track missing dependencies per mission
         let mut missing_dependencies: HashMap<String, HashSet<String>> = HashMap::new();
@@ -67,7 +71,10 @@ impl<'a> DependencyAnalyzer<'a> {
 
         info!("Dependency analysis complete");
         info!("Analyzed {} missions", total_missions);
-        info!("Found {} total dependencies across all missions", total_dependencies);
+        info!(
+            "Found {} total dependencies across all missions",
+            total_dependencies
+        );
         info!("Found {} total missing dependencies", total_missing);
 
         Ok(DependencyAnalysis {
@@ -85,33 +92,33 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use tempfile::tempdir;
-    use arma3_database::{DatabaseManager, ClassModel, MissionDependencyModel, MissionModel};
+    use arma3_database::{ClassModel, DatabaseManager, MissionDependencyModel, MissionModel};
     use chrono::Utc;
+    use tempfile::tempdir;
 
     #[test]
     fn test_dependency_analyzer() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        
+
         // Create database
         let db = DatabaseManager::new(&db_path).unwrap();
         let class_repo = ClassRepository::new(&db);
         let mission_repo = MissionRepository::new(&db);
-        
+
         // Create analyzer
         let analyzer = DependencyAnalyzer::new(&class_repo, &mission_repo);
-        
+
         // Create test game data classes
         let game_class = ClassModel::new(
             "GameClass".to_string(),
             None::<String>,
             None::<String>,
             Some(1),
-            false
+            false,
         );
         class_repo.create(&game_class).unwrap();
-        
+
         // Create test mission with dependencies
         let mission = MissionModel::new(
             "test_mission",
@@ -120,31 +127,31 @@ mod tests {
             Utc::now(),
         );
         mission_repo.create(&mission).unwrap();
-        
+
         // Add dependencies
         let dependency = MissionDependencyModel::new(
             "test_mission".to_string(),
-            "GameClass".to_string(),  // Existing class
+            "GameClass".to_string(), // Existing class
             "DirectClass".to_string(),
             PathBuf::from("mission/dependency.sqf"),
         );
         mission_repo.add_dependency(&dependency).unwrap();
-        
+
         let missing_dependency = MissionDependencyModel::new(
             "test_mission".to_string(),
-            "MissingClass".to_string(),  // Non-existent class
+            "MissingClass".to_string(), // Non-existent class
             "DirectClass".to_string(),
             PathBuf::from("mission/missing.sqf"),
         );
         mission_repo.add_dependency(&missing_dependency).unwrap();
-        
+
         // Run analysis
         let analysis = analyzer.analyze_dependencies().unwrap();
-        
+
         // Verify results
         assert_eq!(analysis.total_missions, 1);
         assert_eq!(analysis.total_missing, 1);
-        
+
         let mission_missing = analysis.missing_dependencies.get("test_mission").unwrap();
         assert_eq!(mission_missing.len(), 1);
         assert!(mission_missing.contains("MissingClass"));

@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
+use std::collections::{HashMap, HashSet};
 
 /// Result of dependency analysis
 #[derive(Debug)]
@@ -73,4 +73,4 @@ mod tests {
         assert_eq!(report.missing_dependencies.len(), 1);
         assert!(report.missing_dependencies["test_mission"].contains("MissingClass"));
     }
-} 
+}

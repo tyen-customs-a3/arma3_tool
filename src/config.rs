@@ -19,9 +19,7 @@ pub struct ScanConfig {
     pub mission_extensions: Vec<String>,
     pub cache_dir: PathBuf,
     pub report_dir: PathBuf,
-    /// Database path for analysis results (classes, dependencies, etc.)
     pub analysis_database_path: Option<PathBuf>, 
-    /// Database path specifically for the extractor's state tracking
     pub extractor_database_path: Option<PathBuf>, 
     pub threads: usize,
 }

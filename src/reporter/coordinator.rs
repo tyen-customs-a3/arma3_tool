@@ -1,20 +1,19 @@
-use std::path::PathBuf;
 use log::info;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{Write, BufWriter};
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 
 use arma3_database::{
+    queries::class_repository::ClassRepository, queries::mission_repository::MissionRepository,
     DatabaseManager,
-    queries::class_repository::ClassRepository,
-    queries::mission_repository::MissionRepository,
 };
 
+use crate::reporter::analyzers::DependencyAnalyzer;
+use crate::reporter::class_graph::ClassHierarchyWriter;
 use crate::reporter::error::Result as ReporterResult;
 use crate::reporter::models::DependencyReport;
-use crate::reporter::analyzers::DependencyAnalyzer;
 use crate::reporter::writers::ReportWriter;
-use crate::reporter::class_graph::ClassHierarchyWriter;
 
 /// Coordinates the dependency analysis and reporting process
 pub struct ReportCoordinator<'a> {
@@ -38,10 +37,7 @@ impl<'a> ReportCoordinator<'a> {
         info!("Starting dependency analysis and reporting process...");
 
         // Create analyzer
-        let analyzer = DependencyAnalyzer::new(
-            &self.class_repo,
-            &self.mission_repo,
-        );
+        let analyzer = DependencyAnalyzer::new(&self.class_repo, &self.mission_repo);
 
         // Run analysis
         let analysis = analyzer.analyze_dependencies()?;
@@ -92,7 +88,7 @@ impl<'a> ReportCoordinator<'a> {
 
         for mission in missions {
             let dependencies = self.mission_repo.get_dependencies(&mission.id)?;
-            
+
             for dep in dependencies {
                 let mission_class_key = (mission.id.clone(), dep.class_name.clone());
                 if processed_classes_for_mission.contains(&mission_class_key) {
@@ -124,10 +120,12 @@ impl<'a> ReportCoordinator<'a> {
 
         // Write to CSV
         let report_path = output_dir.join("mission_class_sources.csv");
-        let file = File::create(&report_path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        let file =
+            File::create(&report_path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
         let mut writer = BufWriter::new(file);
 
-        writeln!(writer, "mission_id,class_name,source_path").map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        writeln!(writer, "mission_id,class_name,source_path")
+            .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
 
         for (mission_id, class_name, source_path) in results {
             // Basic CSV escaping: wrap fields containing commas or quotes in double quotes, double internal quotes.
@@ -138,9 +136,14 @@ impl<'a> ReportCoordinator<'a> {
                 .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
         }
 
-        writer.flush().map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        writer
+            .flush()
+            .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
 
-        info!("Mission class source report generated at: {}", report_path.display());
+        info!(
+            "Mission class source report generated at: {}",
+            report_path.display()
+        );
         Ok(())
     }
 
@@ -163,19 +166,19 @@ impl<'a> ReportCoordinator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use arma3_database::{DatabaseManager, ClassModel, MissionDependencyModel, MissionModel};
+    use arma3_database::{ClassModel, DatabaseManager, MissionDependencyModel, MissionModel};
     use chrono::Utc;
+    use tempfile::tempdir;
 
     #[test]
     fn test_report_coordinator() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        
+
         // Create database
         let db = DatabaseManager::new(&db_path).unwrap();
         let coordinator = ReportCoordinator::new(&db);
-        
+
         // Create test game data classes
         let class_repo = coordinator.class_repo();
         let game_class = ClassModel::new(
@@ -183,10 +186,10 @@ mod tests {
             None::<String>,
             None::<String>,
             Some(1),
-            false
+            false,
         );
         class_repo.create(&game_class).unwrap();
-        
+
         // Create test mission with dependencies
         let mission_repo = coordinator.mission_repo();
         let mission = MissionModel::new(
@@ -196,73 +199,77 @@ mod tests {
             Utc::now(),
         );
         mission_repo.create(&mission).unwrap();
-        
+
         // Add dependencies
         let dependency = MissionDependencyModel::new(
             "test_mission".to_string(),
-            "GameClass".to_string(),  // Existing class
+            "GameClass".to_string(), // Existing class
             "DirectClass".to_string(),
             PathBuf::from("mission/dependency.sqf"),
         );
         mission_repo.add_dependency(&dependency).unwrap();
-        
+
         let missing_dependency = MissionDependencyModel::new(
             "test_mission".to_string(),
-            "MissingClass".to_string(),  // Non-existent class
+            "MissingClass".to_string(), // Non-existent class
             "DirectClass".to_string(),
             PathBuf::from("mission/missing.sqf"),
         );
         mission_repo.add_dependency(&missing_dependency).unwrap();
-        
+
         // Run report
         let output_dir = dir.path().join("reports");
         coordinator.run_report(&output_dir).unwrap();
-        
+
         // Verify report file was created
         let report_files: Vec<_> = std::fs::read_dir(&output_dir)
             .unwrap()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_name().to_string_lossy().starts_with("dependency_report_"))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("dependency_report_")
+            })
             .collect();
         assert_eq!(report_files.len(), 1);
     }
-    
+
     #[test]
     fn test_class_graph_generation() {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        
+
         // Create database
         let db = DatabaseManager::new(&db_path).unwrap();
         let coordinator = ReportCoordinator::new(&db);
-        
+
         // Create test classes with parent-child relationships
         let class_repo = coordinator.class_repo();
-        
+
         // Parent class
         let parent = ClassModel::new(
             "ParentClass".to_string(),
             None::<String>,
             None::<String>,
             Some(1),
-            false
+            false,
         );
         class_repo.create(&parent).unwrap();
-        
+
         // Child classes
         let child1 = ClassModel::new(
             "ChildClass1".to_string(),
             Some("ParentClass".to_string()),
             None::<String>,
             Some(2),
-            false
+            false,
         );
         class_repo.create(&child1).unwrap();
-        
+
         // Run class graph generation
         let output_dir = dir.path().join("reports");
         coordinator.generate_class_graph(&output_dir).unwrap();
-        
+
         // Verify graph file was created
         let graph_file = output_dir.join("class_hierarchy.csv");
         assert!(graph_file.exists());
