@@ -9,26 +9,33 @@ use arma3_database::{
     DatabaseManager,
 };
 
-use crate::reporter::analyzers::DependencyAnalyzer;
-use crate::reporter::class_graph::ClassHierarchyWriter;
-use crate::reporter::error::Result as ReporterResult;
-use crate::reporter::models::DependencyReport;
-use crate::reporter::writers::ReportWriter;
+use crate::{
+    config::ScanConfig,
+    reporter::{
+        analyzers::DependencyAnalyzer,
+        class_graph::ClassHierarchyWriter,
+        error::Result as ReporterResult,
+        models::DependencyReport,
+        writers::ReportWriter,
+    },
+};
 
 /// Coordinates the dependency analysis and reporting process
 pub struct ReportCoordinator<'a> {
     db: &'a DatabaseManager,
     class_repo: ClassRepository<'a>,
     mission_repo: MissionRepository<'a>,
+    config: &'a ScanConfig,
 }
 
 impl<'a> ReportCoordinator<'a> {
     /// Create a new report coordinator
-    pub fn new(db: &'a DatabaseManager) -> Self {
+    pub fn new(db: &'a DatabaseManager, config: &'a ScanConfig) -> Self {
         Self {
             db,
             class_repo: ClassRepository::new(db),
             mission_repo: MissionRepository::new(db),
+            config,
         }
     }
 
@@ -36,8 +43,8 @@ impl<'a> ReportCoordinator<'a> {
     pub fn run_report(&self, output_dir: &PathBuf) -> ReporterResult<()> {
         info!("Starting dependency analysis and reporting process...");
 
-        // Create analyzer
-        let analyzer = DependencyAnalyzer::new(&self.class_repo, &self.mission_repo);
+        // Create analyzer with config
+        let analyzer = DependencyAnalyzer::with_config(&self.class_repo, &self.mission_repo, self.config)?;
 
         // Run analysis
         let analysis = analyzer.analyze_dependencies()?;
@@ -65,7 +72,7 @@ impl<'a> ReportCoordinator<'a> {
     pub fn generate_class_graph(&self, output_dir: &PathBuf) -> ReporterResult<()> {
         info!("Starting class hierarchy graph generation...");
 
-        // Create graph writer
+        // Create graph writer 
         let writer = ClassHierarchyWriter::new(output_dir);
 
         // Generate graph
@@ -175,9 +182,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
 
-        // Create database
+        // Create database and config
         let db = DatabaseManager::new(&db_path).unwrap();
-        let coordinator = ReportCoordinator::new(&db);
+        let config = ScanConfig::default();
+        let coordinator = ReportCoordinator::new(&db, &config);
 
         // Create test game data classes
         let class_repo = coordinator.class_repo();
@@ -239,9 +247,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
 
-        // Create database
+        // Create database and config
         let db = DatabaseManager::new(&db_path).unwrap();
-        let coordinator = ReportCoordinator::new(&db);
+        let config = ScanConfig::default();
+        let coordinator = ReportCoordinator::new(&db, &config);
 
         // Create test classes with parent-child relationships
         let class_repo = coordinator.class_repo();

@@ -22,6 +22,7 @@ pub struct ScanConfig {
     pub analysis_database_path: Option<PathBuf>, 
     pub extractor_database_path: Option<PathBuf>, 
     pub threads: usize,
+    pub ignore_classes_file: Option<PathBuf>,
 }
 
 impl Default for ScanConfig {
@@ -36,6 +37,7 @@ impl Default for ScanConfig {
             analysis_database_path: None, // Defaults determined later based on cache_dir
             extractor_database_path: None, // Defaults determined later based on cache_dir
             threads: 4,
+            ignore_classes_file: None,
         }
     }
 }

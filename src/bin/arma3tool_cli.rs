@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
             println!("Using Analysis DB: {}", final_analysis_db_path.display());
             println!("Using Report Output Dir: {}", output_dir.display());
 
-            arma3_tool::cli::run_report(final_analysis_db_path, output_dir).await?;
+            arma3_tool::cli::run_report(final_analysis_db_path, output_dir, &config).await?;
         }
 
         Commands::All {
@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
             arma3_tool::cli::run_extract(extraction_config.clone()).await?; // Pass config for extract
                                                                             // Pass the same extraction_config (contains cache paths) but the separate analysis DB path for process
             arma3_tool::cli::run_process(extraction_config, final_analysis_db_path.clone()).await?;
-            arma3_tool::cli::run_report(final_analysis_db_path, output_dir).await?;
+            arma3_tool::cli::run_report(final_analysis_db_path, output_dir, &config).await?;
             // Pass analysis DB for report
         }
     }

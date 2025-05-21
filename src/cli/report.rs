@@ -1,16 +1,20 @@
-use crate::reporter::ReportCoordinator;
+use crate::{reporter::ReportCoordinator, config::ScanConfig};
 use anyhow::Result;
 use arma3_database::DatabaseManager;
 use log::info;
 use std::path::PathBuf;
 
-pub async fn run_report(db_path: PathBuf, output_dir: PathBuf) -> Result<()> {
+pub async fn run_report(db_path: PathBuf, output_dir: PathBuf, config: &ScanConfig) -> Result<()> {
+    // Create report output directory if it doesn't exist
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to create report directory: {}", e))?;
+
     // Create database manager
     let db_manager = DatabaseManager::new(&db_path)
         .map_err(|e| anyhow::anyhow!("Failed to create database manager: {}", e))?;
 
-    // Create report coordinator
-    let coordinator = ReportCoordinator::new(&db_manager);
+    // Create report coordinator with config
+    let coordinator = ReportCoordinator::new(&db_manager, config);
 
     // Generate dependency report
     info!("Generating dependency report...");

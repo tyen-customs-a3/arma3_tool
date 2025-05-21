@@ -1,5 +1,10 @@
 use log::info;
 use std::collections::{HashMap, HashSet};
+use std::io::{self, BufRead};
+use std::fs::File;
+use std::path::Path;
+
+use crate::config::ScanConfig;
 
 use arma3_database::queries::{
     class_repository::ClassRepository, mission_repository::MissionRepository,
@@ -12,10 +17,31 @@ use crate::reporter::models::DependencyAnalysis;
 pub struct DependencyAnalyzer<'a> {
     class_repo: &'a ClassRepository<'a>,
     mission_repo: &'a MissionRepository<'a>,
+    ignored_classes: HashSet<String>,
 }
 
 impl<'a> DependencyAnalyzer<'a> {
-    /// Create a new dependency analyzer
+    /// Create a new dependency analyzer with configuration
+    pub fn with_config(
+        class_repo: &'a ClassRepository<'a>,
+        mission_repo: &'a MissionRepository<'a>,
+        config: &ScanConfig,
+    ) -> ReporterResult<Self> {
+        let mut analyzer = Self {
+            class_repo,
+            mission_repo,
+            ignored_classes: HashSet::new(),
+        };
+
+        // Load ignored classes if configured
+        if let Some(ignore_file) = &config.ignore_classes_file {
+            analyzer.load_ignored_classes(ignore_file)?;
+        }
+
+        Ok(analyzer)
+    }
+
+    /// Create a new dependency analyzer without config
     pub fn new(
         class_repo: &'a ClassRepository<'a>,
         mission_repo: &'a MissionRepository<'a>,
@@ -23,7 +49,31 @@ impl<'a> DependencyAnalyzer<'a> {
         Self {
             class_repo,
             mission_repo,
+            ignored_classes: HashSet::new(),
         }
+    }
+
+    /// Load ignored classes from a file
+    fn load_ignored_classes(&mut self, path: &Path) -> ReporterResult<()> {
+        info!("Loading ignored classes from {}", path.display());
+        
+        let file = File::open(path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        let reader = io::BufReader::new(file);
+        let mut count = 0;
+
+        for line in reader.lines() {
+            let line = line.map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+            let trimmed = line.trim();
+            
+            // Skip empty lines and comments
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                self.ignored_classes.insert(trimmed.to_string());
+                count += 1;
+            }
+        }
+
+        info!("Loaded {} ignored classes", count);
+        Ok(())
     }
 
     /// Analyze dependencies between missions and game data
@@ -59,6 +109,11 @@ impl<'a> DependencyAnalyzer<'a> {
 
         // Process dependencies in memory
         for dep in all_dependencies {
+            // Skip if class is in ignore list
+            if self.ignored_classes.contains(&dep.class_name) {
+                continue;
+            }
+
             if !game_data_classes.contains(&dep.class_name) {
                 // Add to mission's missing dependencies
                 missing_dependencies
@@ -101,13 +156,19 @@ mod tests {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
 
-        // Create database
+        // Create database and config
         let db = DatabaseManager::new(&db_path).unwrap();
         let class_repo = ClassRepository::new(&db);
         let mission_repo = MissionRepository::new(&db);
 
-        // Create analyzer
-        let analyzer = DependencyAnalyzer::new(&class_repo, &mission_repo);
+        // Create config with ignore file
+        let mut config = ScanConfig::default();
+        let ignore_file = dir.path().join("ignored_classes.txt");
+        std::fs::write(&ignore_file, "MissingClass").unwrap();
+        config.ignore_classes_file = Some(ignore_file);
+
+        // Create analyzer with config
+        let analyzer = DependencyAnalyzer::with_config(&class_repo, &mission_repo, &config).unwrap();
 
         // Create test game data classes
         let game_class = ClassModel::new(
@@ -152,8 +213,8 @@ mod tests {
         assert_eq!(analysis.total_missions, 1);
         assert_eq!(analysis.total_missing, 1);
 
-        let mission_missing = analysis.missing_dependencies.get("test_mission").unwrap();
-        assert_eq!(mission_missing.len(), 1);
-        assert!(mission_missing.contains("MissingClass"));
+        let mission_missing = analysis.missing_dependencies.get("test_mission");
+        assert!(mission_missing.is_none() || mission_missing.unwrap().is_empty(), 
+            "Expected no missing dependencies since MissingClass is ignored");
     }
 }
