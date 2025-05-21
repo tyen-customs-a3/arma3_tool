@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use arma3_tool::config::ScanConfig;
-use arma3_tool::cli::{Cli, Commands, get_default_cache_path};
+use arma3_tool::cli::{Cli, Commands};
 use clap::Parser;
 use std::path::PathBuf;
 
@@ -12,74 +12,72 @@ async fn main() -> Result<()> {
     
     // Load the scan configuration
     let config_path = cli.config_path.unwrap_or_else(|| PathBuf::from("scan_config.json"));
-    let config: ScanConfig = ScanConfig::load(&config_path.to_string_lossy())
+    // Make config mutable to allow overriding paths from CLI args
+    let mut config: ScanConfig = ScanConfig::load(&config_path.to_string_lossy())
         .map_err(|e| anyhow!(e))
         .with_context(|| format!("Failed to load config from {}", config_path.display()))?;
     
     match cli.command {
-        Commands::Extract { cache_dir } => {
-            // Configure extraction
-            let mut extraction_config = config.to_extractor_config();
-            if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir.clone();
-                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
-                extraction_config.mission_cache_dir = cache_dir.join("missions");
-            }
+        Commands::Extract { cache_dir, extractor_db_path } => {
+            // Apply CLI overrides to config before creating ExtractionConfig
+            if let Some(cd) = cache_dir { config.cache_dir = cd; }
+            if let Some(edb) = extractor_db_path { config.extractor_database_path = Some(edb); }
+            
+            // Create extractor config using potentially updated ScanConfig
+            let extraction_config = config.to_extractor_config();
             
             arma3_tool::cli::run_extract(extraction_config).await?;
         },
         
-        Commands::Process { cache_dir, db_path } => {
-            // Configure processing
-            let mut extraction_config = config.to_extractor_config();
-            if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir.clone();
-                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
-                extraction_config.mission_cache_dir = cache_dir.join("missions");
-            }
-            
-            let db_path = db_path.unwrap_or_else(|| {
-                get_default_cache_path(&extraction_config.cache_dir)
-            });
-            
-            arma3_tool::cli::run_process(extraction_config, db_path).await?;
-        },
-        
-        Commands::Report { cache_dir, db_path, output_dir } => {
-            // Configure reporting
-            let cache_dir = cache_dir.unwrap_or_else(|| config.cache_dir.clone());
-            let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
-            println!("cache_dir: {:?}", cache_dir);
-            println!("output_dir: {:?}", output_dir);
-            
-            // Determine database file path
-            let db_path = db_path.unwrap_or_else(|| {
-                get_default_cache_path(&cache_dir)
-            });
+        Commands::Process { cache_dir, analysis_db_path } => {
+            // Apply CLI overrides
+            if let Some(cd) = cache_dir { config.cache_dir = cd; }
+            if let Some(adb) = analysis_db_path { config.analysis_database_path = Some(adb); }
 
-            println!("db_path: {:?}", db_path);
+            // Get analysis DB path (applies default if needed)
+            let final_analysis_db_path = config.get_analysis_db_path();
             
-            arma3_tool::cli::run_report(db_path, output_dir).await?;
+            // Create extractor config (needed by run_process, uses its own DB path from config)
+            let extraction_config = config.to_extractor_config();
+            
+            arma3_tool::cli::run_process(extraction_config, final_analysis_db_path).await?;
         },
         
-        Commands::All { cache_dir, db_path, output_dir } => {
-            // Configure for all operations
-            let mut extraction_config = config.to_extractor_config();
-            if let Some(cache_dir) = cache_dir {
-                extraction_config.cache_dir = cache_dir.clone();
-                extraction_config.game_data_cache_dir = cache_dir.join("gamedata");
-                extraction_config.mission_cache_dir = cache_dir.join("missions");
-            }
-            
+        Commands::Report { cache_dir, analysis_db_path, output_dir } => {
+            // Apply CLI overrides
+            if let Some(cd) = cache_dir { config.cache_dir = cd; }
+            if let Some(adb) = analysis_db_path { config.analysis_database_path = Some(adb); }
             let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
-            let db_path = db_path.unwrap_or_else(|| get_default_cache_path(&extraction_config.cache_dir));
-            println!("output_dir: {:?}", output_dir);
-            println!("db_path: {:?}", db_path);
+            
+            // Determine final analysis database file path
+            let final_analysis_db_path = config.get_analysis_db_path();
+            println!("Using Analysis DB: {}", final_analysis_db_path.display());
+            println!("Using Report Output Dir: {}", output_dir.display());
+            
+            arma3_tool::cli::run_report(final_analysis_db_path, output_dir).await?;
+        },
+        
+        Commands::All { cache_dir, extractor_db_path, analysis_db_path, output_dir } => {
+            // Apply CLI overrides to config
+            if let Some(cd) = cache_dir { config.cache_dir = cd; }
+            if let Some(edb) = extractor_db_path { config.extractor_database_path = Some(edb); }
+            if let Some(adb) = analysis_db_path { config.analysis_database_path = Some(adb); }
+            let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
+
+            // Create extractor config using potentially updated ScanConfig
+            let extraction_config = config.to_extractor_config();
+            // Determine final analysis database file path
+            let final_analysis_db_path = config.get_analysis_db_path();
+            
+            println!("Using Extractor DB: {}", extraction_config.db_path.display());
+            println!("Using Analysis DB: {}", final_analysis_db_path.display());
+            println!("Using Report Output Dir: {}", output_dir.display());
             
             // Run all operations in sequence
-            arma3_tool::cli::run_extract(extraction_config.clone()).await?;
-            arma3_tool::cli::run_process(extraction_config, db_path.clone()).await?;
-            arma3_tool::cli::run_report(db_path, output_dir).await?;
+            arma3_tool::cli::run_extract(extraction_config.clone()).await?; // Pass config for extract
+            // Pass the same extraction_config (contains cache paths) but the separate analysis DB path for process
+            arma3_tool::cli::run_process(extraction_config, final_analysis_db_path.clone()).await?; 
+            arma3_tool::cli::run_report(final_analysis_db_path, output_dir).await?; // Pass analysis DB for report
         },
     }
     

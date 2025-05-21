@@ -174,6 +174,7 @@ mod tests {
             None::<String>,
             None::<String>,
             Some(1),
+            false
         );
         class_repo.create(&parent).unwrap();
         
@@ -182,6 +183,7 @@ mod tests {
             Some("ParentClass".to_string()),
             None::<String>,
             Some(2),
+            false
         );
         class_repo.create(&child1).unwrap();
         
@@ -190,6 +192,7 @@ mod tests {
             Some("ParentClass".to_string()),
             None::<String>,
             Some(3),
+            false
         );
         class_repo.create(&child2).unwrap();
         
@@ -198,6 +201,7 @@ mod tests {
             Some("ChildClass1".to_string()),
             None::<String>,
             Some(4),
+            false
         );
         class_repo.create(&grandchild).unwrap();
         
@@ -207,6 +211,7 @@ mod tests {
             None::<String>,
             None::<String>,
             Some(5),
+            false
         );
         class_repo.create(&orphan).unwrap();
         

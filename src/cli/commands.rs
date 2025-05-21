@@ -8,6 +8,10 @@ pub enum Commands {
         /// Override cache directory from config
         #[arg(long)]
         cache_dir: Option<PathBuf>,
+        
+        /// Override extractor database file path (stores PBO extraction state)
+        #[arg(long)]
+        extractor_db_path: Option<PathBuf>,
     },
     
     /// Process extracted game data and missions to create asset database
@@ -16,22 +20,22 @@ pub enum Commands {
         #[arg(long)]
         cache_dir: Option<PathBuf>,
         
-        /// Override database file path
+        /// Override analysis database file path (stores class/dependency data)
         #[arg(long)]
-        db_path: Option<PathBuf>,
+        analysis_db_path: Option<PathBuf>,
     },
     
     /// Generate dependency reports from asset database
     Report {
-        /// Override cache directory from config
+        /// Override cache directory from config (used for default DB path if needed)
         #[arg(long)]
         cache_dir: Option<PathBuf>,
         
-        /// Override database file path
+        /// Override analysis database file path (stores class/dependency data)
         #[arg(long)]
-        db_path: Option<PathBuf>,
+        analysis_db_path: Option<PathBuf>,
         
-        /// Override output directory from config
+        /// Override output directory for reports
         #[arg(long)]
         output_dir: Option<PathBuf>,
     },
@@ -42,11 +46,15 @@ pub enum Commands {
         #[arg(long)]
         cache_dir: Option<PathBuf>,
         
-        /// Override database file path
+        /// Override extractor database file path (stores PBO extraction state)
         #[arg(long)]
-        db_path: Option<PathBuf>,
+        extractor_db_path: Option<PathBuf>,
         
-        /// Override output directory from config
+        /// Override analysis database file path (stores class/dependency data)
+        #[arg(long)]
+        analysis_db_path: Option<PathBuf>,
+        
+        /// Override output directory for reports
         #[arg(long)]
         output_dir: Option<PathBuf>,
     },

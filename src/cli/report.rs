@@ -22,6 +22,11 @@ pub async fn run_report(db_path: PathBuf, output_dir: PathBuf) -> Result<()> {
     coordinator.generate_class_graph(&output_dir)
         .map_err(|e| anyhow::anyhow!("Failed to generate class hierarchy graph: {}", e))?;
     
+    // Generate mission class source report
+    info!("Generating mission class source report...");
+    coordinator.generate_mission_class_source_report(&output_dir)
+        .map_err(|e| anyhow::anyhow!("Failed to generate mission class source report: {}", e))?;
+
     info!("All reports generated successfully");
     Ok(())
 } 

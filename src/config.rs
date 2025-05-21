@@ -19,7 +19,10 @@ pub struct ScanConfig {
     pub mission_extensions: Vec<String>,
     pub cache_dir: PathBuf,
     pub report_dir: PathBuf,
-    pub database_path: Option<PathBuf>,
+    /// Database path for analysis results (classes, dependencies, etc.)
+    pub analysis_database_path: Option<PathBuf>, 
+    /// Database path specifically for the extractor's state tracking
+    pub extractor_database_path: Option<PathBuf>, 
     pub threads: usize,
 }
 
@@ -32,7 +35,8 @@ impl Default for ScanConfig {
             mission_extensions: vec!["pbo".to_string()],
             cache_dir: PathBuf::from("cache"),
             report_dir: PathBuf::from("reports"),
-            database_path: None,
+            analysis_database_path: None, // Defaults determined later based on cache_dir
+            extractor_database_path: None, // Defaults determined later based on cache_dir
             threads: 4,
         }
     }
@@ -63,6 +67,7 @@ impl ScanConfig {
         }
     }
 
+    /// Creates an ExtractionConfig based on the ScanConfig settings.
     pub fn to_extractor_config(&self) -> ExtractionConfig {
         // Convert string paths to PathBuf
         let game_data_dirs = self.game_data_dirs.iter()
@@ -73,7 +78,10 @@ impl ScanConfig {
             .map(PathBuf::from)
             .collect();
 
-        let mut config = ExtractionConfig::new(self.cache_dir.clone());
+        // Initialize ExtractionConfig, primarily needs the cache_dir
+        let mut config = ExtractionConfig::new(self.cache_dir.clone()); 
+        
+        // Populate the rest of the ExtractionConfig fields
         config.cache_dir = self.cache_dir.clone();
         config.game_data_cache_dir = self.cache_dir.join("gamedata"); 
         config.mission_cache_dir = self.cache_dir.join("missions");
@@ -82,16 +90,19 @@ impl ScanConfig {
         config.mission_dirs = mission_dirs;
         config.mission_extensions = self.mission_extensions.clone();
         config.threads = self.threads;
-        config.timeout = 60;
+        config.timeout = 60; // Consider making this configurable in ScanConfig too
+        config.verbose = true; // Consider making this configurable
         
-        // Set database path if available
-        if let Some(db_path) = &self.database_path {
-            config.db_path = db_path.clone();
-        } else {
-            // Default to a database file in the cache directory
-            config.db_path = self.cache_dir.join("arma3.db");
-        }
+        // Set the dedicated extractor database path
+        config.db_path = self.extractor_database_path.clone()
+            .unwrap_or_else(|| self.cache_dir.join("extractor.db")); // Default to extractor.db in cache_dir
         
         config
+    }
+    
+    /// Gets the path for the analysis database, applying default if necessary.
+    pub fn get_analysis_db_path(&self) -> PathBuf {
+        self.analysis_database_path.clone()
+            .unwrap_or_else(|| self.cache_dir.join("analysis.db")) // Default to analysis.db in cache_dir
     }
 }

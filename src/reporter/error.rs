@@ -19,4 +19,7 @@ pub enum ReporterError {
     
     #[error("Database error: {0}")]
     DatabaseError(#[from] arma3_database::error::DatabaseError),
+    
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 } 

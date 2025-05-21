@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 use log::info;
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::{Write, BufWriter};
 
 use arma3_database::{
     DatabaseManager,
@@ -76,6 +79,71 @@ impl<'a> ReportCoordinator<'a> {
         Ok(())
     }
 
+    /// Generate a CSV file listing classes used in missions and their source files
+    pub fn generate_mission_class_source_report(&self, output_dir: &PathBuf) -> ReporterResult<()> {
+        info!("Starting mission class source report generation...");
+
+        let missions = self.mission_repo.get_all()?;
+        info!("Processing {} missions...", missions.len());
+
+        let mut results: Vec<(String, String, Option<String>)> = Vec::new();
+        let mut class_source_cache: HashMap<String, Option<String>> = HashMap::new();
+        let mut processed_classes_for_mission: HashSet<(String, String)> = HashSet::new();
+
+        for mission in missions {
+            let dependencies = self.mission_repo.get_dependencies(&mission.id)?;
+            
+            for dep in dependencies {
+                let mission_class_key = (mission.id.clone(), dep.class_name.clone());
+                if processed_classes_for_mission.contains(&mission_class_key) {
+                    continue; // Already processed this class for this mission
+                }
+
+                let source_path = match class_source_cache.get(&dep.class_name) {
+                    Some(cached_path) => cached_path.clone(),
+                    None => {
+                        let path = match self.class_repo.get(&dep.class_name)? {
+                            Some(class_model) => {
+                                if let Some(idx) = class_model.source_file_index {
+                                    self.class_repo.get_source_path(idx)?
+                                } else {
+                                    None
+                                }
+                            }
+                            None => None,
+                        };
+                        class_source_cache.insert(dep.class_name.clone(), path.clone());
+                        path
+                    }
+                };
+
+                results.push((mission.id.clone(), dep.class_name.clone(), source_path));
+                processed_classes_for_mission.insert(mission_class_key);
+            }
+        }
+
+        // Write to CSV
+        let report_path = output_dir.join("mission_class_sources.csv");
+        let file = File::create(&report_path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        let mut writer = BufWriter::new(file);
+
+        writeln!(writer, "mission_id,class_name,source_path").map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+
+        for (mission_id, class_name, source_path) in results {
+            // Basic CSV escaping: wrap fields containing commas or quotes in double quotes, double internal quotes.
+            // For simplicity, assuming mission_id and class_name won't have problematic characters.
+            // Source path might, but often won't.
+            let source_path_str = source_path.unwrap_or_else(|| "".to_string());
+            writeln!(writer, "{},{},{}", mission_id, class_name, source_path_str)
+                .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        }
+
+        writer.flush().map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+
+        info!("Mission class source report generated at: {}", report_path.display());
+        Ok(())
+    }
+
     /// Get access to the database manager
     pub fn db(&self) -> &'a DatabaseManager {
         self.db
@@ -115,6 +183,7 @@ mod tests {
             None::<String>,
             None::<String>,
             Some(1),
+            false
         );
         class_repo.create(&game_class).unwrap();
         
@@ -176,6 +245,7 @@ mod tests {
             None::<String>,
             None::<String>,
             Some(1),
+            false
         );
         class_repo.create(&parent).unwrap();
         
@@ -185,6 +255,7 @@ mod tests {
             Some("ParentClass".to_string()),
             None::<String>,
             Some(2),
+            false
         );
         class_repo.create(&child1).unwrap();
         

@@ -13,11 +13,8 @@ use arma3_database::{DatabaseManager, repos::ClassRepository};
 
 /// Scanner for game data PBOs
 pub struct GameDataScanner {
-    /// Cache directory
     cache_dir: PathBuf,
-    /// Use advanced scanner for more accurate but slower parsing
     use_advanced_scanner: bool,
-    /// Database manager, if database storage is enabled
     db_manager: Option<DatabaseManager>,
 }
 
@@ -84,6 +81,7 @@ impl GameDataScanner {
             container_class: class.container_class.clone(),
             properties,
             source_file_index: file_index,
+            is_forward_declaration: class.is_forward_declaration,
         })
     }
     

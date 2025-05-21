@@ -107,7 +107,8 @@ mod tests {
             "GameClass".to_string(),
             None::<String>,
             None::<String>,
-            Some(1)
+            Some(1),
+            false
         );
         class_repo.create(&game_class).unwrap();
         
