@@ -28,6 +28,10 @@ We are refining the Arma 3 extraction tool with a focus on the following areas:
 
 7. **Fixture Integration Tests**: Added integration tests (`test_extract_headgear_pumpkin_fixture`, `test_extract_joust_mission_fixture`) using fixture PBOs to verify extraction logic, including edge cases.
 
+8. **Explicit FileDB Load/Save**: Implemented public `load` and `save` methods in `FileDbManager` for explicit control over database persistence. `FileDbManager::new` now automatically loads from the specified path if the DB file exists.
+
+9. **Increased FileDB Test Coverage**: Added tests for `normalize_path`, failed extractions, finding files by extension, getting metadata by type, and updating existing metadata in `FileDbManager`.
+
 ## Active Decisions
 
 1. **File-Based Database**: We are using a file-based database approach (JSON files) rather than an external database. This decision simplifies deployment and eliminates external dependencies.
@@ -79,7 +83,7 @@ We are refining the Arma 3 extraction tool with a focus on the following areas:
 
 3. **Cleanup Utilities**: Add functionality to clean up old or unused extracted files.
 
-4. **Export/Import**: Allow exporting and importing file database snapshots for backup or transfer purposes.
+4. **Export/Import Foundation**: The explicit `save` method with a target path provides a foundation for exporting database snapshots. Further work might involve a dedicated export/import command or format.
 
 5. **Advanced Filtering**: Implement more sophisticated filtering options beyond simple file extensions.
 
@@ -118,4 +122,6 @@ Recent completed tasks:
 5. ✅ Implemented proper handling for extension ordering in extraction decisions
 6. ✅ Investigated and fixed unreliable extraction of `config.cpp` due to external tool filtering order.
 7. ✅ Implemented post-extraction filtering logic in `PboProcessor`.
-8. ✅ Added integration tests for fixture PBOs. 
+8. ✅ Added integration tests for fixture PBOs.
+9. ✅ Implemented explicit `load`/`save` methods for `FileDbManager`.
+10. ✅ Increased test coverage for `FileDbManager`. 

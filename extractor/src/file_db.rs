@@ -83,6 +83,7 @@ pub struct FileDatabase {
 }
 
 /// Manager for file-based database operations
+#[derive(Debug)]
 pub struct FileDbManager {
     /// Path to the database file
     db_path: PathBuf,
@@ -99,7 +100,7 @@ pub fn normalize_path(path: &Path) -> String {
 }
 
 impl FileDbManager {
-    /// Create a new file database manager
+    /// Create a new file database manager, loading from db_path if it exists.
     pub fn new(db_path: &Path) -> Result<Self> {
         debug!("Initializing file database manager with path: {}", db_path.display());
         
@@ -112,17 +113,21 @@ impl FileDbManager {
         }
         
         // Try to load existing database
-        let db = if db_path.exists() {
-            match Self::load_database(db_path) {
-                Ok(db) => db,
-                Err(e) => {
-                    warn!("Failed to load database, creating new one: {}", e);
-                    FileDatabase::default()
-                }
+        let db = match Self::load(db_path) {
+            Ok(db) => {
+                info!("Successfully loaded existing database from: {}", db_path.display());
+                db
             }
-        } else {
-            // Create new database
-            FileDatabase::default()
+            Err(e) => {
+                if db_path.exists() {
+                     // Log if file exists but failed to load
+                    warn!("Failed to load existing database file at {}: {}. Creating a new empty database.", db_path.display(), e);
+                } else {
+                    // Log if file doesn't exist
+                    info!("No existing database found at {}. Creating a new empty database.", db_path.display());
+                }
+                FileDatabase::default()
+            }
         };
         
         let manager = Self {
@@ -130,35 +135,60 @@ impl FileDbManager {
             db,
         };
         
-        info!("File database manager initialized");
+        info!("File database manager initialized successfully.");
         Ok(manager)
     }
     
-    /// Load the database from disk
-    fn load_database(path: &Path) -> Result<FileDatabase> {
+    /// Load the database state from a specified JSON file.
+    ///
+    /// Returns an error if the file doesn't exist or cannot be parsed.
+    pub fn load(path: &Path) -> Result<FileDatabase> {
+         if !path.exists() {
+            return Err(CacheError::IndexOperation(format!("Database file not found: {}", path.display())));
+        }
+
         let mut file = File::open(path)
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to open database file: {}", e)))?;
-        
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to open database file '{}': {}", path.display(), e)))?;
+
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to read database file: {}", e)))?;
-        
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to read database file '{}': {}", path.display(), e)))?;
+
+        // Attempt to handle empty file gracefully
+        if contents.is_empty() {
+            warn!("Database file '{}' is empty. Returning default database.", path.display());
+            return Ok(FileDatabase::default());
+        }
+
         serde_json::from_slice(&contents)
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to parse database file: {}", e)))
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to parse database file '{}': {}", path.display(), e)))
     }
     
-    /// Save the database to disk
-    fn save_database(&self) -> Result<()> {
+    /// Save the current database state to a JSON file.
+    ///
+    /// If `target_path` is `None`, saves to the `db_path` configured during initialization.
+    /// If `target_path` is `Some`, saves to the specified path.
+    pub fn save(&self, target_path: Option<&Path>) -> Result<()> {
+        let path_to_save = target_path.unwrap_or(&self.db_path);
+
+        // Ensure parent directory exists for the target path
+        if let Some(parent) = path_to_save.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| CacheError::CacheDirectory(format!("Failed to create directory for saving database at '{}': {}", parent.display(), e)))?;
+            }
+        }
+
         let contents = serde_json::to_vec_pretty(&self.db)
             .map_err(|e| CacheError::IndexOperation(format!("Failed to serialize database: {}", e)))?;
-        
-        let mut file = File::create(&self.db_path)
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to create database file: {}", e)))?;
-        
+
+        let mut file = File::create(path_to_save)
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to create database file at '{}': {}", path_to_save.display(), e)))?;
+
         file.write_all(&contents)
-            .map_err(|e| CacheError::IndexOperation(format!("Failed to write database file: {}", e)))?;
-        
-        debug!("Database saved to {}", self.db_path.display());
+            .map_err(|e| CacheError::IndexOperation(format!("Failed to write database file at '{}': {}", path_to_save.display(), e)))?;
+
+        debug!("Database saved successfully to {}", path_to_save.display());
         Ok(())
     }
     
@@ -263,7 +293,7 @@ impl FileDbManager {
         }
         
         // Save changes to disk
-        self.save_database()?;
+        self.save(None)?;
         
         debug!("Updated metadata for PBO: {}", metadata.path.display());
         Ok(())
@@ -285,7 +315,7 @@ impl FileDbManager {
         self.db.failed_extractions.insert(pbo_id, failed_extraction);
         
         // Save changes to disk
-        self.save_database()?;
+        self.save(None)?;
         
         debug!("Recorded failed extraction for {}", path.display());
         Ok(())
@@ -365,6 +395,7 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     use std::io::Write;
+    use std::time::{Duration, SystemTime};
     
     // Helper function to create a mock PBO file
     fn create_mock_pbo(dir: &Path, name: &str) -> PathBuf {
@@ -515,5 +546,206 @@ mod tests {
         let file_path = PathBuf::from("nonexistent.sqf");
         let found_pbo = db_manager.find_pbo_for_file(&file_path).unwrap();
         assert!(found_pbo.is_none());
+    }
+
+    #[test]
+    fn test_save_and_load_database() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let mut db_manager = FileDbManager::new(&db_path).unwrap();
+        
+        // Create a mock PBO
+        let pbo_path = create_mock_pbo(temp_dir.path(), "test.pbo");
+        
+        // Create metadata with extracted files
+        let extracted_files = vec![
+            PathBuf::from("file1.sqf"),
+            PathBuf::from("file2.hpp"),
+        ];
+        let metadata = create_test_metadata(
+            &pbo_path,
+            PboType::GameData,
+            extracted_files.clone(),
+            vec!["sqf".to_string(), "hpp".to_string()],
+        );
+        
+        // Update metadata
+        db_manager.update_metadata(metadata.clone()).unwrap();
+        
+        // Save the database
+        db_manager.save(None).unwrap();
+        
+        // Load the database again
+        let db_manager2 = FileDbManager::new(&db_path).unwrap();
+        
+        // Check if the PBO is in the database
+        let pbo_id = normalize_path(&pbo_path);
+        assert!(db_manager2.db.pbos.contains_key(&pbo_id));
+        
+        // Check if extracted files are in the database
+        for file in &extracted_files {
+            let file_str = file.to_string_lossy().to_string();
+            assert!(db_manager2.db.files.contains_key(&file_str));
+        }
+    }
+
+    #[test]
+    fn test_normalize_path() {
+        let path1 = PathBuf::from("C:\\Users\\Test\\File.PBO");
+        assert_eq!(normalize_path(&path1), "c:/users/test/file.pbo");
+
+        let path2 = PathBuf::from("/home/user/test.pbo");
+        assert_eq!(normalize_path(&path2), "/home/user/test.pbo");
+
+        let path3 = PathBuf::from("Relative/Path/To/File.PBO");
+        assert_eq!(normalize_path(&path3), "relative/path/to/file.pbo");
+    }
+
+    #[test]
+    fn test_failed_extraction() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("failed_test.db");
+        let mut db_manager = FileDbManager::new(&db_path).unwrap();
+
+        let pbo_path = create_mock_pbo(temp_dir.path(), "fail.pbo");
+
+        // Initially, no failed record
+        assert!(db_manager.is_failed_extraction(&pbo_path).unwrap().is_none());
+
+        // Add a failed extraction record
+        let error_msg = "Extraction timed out".to_string();
+        db_manager.add_failed_extraction(&pbo_path, error_msg.clone()).unwrap();
+
+        // Verify the record exists
+        let failed_info = db_manager.is_failed_extraction(&pbo_path).unwrap();
+        assert!(failed_info.is_some());
+        let (timestamp_str, message) = failed_info.unwrap();
+        assert_eq!(message, error_msg);
+        assert!(DateTime::parse_from_rfc3339(&timestamp_str).is_ok());
+
+        // Load again to ensure persistence
+        let db_manager2 = FileDbManager::new(&db_path).unwrap();
+        let failed_info2 = db_manager2.is_failed_extraction(&pbo_path).unwrap();
+        assert!(failed_info2.is_some());
+        assert_eq!(failed_info2.unwrap().1, error_msg);
+    }
+
+    #[test]
+    fn test_find_files_by_extension() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("find_ext.db");
+        let mut db_manager = FileDbManager::new(&db_path).unwrap();
+
+        let pbo_path = create_mock_pbo(temp_dir.path(), "ext_test.pbo");
+        let file1 = PathBuf::from("script.sqf");
+        let file2 = PathBuf::from("config.hpp");
+        let file3 = PathBuf::from("another.sqf");
+
+        let metadata = create_test_metadata(
+            &pbo_path,
+            PboType::GameData,
+            vec![file1.clone(), file2.clone(), file3.clone()],
+            vec!["sqf".to_string(), "hpp".to_string()],
+        );
+        db_manager.update_metadata(metadata).unwrap();
+
+        // Find sqf files
+        let sqf_files = db_manager.find_files_by_extension("sqf").unwrap();
+        assert_eq!(sqf_files.len(), 2);
+        assert!(sqf_files.iter().any(|f| f.relative_path == file1));
+        assert!(sqf_files.iter().any(|f| f.relative_path == file3));
+
+        // Find hpp files
+        let hpp_files = db_manager.find_files_by_extension("hpp").unwrap();
+        assert_eq!(hpp_files.len(), 1);
+        assert_eq!(hpp_files[0].relative_path, file2);
+
+        // Find non-existent extension
+        let txt_files = db_manager.find_files_by_extension("txt").unwrap();
+        assert!(txt_files.is_empty());
+    }
+
+    #[test]
+    fn test_get_metadata_by_type() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("get_type.db");
+        let mut db_manager = FileDbManager::new(&db_path).unwrap();
+
+        let game_pbo_path = create_mock_pbo(temp_dir.path(), "game.pbo");
+        let mission_pbo_path = create_mock_pbo(temp_dir.path(), "mission.pbo");
+
+        let metadata_game = create_test_metadata(&game_pbo_path, PboType::GameData, vec![], vec![]);
+        let metadata_mission = create_test_metadata(&mission_pbo_path, PboType::Mission, vec![], vec![]);
+
+        db_manager.update_metadata(metadata_game.clone()).unwrap();
+        db_manager.update_metadata(metadata_mission.clone()).unwrap();
+
+        // Get GameData metadata
+        let game_data = db_manager.get_game_data_metadata().unwrap();
+        assert_eq!(game_data.len(), 1);
+        assert_eq!(game_data[0].id, normalize_path(&game_pbo_path));
+        assert_eq!(game_data[0].pbo_type, PboType::GameData);
+
+        // Get Mission metadata
+        let mission_data = db_manager.get_mission_metadata().unwrap();
+        assert_eq!(mission_data.len(), 1);
+        assert_eq!(mission_data[0].id, normalize_path(&mission_pbo_path));
+        assert_eq!(mission_data[0].pbo_type, PboType::Mission);
+    }
+
+    #[test]
+    fn test_update_existing_metadata() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("update_existing.db");
+        let mut db_manager = FileDbManager::new(&db_path).unwrap();
+
+        let pbo_path = create_mock_pbo(temp_dir.path(), "update_me.pbo");
+
+        // Initial metadata
+        let file1 = PathBuf::from("initial.sqf");
+        let initial_metadata = create_test_metadata(
+            &pbo_path,
+            PboType::GameData,
+            vec![file1.clone()],
+            vec!["sqf".to_string()],
+        );
+        db_manager.update_metadata(initial_metadata).unwrap();
+
+        // Verify initial state
+        assert_eq!(db_manager.db.pbos.len(), 1);
+        assert_eq!(db_manager.db.files.len(), 1);
+        assert!(db_manager.db.files.contains_key(&normalize_path(&file1)));
+        let initial_record = db_manager.db.pbos.get(&normalize_path(&pbo_path)).unwrap();
+        assert_eq!(initial_record.extracted_files.len(), 1);
+
+        // Update metadata for the same PBO with different files/extensions
+        let file2 = PathBuf::from("new_config.hpp");
+        let updated_metadata = create_test_metadata(
+            &pbo_path, // Same PBO path
+            PboType::GameData,
+            vec![file2.clone()],
+            vec!["hpp".to_string()], // Different extension
+        );
+        // Ensure extraction time is different for update check
+        let mut updated_metadata = updated_metadata;
+        updated_metadata.extraction_time = SystemTime::now() + Duration::from_secs(1);
+
+        db_manager.update_metadata(updated_metadata.clone()).unwrap();
+
+        // Verify updated state
+        let loaded_manager = FileDbManager::new(&db_path).unwrap(); // Reload to check persistence
+        assert_eq!(loaded_manager.db.pbos.len(), 1); // Should still be 1 PBO record
+        // Note: The file index currently doesn't remove old files, only adds/updates.
+        // This might be desired or not depending on exact requirements.
+        // For now, we check that the new file is present.
+        assert!(loaded_manager.db.files.contains_key(&normalize_path(&file2)));
+        // Optionally, check if the old file is still there (current behavior)
+        // assert!(loaded_manager.db.files.contains_key(&normalize_path(&file1)));
+
+        let updated_record = loaded_manager.db.pbos.get(&normalize_path(&pbo_path)).unwrap();
+        assert_eq!(updated_record.used_extensions, vec!["hpp".to_string()]);
+        assert_eq!(updated_record.extracted_files.len(), 1);
+        assert_eq!(updated_record.extracted_files[0], file2);
+        assert_eq!(updated_record.extraction_time, DateTime::<Utc>::from(updated_metadata.extraction_time));
     }
 } 

@@ -43,16 +43,23 @@
 ## File Database Implementation
 
 - **Storage Format**: JSON files
-- **Storage Location**: Configurable, defaults to user's home directory
+- **Storage Location**: Configurable, defaults to user's home directory (`FileDbManager::new` takes path).
 - **Structure**:
-  - One main index file
-  - Records indexed by file path
-  - Metadata includes hash, size, timestamp, source PBO
+  - One main index file (`FileDatabase` struct serialized)
+  - Records indexed by normalized path or file path
+  - Metadata includes hash, size, timestamp, source PBO (`PboRecord`, `ExtractedFileInfo`)
 - **Operations**:
-  - Query by file path
-  - Query by source PBO
-  - Update metadata
-  - Purge old records
+  - `FileDbManager::new(path)`: Initializes manager, loads DB from `path` if exists.
+  - `FileDbManager::load(path)`: Static method to load `FileDatabase` state from a file.
+  - `FileDbManager::save(target_path: Option<&Path>)`: Saves current DB state to specified path or default path.
+  - Query by file path (`find_pbo_for_file`)
+  - Query by extension (`find_files_by_extension`)
+  - Query by PBO type (`get_game_data_metadata`, `get_mission_metadata`)
+  - Update metadata (`update_metadata`, automatically saves)
+  - Record failed extraction (`add_failed_extraction`, automatically saves)
+  - Check for failed extraction (`is_failed_extraction`)
+  - Check if extraction needed (`needs_extraction`)
+  - (Internal persistence handled by `save`, typically called after updates)
 
 ## Build Configuration
 
@@ -91,8 +98,8 @@
 
 ## Testing Strategy
 
-1. **Unit Tests**: For core logic and algorithms
-2. **Integration Tests**: For extraction workflow
+1. **Unit Tests**: For core logic and algorithms (includes comprehensive tests for `FileDbManager`).
+2. **Integration Tests**: For extraction workflow (includes fixture tests for specific PBOs).
 3. **Property Tests**: For robustness against varied inputs
 4. **Performance Tests**: For ensuring extraction speed
 5. **Mock Tests**: For simulating file system and external dependencies 

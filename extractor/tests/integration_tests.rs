@@ -5,7 +5,6 @@ use std::fs::File;
 use std::io::Write;
 use std::thread;
 use std::time::Duration;
-use std::sync::Arc;
 use std::collections::HashSet;
 
 use arma3_extractor::{

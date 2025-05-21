@@ -24,6 +24,7 @@ The ARMA3 Extractor library is in a mature state with all core functionality imp
 7. **Configuration Options**: Flexible configuration options for controlling the extraction process.
 8. **Self-Contained**: No external database dependencies, making the library more portable and easier to integrate.
 9. **Reliable `config.cpp` Handling**: Correctly extracts `config.cpp` (renamed from `config.bin`) when `cpp` is included in the extension filter, thanks to the post-extraction filtering workaround in `PboProcessor`.
+10. **Explicit DB Persistence**: The `FileDbManager` now supports explicit saving to and loading from disk via public `save` and `load` methods.
 
 ## Recent Accomplishments
 
@@ -34,6 +35,8 @@ The ARMA3 Extractor library is in a mature state with all core functionality imp
 5. **Extension Order Handling**: Improved extension handling to properly manage extension order variations.
 6. **`config.cpp` Extraction Fix**: Implemented a workaround in `PboProcessor` to reliably extract `config.cpp` by handling the `pbo_tools` filtering order quirk.
 7. **Fixture Integration Tests**: Added specific integration tests using fixture PBOs to validate core extraction scenarios and edge cases.
+8. **Explicit DB Load/Save**: Added public `load` and `save` methods to `FileDbManager`, enabling manual persistence control and automatic loading on initialization.
+9. **Improved DB Test Coverage**: Significantly increased unit test coverage for `FileDbManager`, including load/save, normalization, error handling, and query functions.
 
 ## What's Left to Build
 

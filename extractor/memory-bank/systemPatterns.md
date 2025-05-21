@@ -30,7 +30,7 @@ The ARMA3 Extractor is built around a layered architecture with clear separation
 
 1. **Manager Pattern**: The `ExtractionManager` acts as the central coordinator, delegating specialized tasks to other components.
 
-2. **Repository Pattern**: The `FileDbManager` provides an abstraction layer over the file-based database operations, handling all persistence concerns.
+2. **Repository Pattern**: The `FileDbManager` provides an abstraction layer over the file-based database operations, handling all persistence concerns. It loads the database on initialization and offers explicit `save` and `load` methods for external control over persistence.
 
 3. **Factory Methods**: Used for creating PBO metadata and records (`create_metadata`, `create_pbo_record`).
 
@@ -104,7 +104,7 @@ The ARMA3 Extractor is built around a layered architecture with clear separation
 
 ## Testing Patterns
 
-1. **Unit Tests**: Most modules include tests for their specific functionality.
+1. **Unit Tests**: Most modules include tests for their specific functionality. Increased coverage recently for `FileDbManager`.
 
 2. **Integration Tests**: End-to-end tests for extraction workflows.
 
