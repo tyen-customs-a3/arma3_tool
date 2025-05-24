@@ -6,7 +6,7 @@ mod writers;
 mod class_graph;
 
 pub use error::{Result, ReporterError};
-pub use models::*;
+pub use models::{DependencyAnalysis, DependencyReport, FuzzyMissingClassReport, MissingClassMatch, PotentialMatch};
 pub use coordinator::ReportCoordinator;
 pub use analyzers::DependencyAnalyzer;
 pub use writers::ReportWriter;

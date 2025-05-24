@@ -119,6 +119,27 @@ async fn main() -> Result<()> {
             arma3_tool::cli::run_report(final_analysis_db_path, output_dir, &config).await?;
             // Pass analysis DB for report
         }
+        Commands::FuzzyReport {
+            cache_dir,
+            analysis_db_path,
+            output_dir,
+        } => {
+            // Apply CLI overrides
+            if let Some(cd) = cache_dir {
+                config.cache_dir = cd;
+            }
+            if let Some(adb) = analysis_db_path {
+                config.analysis_database_path = Some(adb);
+            }
+            let output_dir = output_dir.unwrap_or_else(|| config.report_dir.clone());
+
+            // Determine final analysis database file path
+            let final_analysis_db_path = config.get_analysis_db_path();
+            println!("Using Analysis DB for Fuzzy Report: {}", final_analysis_db_path.display());
+            println!("Using Report Output Dir for Fuzzy Report: {}", output_dir.display());
+
+            arma3_tool::cli::run_fuzzy_report(final_analysis_db_path, output_dir, &config).await?;
+        }
     }
 
     Ok(())

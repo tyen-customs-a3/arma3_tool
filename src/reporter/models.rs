@@ -53,6 +53,45 @@ impl DependencyReport {
     }
 }
 
+/// Represents a missing class and its potential fuzzy matches
+#[derive(Debug, Clone, PartialEq)]
+pub struct MissingClassMatch {
+    pub missing_class_name: String,
+    pub potential_matches: Vec<PotentialMatch>,
+}
+
+/// Represents a potential fuzzy match for a missing class
+#[derive(Debug, Clone, PartialEq)]
+pub struct PotentialMatch {
+    pub class_name: String,
+    pub similarity: f64, // Jaro-Winkler similarity score (0.0 to 1.0)
+}
+
+/// Model for a report detailing missing classes and their potential fuzzy matches
+#[derive(Debug)]
+pub struct FuzzyMissingClassReport {
+    /// List of missing classes with their potential matches
+    pub missing_class_matches: Vec<MissingClassMatch>,
+    /// Total number of unique missing classes found
+    pub total_unique_missing: usize,
+    /// When the report was generated
+    pub generated_at: DateTime<Utc>,
+}
+
+impl FuzzyMissingClassReport {
+    /// Create a new fuzzy missing class report
+    pub fn new(
+        missing_class_matches: Vec<MissingClassMatch>,
+    ) -> Self {
+        let total_unique_missing = missing_class_matches.len();
+        Self {
+            missing_class_matches,
+            total_unique_missing,
+            generated_at: Utc::now(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,5 +111,23 @@ mod tests {
         assert_eq!(report.total_dependencies, 5);
         assert_eq!(report.missing_dependencies.len(), 1);
         assert!(report.missing_dependencies["test_mission"].contains("MissingClass"));
+    }
+
+    #[test]
+    fn test_fuzzy_missing_class_report() {
+        let matches = vec![
+            MissingClassMatch {
+                missing_class_name: "MyClas".to_string(),
+                potential_matches: vec![
+                    PotentialMatch { class_name: "MyClass".to_string(), similarity: 0.9 },
+                    PotentialMatch { class_name: "MyClassEx".to_string(), similarity: 0.8 },
+                ]
+            }
+        ];
+        let report = FuzzyMissingClassReport::new(matches.clone());
+        assert_eq!(report.total_unique_missing, 1);
+        assert_eq!(report.missing_class_matches.len(), 1);
+        assert_eq!(report.missing_class_matches[0].missing_class_name, "MyClas");
+        assert_eq!(report.missing_class_matches[0].potential_matches.len(), 2);
     }
 }

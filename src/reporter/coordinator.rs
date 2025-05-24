@@ -15,7 +15,7 @@ use crate::{
         analyzers::DependencyAnalyzer,
         class_graph::ClassHierarchyWriter,
         error::Result as ReporterResult,
-        models::DependencyReport,
+        models::{DependencyReport, FuzzyMissingClassReport},
         writers::ReportWriter,
     },
 };
@@ -168,6 +168,29 @@ impl<'a> ReportCoordinator<'a> {
     pub fn mission_repo(&self) -> &MissionRepository<'a> {
         &self.mission_repo
     }
+
+    /// Generate a report for missing classes with fuzzy match suggestions
+    pub fn generate_fuzzy_missing_class_report(&self, output_dir: &PathBuf) -> ReporterResult<()> {
+        info!("Starting fuzzy missing class report generation...");
+
+        // Create analyzer with config
+        let analyzer = DependencyAnalyzer::with_config(&self.class_repo, &self.mission_repo, self.config)?;
+
+        // Run fuzzy analysis
+        let fuzzy_matches = analyzer.analyze_fuzzy_missing_classes()?;
+
+        // Create report model
+        let report = FuzzyMissingClassReport::new(fuzzy_matches);
+
+        // Create writer
+        let writer = ReportWriter::new(output_dir);
+
+        // Write report
+        writer.write_fuzzy_missing_class_report(&report)?;
+
+        info!("Fuzzy missing class report generation complete.");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -176,68 +199,35 @@ mod tests {
     use arma3_database::{ClassModel, DatabaseManager, MissionDependencyModel, MissionModel};
     use chrono::Utc;
     use tempfile::tempdir;
+    use std::fs;
+
+    fn create_basic_config_and_db(dir_path: &std::path::Path) -> (DatabaseManager, ScanConfig) {
+        let db_path = dir_path.join("test.db");
+        let db = DatabaseManager::new(&db_path).unwrap();
+        let config = ScanConfig::default();
+        (db, config)
+    }
 
     #[test]
     fn test_report_coordinator() {
         let dir = tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-
-        // Create database and config
-        let db = DatabaseManager::new(&db_path).unwrap();
-        let config = ScanConfig::default();
+        let (db, config) = create_basic_config_and_db(dir.path());
         let coordinator = ReportCoordinator::new(&db, &config);
 
-        // Create test game data classes
         let class_repo = coordinator.class_repo();
-        let game_class = ClassModel::new(
-            "GameClass".to_string(),
-            None::<String>,
-            None::<String>,
-            Some(1),
-            false,
-        );
-        class_repo.create(&game_class).unwrap();
+        class_repo.create(&ClassModel::new("GameClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
 
-        // Create test mission with dependencies
         let mission_repo = coordinator.mission_repo();
-        let mission = MissionModel::new(
-            "test_mission",
-            "Test Mission",
-            PathBuf::from("missions/test.pbo"),
-            Utc::now(),
-        );
+        let mission = MissionModel::new("test_mission".to_string(), "Test Mission".to_string(), PathBuf::from("missions/test.pbo"), Utc::now());
         mission_repo.create(&mission).unwrap();
+        mission_repo.add_dependency(&MissionDependencyModel::new("test_mission".to_string(), "GameClass".to_string(), "Direct".to_string(), PathBuf::from("file.sqf"))).unwrap();
+        mission_repo.add_dependency(&MissionDependencyModel::new("test_mission".to_string(), "MissingClass".to_string(), "Direct".to_string(), PathBuf::from("file.sqf"))).unwrap();
 
-        // Add dependencies
-        let dependency = MissionDependencyModel::new(
-            "test_mission".to_string(),
-            "GameClass".to_string(), // Existing class
-            "DirectClass".to_string(),
-            PathBuf::from("mission/dependency.sqf"),
-        );
-        mission_repo.add_dependency(&dependency).unwrap();
-
-        let missing_dependency = MissionDependencyModel::new(
-            "test_mission".to_string(),
-            "MissingClass".to_string(), // Non-existent class
-            "DirectClass".to_string(),
-            PathBuf::from("mission/missing.sqf"),
-        );
-        mission_repo.add_dependency(&missing_dependency).unwrap();
-
-        // Run report
         let output_dir = dir.path().join("reports");
         coordinator.run_report(&output_dir).unwrap();
 
-        // Verify report file was created
-        let report_files: Vec<_> = std::fs::read_dir(&output_dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("dependency_report_")
-            })
+        let report_files: Vec<_> = fs::read_dir(&output_dir).unwrap().filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("dependency_report_"))
             .collect();
         assert_eq!(report_files.len(), 1);
     }
@@ -245,42 +235,60 @@ mod tests {
     #[test]
     fn test_class_graph_generation() {
         let dir = tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-
-        // Create database and config
-        let db = DatabaseManager::new(&db_path).unwrap();
-        let config = ScanConfig::default();
+        let (db, config) = create_basic_config_and_db(dir.path());
         let coordinator = ReportCoordinator::new(&db, &config);
-
-        // Create test classes with parent-child relationships
         let class_repo = coordinator.class_repo();
+        class_repo.create(&ClassModel::new("ParentClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
+        class_repo.create(&ClassModel::new("ChildClass1".to_string(),Some("ParentClass".to_string()), None::<String>, Some(2),false)).unwrap();
 
-        // Parent class
-        let parent = ClassModel::new(
-            "ParentClass".to_string(),
-            None::<String>,
-            None::<String>,
-            Some(1),
-            false,
-        );
-        class_repo.create(&parent).unwrap();
-
-        // Child classes
-        let child1 = ClassModel::new(
-            "ChildClass1".to_string(),
-            Some("ParentClass".to_string()),
-            None::<String>,
-            Some(2),
-            false,
-        );
-        class_repo.create(&child1).unwrap();
-
-        // Run class graph generation
         let output_dir = dir.path().join("reports");
         coordinator.generate_class_graph(&output_dir).unwrap();
+        assert!(output_dir.join("class_hierarchy.csv").exists());
+    }
 
-        // Verify graph file was created
-        let graph_file = output_dir.join("class_hierarchy.csv");
-        assert!(graph_file.exists());
+    #[test]
+    fn test_fuzzy_missing_class_report_generation() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_fuzzy.db");
+        let output_dir = dir.path().join("reports_fuzzy");
+
+        let db = DatabaseManager::new(&db_path).unwrap();
+        
+        // Config with an ignore file
+        let mut config = ScanConfig::default();
+        let ignore_file_path = dir.path().join("ignored_fuzzy.txt");
+        fs::write(&ignore_file_path, "IgnoredFuzzyClass\n").unwrap();
+        config.ignore_classes_file = Some(ignore_file_path);
+
+        let coordinator = ReportCoordinator::new(&db, &config);
+        let class_repo = coordinator.class_repo();
+        let mission_repo = coordinator.mission_repo();
+
+        // Known classes
+        class_repo.create(&ClassModel::new("ActualClass".to_string(), None::<String>, None::<String>, Some(1), false)).unwrap();
+        class_repo.create(&ClassModel::new("ActualClasS".to_string(), None::<String>, None::<String>, Some(2), false)).unwrap(); // Similar
+        class_repo.create(&ClassModel::new("AnotherActual".to_string(), None::<String>, None::<String>, Some(3), false)).unwrap();
+
+        // Mission with dependencies
+        let mission = MissionModel::new("fuzzy_rep_mission".to_string(), "Fuzzy Report Test".to_string(), PathBuf::from("missions/fuzzy_rep.pbo"), Utc::now());
+        mission_repo.create(&mission).unwrap();
+        mission_repo.add_dependency(&MissionDependencyModel::new("fuzzy_rep_mission".to_string(), "ActualClas".to_string(), "Src".to_string(), PathBuf::from("f1.sqf"))).unwrap(); // Missing, should find ActualClass & ActualClasS
+        mission_repo.add_dependency(&MissionDependencyModel::new("fuzzy_rep_mission".to_string(), "NonExistent".to_string(), "Src".to_string(), PathBuf::from("f2.sqf"))).unwrap(); // Missing, no good matches
+        mission_repo.add_dependency(&MissionDependencyModel::new("fuzzy_rep_mission".to_string(), "IgnoredFuzzyClass".to_string(), "Src".to_string(), PathBuf::from("f3.sqf"))).unwrap(); // Should be ignored
+
+        coordinator.generate_fuzzy_missing_class_report(&output_dir).unwrap();
+
+        let report_files: Vec<_> = fs::read_dir(&output_dir).unwrap().filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with("fuzzy_missing_class_report_"))
+            .collect();
+        assert_eq!(report_files.len(), 1, "Fuzzy report file should be created");
+
+        let content = fs::read_to_string(report_files[0].path()).unwrap();
+        assert!(content.contains("Missing: ActualClas"));
+        assert!(content.contains("- ActualClass (Similarity:")); // Check for part of the line
+        assert!(content.contains("- ActualClasS (Similarity:"));
+        assert!(content.contains("Missing: NonExistent"));
+        assert!(content.contains("No potential matches found."));
+        assert!(!content.contains("IgnoredFuzzyClass"), "Ignored class should not appear in the fuzzy report's missing list");
     }
 }

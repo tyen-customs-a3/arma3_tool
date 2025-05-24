@@ -58,4 +58,19 @@ pub enum Commands {
         #[arg(long)]
         output_dir: Option<PathBuf>,
     },
-} 
+
+    /// Generate a report of missing classes with fuzzy match suggestions
+    FuzzyReport {
+        /// Override cache directory from config (used for default DB path if needed)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+        
+        /// Override analysis database file path (stores class/dependency data)
+        #[arg(long)]
+        analysis_db_path: Option<PathBuf>,
+        
+        /// Override output directory for reports
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
+    },
+}
