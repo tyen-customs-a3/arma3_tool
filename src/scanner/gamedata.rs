@@ -13,7 +13,7 @@ use arma3_database::{DatabaseManager, repos::ClassRepository};
 
 /// Scanner for game data PBOs
 pub struct GameDataScanner {
-    cache_dir: PathBuf,
+    game_data_cache_dir: PathBuf,
     use_advanced_scanner: bool,
     db_manager: Option<DatabaseManager>,
 }
@@ -24,10 +24,10 @@ impl GameDataScanner {
         config: arma3_extractor::ExtractionConfig,
         db_manager: Option<DatabaseManager>
     ) -> Result<Self> {
-        let cache_dir = config.cache_dir.clone();
+        let game_data_cache_dir = config.game_data_cache_dir.clone();
             
-        Ok(Self { 
-            cache_dir, 
+        Ok(Self {
+            game_data_cache_dir,
             use_advanced_scanner: true,
             db_manager,
         })
@@ -87,22 +87,29 @@ impl GameDataScanner {
     
     /// Scan classes from extracted PBOs
     pub async fn scan(&self) -> Result<GameDataClasses> {
-        let gamedata_dir = self.cache_dir.join("gamedata");
+        let gamedata_dir = &self.game_data_cache_dir;
         info!("Scanning extracted game data PBOs in {}", gamedata_dir.display());
         
         info!("Using {} scanner for game data", if self.use_advanced_scanner { "advanced" } else { "simple" });
         
-        // Create scanner configuration
-        let scanner_config = ScannerConfig::default();
+        // Create scanner configuration following established pattern
+        // Use current directory as project root instead of cache_dir to avoid path duplication
+        let project_root = std::env::current_dir()
+            .map_err(|e| ToolError::GameDataScanError(format!("Failed to get current directory: {}", e)))?;
+        let mut scanner_config = ScannerConfig::default();
+        scanner_config.use_advanced_parser = false; // Disable advanced parser to avoid threading issues
+        scanner_config.show_progress = false; // Disable for library usage
+        scanner_config.diagnostic_mode = false;
         
-        // Create scanner with config
-        let scanner = Scanner::new(scanner_config);
+        // Create scanner with project root and config (following established pattern)
+        let scanner = Scanner::new(&project_root, scanner_config)
+            .map_err(|e| ToolError::GameDataScanError(format!("Failed to create scanner: {}", e)))?;
         
         // Scan the directory
-        let scan_result = scanner.scan_directory(&gamedata_dir)
+        let scan_result = scanner.scan_directory(gamedata_dir)
             .map_err(|e| ToolError::GameDataScanError(format!("Failed to scan game data: {}", e)))?;
 
-        info!("Found {} classes in {} files", 
+        info!("Found {} classes in {} files",
             scan_result.total_files,
             scan_result.successful_files);
             
@@ -114,12 +121,12 @@ impl GameDataScanner {
         let mut classes = GameDataClasses::new();
         
         // Process all classes from the scan result
-        for (file_path, scan_result) in scan_result.results {
+        for (file_path, file_scan_result) in scan_result.results {
             // Add file source
             let file_index = classes.add_file_source(file_path);
             
             // Convert and add each class
-            for class in scan_result.classes {
+            for class in file_scan_result.classes {
                 if let Some(converted_class) = Self::convert_game_class(&class, Some(file_index)) {
                     classes.add_class(converted_class);
                 }

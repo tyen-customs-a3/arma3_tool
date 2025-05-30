@@ -78,13 +78,10 @@ impl ScanConfig {
             .map(PathBuf::from)
             .collect();
 
-        // Initialize ExtractionConfig, primarily needs the cache_dir
-        let mut config = ExtractionConfig::new(self.cache_dir.clone()); 
+        // Initialize ExtractionConfig, which already sets up cache directories correctly
+        let mut config = ExtractionConfig::new(self.cache_dir.clone());
         
-        // Populate the rest of the ExtractionConfig fields
-        config.cache_dir = self.cache_dir.clone();
-        config.game_data_cache_dir = self.cache_dir.join("gamedata"); 
-        config.mission_cache_dir = self.cache_dir.join("missions");
+        // Populate the rest of the ExtractionConfig fields (cache dirs are already set by new())
         config.game_data_dirs = game_data_dirs;
         config.game_data_extensions = self.game_data_extensions.clone();
         config.mission_dirs = mission_dirs;

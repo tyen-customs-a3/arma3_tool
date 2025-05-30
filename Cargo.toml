@@ -24,6 +24,8 @@ tokio = { workspace = true }
 actix-web = { workspace = true }
 actix-files = { workspace = true }
 rusqlite = { workspace = true }
+strsim = { workspace = true }
+rayon = { workspace = true } # Added for parallel processing
 tempfile = "3.8"
 
 [dev-dependencies]
