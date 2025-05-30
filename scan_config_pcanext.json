@@ -1,15 +1,17 @@
 {
     "game_data_dirs": [
-      "E:/pcanext",
+      "E:/pca/pca_next",
       "C:/Program Files (x86)/Steam/steamapps/common/Arma 3"
     ],
     "game_data_extensions": ["hpp", "cpp", "bin"],
     "mission_dirs": [
-      "E:/pca_missions"
+      "E:/pca/missions/pca_missions"
     ],
     "mission_extensions": ["hpp", "cpp", "sqf", "xml", "sqm"],
-    "cache_dir": "./cache_pca_next",
+    "cache_dir": "./cache/pcanext",
     "report_dir": "./reports_pca_next",
-    "database_path": "./cache_pca_next/arma3_pcanext.db",
-    "threads": 31
+    "analysis_database_path": "./cache/pcanext/analysis_pcanext.db",
+    "extractor_database_path": "./cache/pcanext/extractor_pcanext.db",
+    "threads": 31,
+    "ignore_classes_file": null
 }
