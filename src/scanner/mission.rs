@@ -5,7 +5,6 @@ use crate::error::{Result, ToolError};
 use arma3_models::{MissionData, Mission, MissionComponent, DependencyRef, ReferenceType as ModelReferenceType};
 use mission_scanner::{scan_mission, MissionScannerConfig, ReferenceType as ScannerReferenceType};
 use num_cpus;
-use tokio::sync::Semaphore;
 use arma3_database::MissionRepository;
 
 /// Scanner for mission PBOs
@@ -94,122 +93,86 @@ impl MissionScanner {
         }
         
         let total_threads = num_cpus::get();
-        let threads_per_mission = total_threads;
         
-        // Create a semaphore to limit concurrent mission parsing
-        let semaphore = std::sync::Arc::new(Semaphore::new(total_threads));
+        // Process missions sequentially but use multithreading within each mission
+        let mut mission_data = MissionData::new();
         
-        // Process missions in parallel
-        let mut tasks = Vec::new();
-        
-        for mission_dir in mission_dirs {
+        for (index, mission_dir) in mission_dirs.iter().enumerate() {
             let mission_name = mission_dir.file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
                 
-            info!("Scheduling scan for mission: {}", mission_name);
+            info!("Scanning mission {}/{}: {} with {} threads",
+                  index + 1, mission_dirs.len(), mission_name, total_threads);
             
-            // Clone variables needed for the task
-            let mission_dir_clone = mission_dir.clone();
-            let config_clone = config.clone();
-            let semaphore = semaphore.clone();
-            
-            // Spawn a task for each mission
-            let task = tokio::spawn(async move {
-                // Acquire semaphore permit
-                let _permit = semaphore.acquire().await.unwrap();
-                info!("Scanning mission: {} with {} threads", mission_name, threads_per_mission);
-                
-                match scan_mission(&mission_dir_clone, threads_per_mission, &config_clone).await {
-                    Ok(scan_result) => {
-                        // Create mission object
-                        let mut mission = Mission::new(
-                            scan_result.mission_name,
-                            mission_dir_clone.to_path_buf()
-                        );
-                        
-                        // Set source PBO name 
-                        let pbo_name = mission_dir_clone.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        // Only set source_pbo if we're scanning from a PBO
-                        if mission_dir_clone.parent()
-                            .and_then(|p| p.file_name())
-                            .and_then(|n| n.to_str())
-                            .map(|n| n.ends_with(".pbo"))
-                            .unwrap_or(false) {
-                            mission.source_pbo = Some(pbo_name);
-                        }
-                        
-                        // Add dependencies from all sources
-                        for dep in scan_result.class_dependencies {
-                            
-                            mission.add_dependency(DependencyRef::new(
-                                dep.class_name,
-                                Self::convert_reference_type(dep.reference_type),
-                                dep.source_file
-                            ));
-                        }
-                        
-                        // Add mission.sqm as a component if present
-                        if let Some(sqm_file) = scan_result.sqm_file {
-                            let sqm_component = MissionComponent::new(
-                                "mission.sqm".to_string(),
-                                arma3_models::MissionComponentType::Other("SQM".to_string()),
-                                sqm_file
-                            );
-                            mission.add_component(sqm_component);
-                        }
-                        
-                        // Add SQF files as components
-                        for sqf_file in scan_result.sqf_files {
-                            let sqf_component = MissionComponent::new(
-                                sqf_file.file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string(),
-                                arma3_models::MissionComponentType::Other("SQF".to_string()),
-                                sqf_file
-                            );
-                            mission.add_component(sqf_component);
-                        }
-                        
-                        // Add CPP/HPP files as components
-                        for cpp_file in scan_result.cpp_files {
-                            let cpp_component = MissionComponent::new(
-                                cpp_file.file_name()
-                                    .unwrap_or_default()
-                                    .to_string_lossy()
-                                    .to_string(),
-                                arma3_models::MissionComponentType::Other("CPP".to_string()),
-                                cpp_file
-                            );
-                            mission.add_component(cpp_component);
-                        }
-                        
-                        Ok(mission)
-                    },
-                    Err(e) => {
-                        error!("Failed to scan mission {}: {}", mission_dir_clone.display(), e);
-                        Err(ToolError::MissionScanError(format!(
-                            "Failed to scan mission {}: {}", 
-                            mission_dir_clone.display(), e
-                        )))
+            match scan_mission(mission_dir, total_threads, &config).await {
+                Ok(scan_result) => {
+                    // Create mission object
+                    let mut mission = Mission::new(
+                        scan_result.mission_name,
+                        mission_dir.to_path_buf()
+                    );
+                    
+                    // Set source PBO name
+                    let pbo_name = mission_dir.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+                    // Only set source_pbo if we're scanning from a PBO
+                    if mission_dir.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.ends_with(".pbo"))
+                        .unwrap_or(false) {
+                        mission.source_pbo = Some(pbo_name);
                     }
-                }
-            });
-            
-            tasks.push((mission_dir, task));
-        }
-        
-        // Collect results
-        let mut mission_data = MissionData::new();
-        
-        for (mission_dir, task) in tasks {
-            match task.await {
-                Ok(Ok(mission)) => {
+                    
+                    // Add dependencies from all sources
+                    for dep in scan_result.class_dependencies {
+                        mission.add_dependency(DependencyRef::new(
+                            dep.class_name,
+                            Self::convert_reference_type(dep.reference_type),
+                            dep.source_file
+                        ));
+                    }
+                    
+                    // Add mission.sqm as a component if present
+                    if let Some(sqm_file) = scan_result.sqm_file {
+                        let sqm_component = MissionComponent::new(
+                            "mission.sqm".to_string(),
+                            arma3_models::MissionComponentType::Other("SQM".to_string()),
+                            sqm_file
+                        );
+                        mission.add_component(sqm_component);
+                    }
+                    
+                    // Add SQF files as components
+                    for sqf_file in scan_result.sqf_files {
+                        let sqf_component = MissionComponent::new(
+                            sqf_file.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
+                            arma3_models::MissionComponentType::Other("SQF".to_string()),
+                            sqf_file
+                        );
+                        mission.add_component(sqf_component);
+                    }
+                    
+                    // Add CPP/HPP files as components
+                    for cpp_file in scan_result.cpp_files {
+                        let cpp_component = MissionComponent::new(
+                            cpp_file.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string(),
+                            arma3_models::MissionComponentType::Other("CPP".to_string()),
+                            cpp_file
+                        );
+                        mission.add_component(cpp_component);
+                    }
+                    
                     // Save individual mission results to database if available
                     if let Err(e) = self.save_mission_to_db(&mission) {
                         error!("Failed to save mission {} to database: {}", mission.name, e);
@@ -218,11 +181,9 @@ impl MissionScanner {
                     // Add to collection
                     mission_data.add_mission(mission);
                 },
-                Ok(Err(e)) => {
-                    error!("Task for mission {} returned an error: {}", mission_dir.display(), e);
-                },
                 Err(e) => {
-                    error!("Task for mission {} panicked: {}", mission_dir.display(), e);
+                    error!("Failed to scan mission {}: {}", mission_dir.display(), e);
+                    // Continue with next mission rather than failing completely
                 }
             }
         }
