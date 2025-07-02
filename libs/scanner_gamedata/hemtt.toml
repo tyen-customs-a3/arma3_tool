@@ -1,0 +1,45 @@
+# HEMTT Configuration for gamedata_scanner project
+# This configuration disables basic linting warnings to avoid noise when processing gamedata
+
+name = "gamedata_scanner"
+prefix = "gds"
+author = "gamedata_scanner"
+
+[lints.config.file_type]
+enabled = false
+
+[lints.config.invalid_value]
+enabled = false
+
+[lints.config.duplicate_property]
+enabled = false
+
+[lints.config.duplicate_classes]
+enabled = false
+
+[lints.config.external_missing]
+enabled = false
+
+[lints.config.external_parent_case]
+enabled = false
+
+[lints.config.unexpected_array]
+enabled = false
+
+[lints.config.expected_array]
+enabled = false
+
+[lints.config.missing_semicolon]
+enabled = false
+
+[lints.config.magwell_missing_magazine]
+enabled = false
+
+[lints.config.class_missing_braces]
+enabled = false
+
+[lints.config.math_could_be_unquoted]
+enabled = false
+
+[lints.config.config_this_call]
+enabled = false

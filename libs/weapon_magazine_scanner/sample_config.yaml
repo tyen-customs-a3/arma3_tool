@@ -1,0 +1,22 @@
+# Weapon Magazine Scanner Configuration
+# 
+# This file configures the weapon magazine scanner application.
+# You can override any of these settings via command-line arguments.
+
+# Target directory to scan for weapon and magazine data
+# This should point to your gamedata folder or mod directory
+target: ./gamedata
+output: ./output/weapons_report.json
+database: ./cache/weapon_cache.db
+force: false
+threads: 32
+format: json
+verbose: false
+timeout: 30
+project_root: ./project_root
+
+
+# Output settings
+
+# Database settings
+# The database file stores scan results for faster subsequent runs

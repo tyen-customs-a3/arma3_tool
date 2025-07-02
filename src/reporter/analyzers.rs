@@ -118,13 +118,12 @@ impl<'a> DependencyAnalyzer<'a> {
 
         // Process dependencies in memory
         for dep in all_dependencies {
-            // Skip if class is in ignore list
-            if self.ignored_classes.contains(&dep.class_name) {
-                continue;
-            }
-
             // Perform case-insensitive check for existence
             if !game_data_classes_lower.contains(&dep.class_name.to_lowercase()) {
+                // Skip if class is in ignore list before adding to missing
+                if self.ignored_classes.contains(&dep.class_name) {
+                    continue;
+                }
                 // Add to mission's missing dependencies (store original casing from mission)
                 missing_dependencies
                     .entry(dep.mission_id.clone())
@@ -264,11 +263,11 @@ mod tests {
         let analysis = analyzer.analyze_dependencies().unwrap();
 
         assert_eq!(analysis.total_missions, 1);
-        // total_missing includes all non-existent classes before filtering by ignore list
-        assert_eq!(analysis.total_missing, 2); 
+        // total_missing now excludes ignored classes from the count
+        assert_eq!(analysis.total_missing, 1); 
         
         let mission_missing = analysis.missing_dependencies.get("test_mission").unwrap();
-        assert_eq!(mission_missing.len(), 1, "Only MissingClassShouldBeReported should be in missing_dependencies after ignore list processing in analyze_dependencies");
+        assert_eq!(mission_missing.len(), 1, "Expected only MissingClassShouldBeReported in the list after filtering");
         assert!(mission_missing.contains("MissingClassShouldBeReported"));
         assert!(!mission_missing.contains("IgnoredClass"));
     }

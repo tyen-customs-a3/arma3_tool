@@ -284,11 +284,21 @@ mod tests {
         assert_eq!(report_files.len(), 1, "Fuzzy report file should be created");
 
         let content = fs::read_to_string(report_files[0].path()).unwrap();
-        assert!(content.contains("Missing: ActualClas"));
-        assert!(content.contains("- ActualClass (Similarity:")); // Check for part of the line
-        assert!(content.contains("- ActualClasS (Similarity:"));
-        assert!(content.contains("Missing: NonExistent"));
-        assert!(content.contains("No potential matches found."));
-        assert!(!content.contains("IgnoredFuzzyClass"), "Ignored class should not appear in the fuzzy report's missing list");
+        
+        // Check CSV format
+        assert!(content.starts_with("missing_class_name,potential_match_1_name,potential_match_2_name,potential_match_3_name"));
+        
+        // Check that ActualClas is in the content with its matches
+        let lines: Vec<&str> = content.lines().collect();
+        let actual_clas_line = lines.iter().find(|line| line.starts_with("ActualClas,")).expect("ActualClas should be in the report");
+        assert!(actual_clas_line.contains("ActualClass"));
+        assert!(actual_clas_line.contains("ActualClasS"));
+        
+        // Check that NonExistent is in the content with empty matches
+        let non_existent_line = lines.iter().find(|line| line.starts_with("NonExistent,")).expect("NonExistent should be in the report");
+        assert_eq!(non_existent_line, &"NonExistent,,,");
+        
+        // Ignored class should not appear in the CSV
+        assert!(!content.contains("IgnoredFuzzyClass"), "Ignored class should not appear in the fuzzy report");
     }
 }

@@ -1,0 +1,146 @@
+{
+  "version": "1.0",
+  "description": "Item filtering configuration for Arma 3 Tool exporter",
+  "item_types": {
+    "weapons": {
+      "description": "All weapon types including rifles, pistols, and launchers",
+      "base_classes": [
+        "Rifle_Base_F",
+        "Pistol_Base_F", 
+        "Launcher_Base_F",
+        "arifle_MX_Base_F",
+        "Weapon_Base_F"
+      ],
+      "required_properties": {
+        "scope": 2
+      },
+      "optional_properties": {
+        "simulation": "Weapon"
+      }
+    },
+    "backpacks": {
+      "description": "All backpack and bag types",
+      "base_classes": [
+        "Bag_Base",
+        "B_Bergen_Base",
+        "B_AssaultPack_Base",
+        "B_TacticalPack_Base",
+        "B_Carryall_Base",
+        "B_FieldPack_Base",
+        "B_Kitbag_Base",
+        "B_OutdoorPack_Base",
+        "Weapon_Bag_Base"
+      ],
+      "required_properties": {
+        "scope": 2
+      }
+    },
+    "vests": {
+      "description": "All vest and armor types",
+      "base_classes": [
+        "VestItem",
+        "Vest_Camo_Base"
+      ],
+      "required_properties": {
+        "scope": 2
+      },
+      "required_nested_properties": {
+        "itemInfo.type": "V_VEST"
+      }
+    },
+    "uniforms": {
+      "description": "All uniform clothing types",
+      "base_classes": [
+        "UniformItem",
+        "Uniform_Base"
+      ],
+      "required_properties": {
+        "scope": 2
+      },
+      "required_nested_properties": {
+        "itemInfo.type": "U_UNIFORM"
+      }
+    },
+    "headgear": {
+      "description": "All headgear and helmet types", 
+      "base_classes": [
+        "HeadgearItem"
+      ],
+      "required_properties": {
+        "scope": 2
+      },
+      "required_nested_properties": {
+        "itemInfo.type": "H_HELMET"
+      }
+    },
+    "items": {
+      "description": "General items including accessories and equipment",
+      "base_classes": [
+        "ItemCore",
+        "AccessoryPointer_Base_F",
+        "AccessoryMuzzle_Base_F",
+        "DefaultItem",
+        "MagazineWeapon"
+      ],
+      "required_properties": {
+        "scope": 2
+      }
+    },
+    "vehicles": {
+      "description": "All vehicle types",
+      "base_classes": [
+        "Car_F",
+        "Tank_F", 
+        "Helicopter_Base_F",
+        "Plane_Base_F",
+        "Ship_F",
+        "StaticWeapon",
+        "AllVehicles"
+      ],
+      "required_properties": {
+        "scope": 2
+      }
+    }
+  },
+  "exclusion_rules": {
+    "description": "Classes and patterns to exclude from all exports",
+    "excluded_base_classes": [
+      "RscConfActionButton",
+      "RscActiveText", 
+      "RscButton",
+      "RscButtonMenu",
+      "B_Edit2D",
+      "B_Side",
+      "BaseWest",
+      "BaseEast", 
+      "BaseGuer",
+      "BaseCiv",
+      "MissionDefault",
+      "B_Campaign",
+      "All",
+      "Thing",
+      "Default"
+    ],
+    "excluded_prefixes": [
+      "B_hub",
+      "B_m0",
+      "B_skirmish", 
+      "B_Aegis_A_",
+      "B_1_",
+      "B_2_"
+    ],
+    "max_scope": 1
+  },
+  "validation_rules": {
+    "description": "Additional validation rules for item classification",
+    "global_requirements": {
+      "scope": {
+        "operator": "equals",
+        "value": 2,
+        "description": "Only include items with scope = 2 (public/usable items)"
+      }
+    },
+    "inheritance_depth_limit": 50,
+    "cache_inheritance_results": true
+  }
+} 

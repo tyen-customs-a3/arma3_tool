@@ -1,0 +1,42 @@
+[package]
+name = "sqf-analyzer"
+version.workspace = true
+edition.workspace = true
+description = "A tool for analyzing Arma 3 SQF scripts to extract equipment item references"
+authors = ["SQF Analyzer Team"]
+repository = "https://github.com/tyen-customs-a3/sqf-analyzer"
+license = "MIT"
+include = [
+    "src/**/*",
+    "bin/*",
+    "build.rs",
+    "Cargo.toml",
+    "README.md"
+]
+
+# Library configuration
+[lib]
+name = "sqf_analyzer"
+path = "src/lib.rs"
+
+# Binary configuration
+[[bin]]
+name = "sqf-analyzer"
+path = "src/main.rs"
+
+[build-dependencies]
+
+[dependencies]
+regex = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+walkdir = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "benchmark"
+harness = false

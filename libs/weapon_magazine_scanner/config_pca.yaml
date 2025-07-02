@@ -1,0 +1,10 @@
+target: "E:/pca/git/rs/arma3_tool/cache/pca/gamedata" # Target directory to scan for weapon and magazine data
+output: "./output/pca_weapons_magazines_report.json" # Output file for the report
+database: "./cache/pca_weapon_magazine_cache.db" # Database file for caching scan results
+force: false # Force rescan even if files haven't changed
+threads: 0 # Number of threads to use for parallel scanning. Set to 0 to use all available CPU cores
+format: "json" # Output format: json, yaml, csv, text
+verbose: false # Enable verbose output for debugging
+timeout: 30 # Timeout per file in seconds
+project_root: null # Project root directory for parser (optional)
+weapons_by_mod: "./output/pca_weapons_by_mod.txt" # Output file for weapons grouped by mod (optional)

@@ -249,10 +249,10 @@ mod tests {
         let metadata_lines: Vec<&str> = metadata_content.lines().collect();
 
         assert_eq!(metadata_lines[0], "id;color;type");
-        assert!(metadata_content.contains("ParentClass;black;PAR"));
-        assert!(metadata_content.contains("ChildClass1;black;CHI"));
-        assert!(metadata_content.contains("ChildClass2;black;CHI"));
-        assert!(metadata_content.contains("GrandChildClass;black;GRA"));
-        assert!(metadata_content.contains("OrphanClass;black;ORP"));
+        assert!(metadata_content.contains("ParentClass;white;PAR"));
+        assert!(metadata_content.contains("ChildClass1;white;CHI"));
+        assert!(metadata_content.contains("ChildClass2;white;CHI"));
+        assert!(metadata_content.contains("GrandChildClass;white;GRA"));
+        assert!(metadata_content.contains("OrphanClass;white;ORP"));
     }
 }

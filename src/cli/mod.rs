@@ -3,12 +3,14 @@ mod extract;
 mod process;
 mod report;
 mod fuzzy_report;
+mod export;
 
 pub use commands::Commands;
 pub use extract::run_extract;
 pub use process::run_process;
 pub use report::run_report;
 pub use fuzzy_report::run_fuzzy_report;
+pub use export::run_export;
 
 use clap::Parser;
 use std::path::{Path, PathBuf};

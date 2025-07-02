@@ -40,6 +40,33 @@ pub enum Commands {
         output_dir: Option<PathBuf>,
     },
     
+    /// Export items (weapons, uniforms, vests, backpacks, etc.) to CSV
+    Export {
+        /// Override cache directory from config (used for default DB path if needed)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+        
+        /// Override analysis database file path (stores class/dependency data)
+        #[arg(long)]
+        analysis_db_path: Option<PathBuf>,
+        
+        /// Output CSV file path
+        #[arg(short, long, default_value = "items_export.csv")]
+        output: PathBuf,
+        
+        /// Item types to export (comma-separated): weapons, uniforms, vests, backpacks, vehicles, all
+        #[arg(short, long, default_value = "all")]
+        item_types: String,
+        
+        /// Custom parent class filters (comma-separated, overrides item_types if provided)
+        #[arg(long)]
+        filter_parents: Option<String>,
+        
+        /// Maximum number of items to export (0 for unlimited)
+        #[arg(short, long, default_value = "0")]
+        limit: usize,
+    },
+    
     /// Run all operations (extract, process, and report)
     All {
         /// Override cache directory from config

@@ -1,0 +1,37 @@
+[package]
+name = "pbo_tools"
+version.workspace = true
+edition.workspace = true
+description = "A Rust library for working with PBO (Packed Bundle Object) files"
+authors = ["Tom Campbell <tyen901@gmail.com>"]
+license = "MIT"
+
+[lib]
+name = "pbo_tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pbo_tools"
+path = "src/bin/pbo_tools.rs"
+
+[dependencies]
+thiserror = { workspace = true }
+log = { workspace = true }
+tempfile = { workspace = true }
+uuid = { workspace = true }
+walkdir = { workspace = true }
+clap = { workspace = true }
+regex = { workspace = true }
+env_logger = { workspace = true }
+
+[dev-dependencies]
+env_logger = { workspace = true }
+tempfile = { workspace = true }
+walkdir = { workspace = true }
+
+[lints.rust]
+dead_code = "allow"
+unused_parens = "allow"
+unused_imports = "allow"
+unused_variables = "allow"
+unused_mut = "allow"
