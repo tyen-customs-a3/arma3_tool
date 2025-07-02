@@ -1,5 +1,5 @@
 use arma3_database::{DatabaseManager, ClassRepository, MissionRepository, GraphQueryEngine};
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use std::path::PathBuf;
 
 const BENCHMARK_DB_PATH: &str = r"D:\pca\git\dep\rs\arma3_tool\cache\pca_next\benchmark.db";
@@ -24,7 +24,7 @@ fn bench_class_queries(c: &mut Criterion) {
         });
     });
     
-    group.finish();n
+    group.finish();
 }
 
 fn bench_graph_operations(c: &mut Criterion) {

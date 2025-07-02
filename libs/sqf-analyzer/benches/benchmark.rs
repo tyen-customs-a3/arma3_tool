@@ -1,5 +1,5 @@
 use anyhow::Result;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use sqf_analyzer::{
     analyze_sqf, extract_common_items, extract_function_calls, extract_items_direct, Args,
 };

@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use hemtt_sqm::{Class, SqmFile, Value};
 use parser_sqm::extract_class_dependencies;
 use std::collections::HashMap;

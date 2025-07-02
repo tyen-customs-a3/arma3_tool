@@ -1,4 +1,3 @@
-use std::hint::black_box;
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
 use tempfile::TempDir;
 use hemtt_sqf::parser::{run as parse_sqf, database::Database};
