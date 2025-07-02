@@ -89,7 +89,7 @@ fn mission_scan_benchmark(c: &mut Criterion) {
         group.bench_function(format!("{}_mission/full_scan", name), |b| {
             b.iter(|| {
                 rt.block_on(async {
-                    black_box(
+                    std::hint::black_box(
                         scan_mission(
                             path,
                             config.max_threads,
@@ -108,7 +108,7 @@ fn mission_scan_benchmark(c: &mut Criterion) {
         group.bench_function(format!("{}_mission/sqm_only", name), |b| {
             b.iter(|| {
                 rt.block_on(async {
-                    black_box(
+                    std::hint::black_box(
                         scan_mission(
                             path,
                             config.max_threads,
@@ -127,7 +127,7 @@ fn mission_scan_benchmark(c: &mut Criterion) {
         group.bench_function(format!("{}_mission/sqf_only", name), |b| {
             b.iter(|| {
                 rt.block_on(async {
-                    black_box(
+                    std::hint::black_box(
                         scan_mission(
                             path,
                             config.max_threads,
@@ -146,7 +146,7 @@ fn mission_scan_benchmark(c: &mut Criterion) {
         group.bench_function(format!("{}_mission/cpp_only", name), |b| {
             b.iter(|| {
                 rt.block_on(async {
-                    black_box(
+                    std::hint::black_box(
                         scan_mission(
                             path,
                             config.max_threads,
@@ -167,7 +167,7 @@ fn mission_scan_benchmark(c: &mut Criterion) {
             |b, &_total_files| {
                 b.iter(|| {
                     rt.block_on(async {
-                        black_box(
+                        std::hint::black_box(
                             scan_mission(
                                 &mission_paths.iter().find(|(n, _)| n == name).unwrap().1,
                                 config.max_threads,

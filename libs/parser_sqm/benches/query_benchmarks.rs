@@ -117,25 +117,25 @@ fn benchmark_queries(c: &mut Criterion) {
     // Benchmark simple mission
     let simple_mission = create_simple_mission();
     group.bench_function("simple_mission", |b| {
-        b.iter(|| extract_class_dependencies(black_box(&simple_mission)))
+        b.iter(|| extract_class_dependencies(std::hint::black_box(&simple_mission)))
     });
     
     // Benchmark deeply nested mission (depth=10)
     let deep_mission = create_deep_nested_mission(10);
     group.bench_function("deep_nested_mission", |b| {
-        b.iter(|| extract_class_dependencies(black_box(&deep_mission)))
+        b.iter(|| extract_class_dependencies(std::hint::black_box(&deep_mission)))
     });
     
     // Benchmark wide mission (width=100)
     let wide_mission = create_wide_mission(100);
     group.bench_function("wide_mission", |b| {
-        b.iter(|| extract_class_dependencies(black_box(&wide_mission)))
+        b.iter(|| extract_class_dependencies(std::hint::black_box(&wide_mission)))
     });
     
     // Benchmark mixed mission (depth=5, width=20)
     let mixed_mission = create_mixed_mission(5, 20);
     group.bench_function("mixed_mission", |b| {
-        b.iter(|| extract_class_dependencies(black_box(&mixed_mission)))
+        b.iter(|| extract_class_dependencies(std::hint::black_box(&mixed_mission)))
     });
     
     group.finish();

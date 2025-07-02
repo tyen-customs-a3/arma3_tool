@@ -286,7 +286,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 items.clear();
                 extract_function_calls(
-                    black_box(&synthetic_content),
+                    std::hint::black_box(&synthetic_content),
                     &mut items,
                     None,
                 )
@@ -306,9 +306,9 @@ fn criterion_benchmark(c: &mut Criterion) {
             b.iter(|| {
                 items.clear();
                 extract_function_calls(
-                    black_box(&synthetic_content),
+                    std::hint::black_box(&synthetic_content),
                     &mut items,
-                    Some(black_box(&functions)),
+                    Some(std::hint::black_box(&functions)),
                 )
                 .unwrap()
             })
@@ -318,7 +318,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("extract_common_items/no_filter", |b| {
         b.iter(|| {
             extract_common_items(
-                black_box(&synthetic_content),
+                std::hint::black_box(&synthetic_content),
                 None,
             )
             .unwrap()
@@ -334,8 +334,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         group.bench_function("extract_common_items/with_filter", |b| {
             b.iter(|| {
                 extract_common_items(
-                    black_box(&synthetic_content),
-                    Some(black_box(&functions)),
+                    std::hint::black_box(&synthetic_content),
+                    Some(std::hint::black_box(&functions)),
                 )
                 .unwrap()
             })
@@ -357,7 +357,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         group.bench_function("extract_common_items/no_filter", |b| {
                             b.iter(|| {
                                 extract_common_items(
-                                    black_box(&content),
+                                    std::hint::black_box(&content),
                                     None,
                                 )
                                 .unwrap()
@@ -373,8 +373,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                             group.bench_function("extract_common_items/with_filter", |b| {
                                 b.iter(|| {
                                     extract_common_items(
-                                        black_box(&content),
-                                        Some(black_box(&functions)),
+                                        std::hint::black_box(&content),
+                                        Some(std::hint::black_box(&functions)),
                                     )
                                     .unwrap()
                                 })

@@ -65,7 +65,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = small_ctx.create_processed(small_content.clone());
-                    black_box(parse_sqf(&small_ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&small_ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -76,7 +76,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = large_ctx.create_processed(large_content.clone());
-                    black_box(parse_sqf(&large_ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&large_ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -96,7 +96,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = ctx.create_processed(code.clone());
-                    black_box(parse_sqf(&ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -120,7 +120,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = ctx.create_processed(code.clone());
-                    black_box(parse_sqf(&ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -140,7 +140,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = ctx.create_processed(code.clone());
-                    black_box(parse_sqf(&ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -160,7 +160,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = ctx.create_processed(code.clone());
-                    black_box(parse_sqf(&ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&ctx.database, &processed).unwrap());
                 });
             },
         );
@@ -184,7 +184,7 @@ fn sqf_parser_benchmark(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let processed = ctx.create_processed(code.clone());
-                    black_box(parse_sqf(&ctx.database, &processed).unwrap());
+                    std::hint::black_box(parse_sqf(&ctx.database, &processed).unwrap());
                 });
             },
         );

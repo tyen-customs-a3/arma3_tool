@@ -20,11 +20,11 @@ fn bench_class_queries(c: &mut Criterion) {
     
     group.bench_function("get_all_classes", |b| {
         b.iter(|| {
-            black_box(class_repo.get_all().expect("Failed to get all classes"));
+            std::hint::black_box(class_repo.get_all().expect("Failed to get all classes"));
         });
     });
     
-    group.finish();
+    group.finish();n
 }
 
 fn bench_graph_operations(c: &mut Criterion) {
@@ -36,7 +36,7 @@ fn bench_graph_operations(c: &mut Criterion) {
     // Benchmark building class hierarchy graph
     group.bench_function("build_root_hierarchy", |b| {
         b.iter(|| {
-            black_box(graph_engine.build_class_hierarchy_graph(
+            std::hint::black_box(graph_engine.build_class_hierarchy_graph(
                 Some("Object"),
                 10, // Max depth
                 None,
@@ -47,7 +47,7 @@ fn bench_graph_operations(c: &mut Criterion) {
     // Benchmark building multiple root hierarchies
     group.bench_function("build_multiple_root_hierarchies", |b| {
         b.iter(|| {
-            black_box(graph_engine.build_class_hierarchy_graph(
+            std::hint::black_box(graph_engine.build_class_hierarchy_graph(
                 None, // All roots
                 5,    // Lower max depth for this benchmark
                 None,
@@ -63,7 +63,7 @@ fn bench_graph_operations(c: &mut Criterion) {
     
     group.bench_function("build_hierarchy_with_exclusions", |b| {
         b.iter(|| {
-            black_box(graph_engine.build_class_hierarchy_graph(
+            std::hint::black_box(graph_engine.build_class_hierarchy_graph(
                 Some("Object"),
                 10,
                 Some(&exclude_patterns),
@@ -83,26 +83,26 @@ fn bench_mission_queries(c: &mut Criterion) {
     // Get all missions
     group.bench_function("get_all_missions", |b| {
         b.iter(|| {
-            black_box(mission_repo.get_all().expect("Failed to get all missions"));
+            std::hint::black_box(mission_repo.get_all().expect("Failed to get all missions"));
         });
     });
     
     // Test getting mission components and dependencies
     group.bench_function("get_mission_components", |b| {
         b.iter(|| {
-            black_box(mission_repo.get_components("mission_1").expect("Failed to get components"));
+            std::hint::black_box(mission_repo.get_components("mission_1").expect("Failed to get components"));
         });
     });
     
     group.bench_function("get_mission_dependencies", |b| {
         b.iter(|| {
-            black_box(mission_repo.get_dependencies("mission_1").expect("Failed to get dependencies"));
+            std::hint::black_box(mission_repo.get_dependencies("mission_1").expect("Failed to get dependencies"));
         });
     });
     
     group.bench_function("get_all_dependencies", |b| {
         b.iter(|| {
-            black_box(mission_repo.get_all_dependencies().expect("Failed to get all dependencies"));
+            std::hint::black_box(mission_repo.get_all_dependencies().expect("Failed to get all dependencies"));
         });
     });
     
