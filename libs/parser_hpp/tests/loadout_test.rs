@@ -1,11 +1,12 @@
-use parser_hpp::{HppParser, HppValue};
+use parser_hpp::{HppParser, PropertyValue, ParserMode};
 use std::fs;
 
 #[test]
 fn test_loadout_parsing() {
     let content = fs::read_to_string("tests/fixtures/loadout.hpp").unwrap();
-    let parser = HppParser::new(&content).unwrap();
-    let classes = parser.parse_classes();
+    let parser = HppParser::from_content(&content).unwrap();
+    let temp_file = parser.project_root().join("temp.hpp");
+    let classes = parser.parse_file(&temp_file, ParserMode::Advanced).unwrap();
 
     // Test base class
     let base_man = classes.iter().find(|c| c.name == "baseMan").unwrap();
@@ -20,7 +21,7 @@ fn test_loadout_parsing() {
     for (i, prop) in rifleman.properties.iter().enumerate() {
         if prop.name == "uniform" {
             println!("Found uniform property at index {}", i);
-            if let HppValue::Array(values) = &prop.value {
+            if let PropertyValue::Array(values) = &prop.value {
                 println!("Uniform values: {:?}", values);
             }
         }
@@ -28,7 +29,7 @@ fn test_loadout_parsing() {
 
     // Test array properties
     let uniform_prop = rifleman.properties.iter().find(|p| p.name == "uniform").unwrap();
-    if let HppValue::Array(uniforms) = &uniform_prop.value {
+    if let PropertyValue::Array(uniforms) = &uniform_prop.value {
         // The quoted string is returned from the parser since LIST macros are preserved as strings
         assert!(uniforms.iter().any(|u| u.contains("usp_g3c_kp_mx_aor2")), 
                 "Could not find usp_g3c_kp_mx_aor2 in: {:?}", uniforms);

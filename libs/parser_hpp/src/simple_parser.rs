@@ -1,31 +1,8 @@
-use gamedata_scanner_models::{FileParser, GameClass};
+use crate::GameClass;
 use log::{debug, trace};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
-
-/// SimpleFileParser implements the FileParser trait for the simple parser
-pub struct SimpleFileParser {
-    scanner: SimpleClassScanner,
-}
-
-impl SimpleFileParser {
-    pub fn new() -> Self {
-        Self {
-            scanner: SimpleClassScanner::new(),
-        }
-    }
-}
-
-impl FileParser for SimpleFileParser {
-    fn parse_file(&self, file_path: &Path) -> Vec<GameClass> {
-        self.scanner.scan_file(file_path)
-    }
-
-    fn name(&self) -> &str {
-        "SimpleFileParser"
-    }
-}
 
 /// A simple parser that scans for "class NAME" and "class NAME : PARENT" patterns
 pub struct SimpleClassScanner {
@@ -91,8 +68,8 @@ impl SimpleClassScanner {
     }
 }
 
-/// Parse a single file and return all classes found in it
-pub fn parse_file(file_path: &Path) -> Vec<GameClass> {
+/// Parse a single file and return all classes found in it using the simple parser
+pub fn parse_file_simple(file_path: &Path) -> Vec<GameClass> {
     debug!("Parsing file with simple parser: {}", file_path.display());
     let scanner = SimpleClassScanner::new();
     scanner.scan_file(file_path)
