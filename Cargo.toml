@@ -39,6 +39,7 @@ members = [
     "libs/pbo_extractor",
     "libs/pbo_tools",
     "libs/quick_extract",
+    "libs/reporter",
     "libs/scanner_gamedata",
     "libs/scanner_gamedata/models",
     "libs/scanner_gamedata/parser_advanced",
