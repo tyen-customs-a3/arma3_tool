@@ -132,6 +132,19 @@ impl AdvancedProjectParser {
         self.project_config.as_ref()
     }
 
+    /// Extract dependencies from a parsed file using the DependencyExtractor
+    /// 
+    /// # Arguments
+    /// * `relative_file_path`: Path to the HPP file, relative to the project root.
+    /// 
+    /// # Returns
+    /// Returns a HashSet of dependency strings found in the file
+    pub fn extract_dependencies(&self, relative_file_path: &Path) -> Result<std::collections::HashSet<String>, ParseError> {
+        let (classes, _warnings) = self.parse_file(relative_file_path)?;
+        let extractor = crate::query::DependencyExtractor::new(classes);
+        Ok(extractor.extract_dependencies())
+    }
+
     // Optional:
     // pub fn parse_all_project_files(&self) -> Result<Vec<GameClass>, ParseError> {
     //     // 1. Discover HPP files in the workspace (e.g., walk "addons/")
@@ -587,5 +600,39 @@ enabled = true
         let classes = result.unwrap();
         assert_eq!(classes.len(), 1);
         assert_eq!(classes[0].name, "TestClass");
+    }
+
+    #[test]
+    fn test_extract_dependencies() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create a dummy addon structure
+        let addons_dir = project_root.join("addons");
+        fs::create_dir_all(&addons_dir).unwrap();
+        let main_addon_dir = addons_dir.join("main");
+        fs::create_dir_all(&main_addon_dir).unwrap();
+
+        let config_content = r#"
+            class baseMan {
+                uniform[] = {"test_uniform_1", "test_uniform_2"};
+                vest[] = {"test_vest"};
+                backpack = "test_backpack";
+            };
+            class rifleman : baseMan {
+                magazines[] = {"test_magazine"};
+            };
+        "#;
+        fs::write(main_addon_dir.join("loadout.hpp"), config_content).unwrap();
+
+        let parser = AdvancedProjectParser::new(project_root, None).unwrap();
+        let dependencies = parser.extract_dependencies(Path::new("addons/main/loadout.hpp")).unwrap();
+
+        // Verify that dependency extraction works
+        assert!(dependencies.contains("test_uniform_1"));
+        assert!(dependencies.contains("test_uniform_2"));
+        assert!(dependencies.contains("test_vest"));
+        assert!(dependencies.contains("test_backpack"));
+        assert!(dependencies.contains("test_magazine"));
     }
 }
