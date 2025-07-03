@@ -40,7 +40,7 @@ pub enum Commands {
         output_dir: Option<PathBuf>,
     },
     
-    /// Export items (weapons, uniforms, vests, backpacks, etc.) to CSV
+    /// Export items using inheritance-based categorization to CSV
     Export {
         /// Override cache directory from config (used for default DB path if needed)
         #[arg(long)]
@@ -54,13 +54,14 @@ pub enum Commands {
         #[arg(short, long, default_value = "items_export.csv")]
         output: PathBuf,
         
-        /// Item types to export (comma-separated): weapons, uniforms, vests, backpacks, vehicles, all
-        #[arg(short, long, default_value = "all")]
-        item_types: String,
-        
-        /// Custom parent class filters (comma-separated, overrides item_types if provided)
+        /// Item types to export from config (comma-separated): weapons, uniforms, vests, backpacks
+        /// If not specified, exports all types defined in configuration
         #[arg(long)]
-        filter_parents: Option<String>,
+        types: Option<String>,
+        
+        /// Path to custom item filter configuration file
+        #[arg(long, default_value = "item_filter_config.json")]
+        item_config: PathBuf,
         
         /// Maximum number of items to export (0 for unlimited)
         #[arg(short, long, default_value = "0")]

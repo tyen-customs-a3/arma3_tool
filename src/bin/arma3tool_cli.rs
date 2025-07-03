@@ -86,8 +86,8 @@ async fn main() -> Result<()> {
             cache_dir,
             analysis_db_path,
             output,
-            item_types,
-            filter_parents,
+            types,
+            item_config,
             limit,
         } => {
             // Apply CLI overrides
@@ -101,13 +101,14 @@ async fn main() -> Result<()> {
             // Determine final analysis database file path
             let final_analysis_db_path = config.get_analysis_db_path();
             println!("Using Analysis DB: {}", final_analysis_db_path.display());
+            println!("Using Config: {}", item_config.display());
             println!("Exporting items to: {}", output.display());
 
             arma3_tool::cli::run_export(
                 final_analysis_db_path,
                 output,
-                Some(item_types),
-                filter_parents.map(PathBuf::from),
+                types,
+                Some(item_config),
                 limit,
             ).await?;
         }
