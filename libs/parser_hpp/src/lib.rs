@@ -281,29 +281,7 @@ pub fn parse_file(file_path: &Path) -> Result<Vec<GameClass>, ParseError> {
     Ok(classes)
 }
 
-// Re-export legacy types for backward compatibility
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct HppClass {
-    pub name: String,
-    pub parent: Option<String>,
-    pub properties: Vec<HppProperty>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct HppProperty {
-    pub name: String,
-    pub value: HppValue,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum HppValue {
-    String(String),
-    Array(Vec<String>),
-    Number(i64),
-    Class(HppClass),
-}
+// Legacy types removed - use GameClass, ClassProperty, and PropertyValue from gamedata_scanner_models instead
 
 /// Unified HPP parser that can switch between Simple and Advanced modes
 pub struct HppParser {
@@ -411,7 +389,8 @@ impl HppParser {
 
     /// Parse classes using the legacy API (for backward compatibility)
     /// Defaults to Simple parsing mode for performance
-    pub fn parse_classes(&self) -> Vec<HppClass> {
+    /// Returns GameClass objects instead of the deprecated HppClass
+    pub fn parse_classes(&self) -> Vec<GameClass> {
         // This method is for backward compatibility with the old API
         // Since we don't have a specific file, we can't parse anything
         // This would need to be called after parse_file() in the old workflow
@@ -429,25 +408,7 @@ impl HppParser {
     }
 }
 
-fn convert_game_class_to_hpp_class(gc: &GameClass) -> HppClass {
-    HppClass {
-        name: gc.name.clone(),
-        parent: gc.parent.clone(),
-        properties: gc.properties.iter().map(|prop| HppProperty {
-            name: prop.name.clone(),
-            value: convert_property_value_to_hpp_value(&prop.value),
-        }).collect(),
-    }
-}
-
-fn convert_property_value_to_hpp_value(pv: &PropertyValue) -> HppValue {
-    match pv {
-        PropertyValue::String(s) => HppValue::String(s.clone()),
-        PropertyValue::Number(n) => HppValue::Number(*n),
-        PropertyValue::Array(arr) => HppValue::Array(arr.clone()),
-        PropertyValue::Class(class_box) => HppValue::Class(convert_game_class_to_hpp_class(class_box)),
-    }
-}
+// Conversion functions removed - use GameClass and PropertyValue directly
 
 #[cfg(test)]
 mod tests {
