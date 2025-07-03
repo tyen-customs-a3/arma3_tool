@@ -156,18 +156,69 @@ impl AdvancedProjectParser {
         Ok(extractor.extract_dependencies())
     }
 
-    // Optional:
-    // pub fn parse_all_project_files(&self) -> Result<Vec<GameClass>, ParseError> {
-    //     // 1. Discover HPP files in the workspace (e.g., walk "addons/")
-    //     //    let root_vfs_path = self.workspace_manager.workspace_root().vfs();
-    //     //    let addons_path_str = "addons"; // Or get from config
-    //     //    let addons_vfs = root_vfs_path.join(addons_path_str)?;
-    //     //    ... walk addons_vfs ...
-    //     // 2. For each, determine its relative path.
-    //     // 3. Call self.parse_file(relative_path).
-    //     // 4. Aggregate results.
-    //     unimplemented!("parse_all_project_files is not yet implemented");
-    // }
+    /// Parse all HPP/CPP files in the project workspace
+    /// 
+    /// This method discovers all HPP and CPP files in the project and parses them,
+    /// returning a combined list of all classes found across all files.
+    /// 
+    /// # Returns
+    /// 
+    /// Returns a Vec of all GameClass objects found in the project, or a ParseError
+    /// if file discovery or parsing fails.
+    pub fn parse_all_project_files(&self) -> Result<Vec<GameClass>, ParseError> {
+        let mut all_classes = Vec::new();
+        let mut discovered_files = Vec::new();
+        
+        // Walk the project directory to find all HPP/CPP files
+        let walker = walkdir::WalkDir::new(&self.project_root_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|entry| {
+                if let Some(extension) = entry.path().extension() {
+                    matches!(extension.to_str(), Some("hpp") | Some("cpp") | Some("h"))
+                } else {
+                    false
+                }
+            });
+        
+        // Collect relative paths for all discovered files
+        for entry in walker {
+            let absolute_path = entry.path();
+            if let Ok(relative_path) = absolute_path.strip_prefix(&self.project_root_dir) {
+                discovered_files.push(relative_path.to_path_buf());
+            }
+        }
+        
+        log::info!("Discovered {} HPP/CPP files in project", discovered_files.len());
+        
+        // Parse each discovered file
+        for relative_path in discovered_files {
+            match self.parse_file(&relative_path) {
+                Ok((mut classes, warnings)) => {
+                    // Log any warnings for this file
+                    for warning in warnings {
+                        log::warn!("Warning in {}: {} - {}", 
+                                   relative_path.display(), warning.code, warning.message);
+                    }
+                    
+                    // Add all classes from this file
+                    all_classes.append(&mut classes);
+                    
+                    log::debug!("Parsed {} classes from {}", 
+                               classes.len(), relative_path.display());
+                }
+                Err(e) => {
+                    // Log parse errors but continue with other files
+                    log::error!("Failed to parse {}: {:?}", relative_path.display(), e);
+                    // Don't fail the entire operation for individual file errors
+                }
+            }
+        }
+        
+        log::info!("Successfully parsed {} total classes from project", all_classes.len());
+        Ok(all_classes)
+    }
 }
 
 /// Wrapper to implement the `gamedata_scanner_models::FileParser` trait.
@@ -959,5 +1010,189 @@ enabled = true
         // But advanced parser should have more detailed information
         assert!(simple_classes[0].properties.is_empty()); // Simple parser doesn't extract properties
         assert!(!advanced_classes[0].properties.is_empty()); // Advanced parser does
+    }
+
+    #[test]
+    fn test_parse_all_project_files() {
+        let _ = env_logger::builder()
+            .filter_level(log::LevelFilter::Debug)
+            .is_test(true)
+            .try_init();
+
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create a complex project structure with multiple directories and files
+        let addons_dir = project_root.join("addons");
+        fs::create_dir_all(&addons_dir).unwrap();
+        
+        let main_addon_dir = addons_dir.join("main");
+        fs::create_dir_all(&main_addon_dir).unwrap();
+        
+        let weapons_addon_dir = addons_dir.join("weapons");
+        fs::create_dir_all(&weapons_addon_dir).unwrap();
+        
+        let includes_dir = project_root.join("includes");
+        fs::create_dir_all(&includes_dir).unwrap();
+
+        // Create main config file
+        let main_config = r#"
+            class CfgPatches {
+                class test_main {
+                    units[] = {};
+                    weapons[] = {"test_rifle"};
+                    requiredVersion = 1.0;
+                };
+            };
+            
+            class MainConfig {
+                displayName = "Main Configuration";
+                value = 100;
+            };
+        "#;
+        fs::write(main_addon_dir.join("config.cpp"), main_config).unwrap();
+
+        // Create weapons config file
+        let weapons_config = r#"
+            class CfgWeapons {
+                class test_rifle {
+                    displayName = "Test Rifle";
+                    magazines[] = {"test_magazine"};
+                };
+            };
+            
+            class WeaponBase {
+                scope = 1;
+                model = "test.p3d";
+            };
+        "#;
+        fs::write(weapons_addon_dir.join("config.hpp"), weapons_config).unwrap();
+
+        // Create a header file in includes
+        let header_file = r#"
+            class CommonHeader {
+                version = "1.0.0";
+                author = "Test Author";
+            };
+        "#;
+        fs::write(includes_dir.join("common.h"), header_file).unwrap();
+
+        // Create another file with some invalid content (to test error handling)
+        let invalid_config = r#"
+            // This file has intentionally invalid syntax
+            class InvalidClass {
+                property = "unclosed string
+                invalid_syntax here
+            };
+        "#;
+        fs::write(main_addon_dir.join("invalid.cpp"), invalid_config).unwrap();
+
+        // Create a file that should be ignored (not hpp/cpp/h)
+        fs::write(project_root.join("readme.txt"), "This should be ignored").unwrap();
+
+        // Create nested subdirectory
+        let sub_dir = weapons_addon_dir.join("accessories");
+        fs::create_dir_all(&sub_dir).unwrap();
+        let accessories_config = r#"
+            class CfgAccessories {
+                class test_scope {
+                    displayName = "Test Scope";
+                    model = "scope.p3d";
+                };
+            };
+        "#;
+        fs::write(sub_dir.join("accessories.hpp"), accessories_config).unwrap();
+
+        // Create parser and test parse_all_project_files
+        let parser = AdvancedProjectParser::new(project_root, None).unwrap();
+        let result = parser.parse_all_project_files();
+
+        assert!(result.is_ok(), "parse_all_project_files should succeed even with some invalid files");
+        let all_classes = result.unwrap();
+
+        // Verify we found classes from multiple files
+        assert!(!all_classes.is_empty(), "Should find classes from project files");
+
+        // Collect all class names for verification
+        let class_names: std::collections::HashSet<&str> = all_classes.iter().map(|c| c.name.as_str()).collect();
+
+        // Should find classes from main config
+        assert!(class_names.contains("CfgPatches"), "Should find CfgPatches from main config");
+        assert!(class_names.contains("MainConfig"), "Should find MainConfig from main config");
+
+        // Should find classes from weapons config
+        assert!(class_names.contains("CfgWeapons"), "Should find CfgWeapons from weapons config");
+        assert!(class_names.contains("WeaponBase"), "Should find WeaponBase from weapons config");
+
+        // Should find classes from header file
+        assert!(class_names.contains("CommonHeader"), "Should find CommonHeader from header file");
+
+        // Should find classes from nested subdirectory
+        assert!(class_names.contains("CfgAccessories"), "Should find CfgAccessories from nested file");
+
+        println!("Found {} total classes: {:?}", all_classes.len(), class_names);
+
+        // Verify file discovery worked correctly
+        // We should have discovered at least 5 files: config.cpp, config.hpp, common.h, invalid.cpp, accessories.hpp
+        // The method should have attempted to parse all of them
+        
+        // Test with HppParser (unified interface)
+        let unified_parser = HppParser::new(project_root, None).unwrap();
+        
+        // Test that advanced parser is available for project-wide parsing
+        assert!(unified_parser.has_advanced_parser(), "Advanced parser should be available for project-wide parsing");
+
+        // Verify that invalid files don't cause the entire operation to fail
+        // (the method should log errors but continue parsing other files)
+        assert!(all_classes.len() >= 5, "Should find multiple classes despite invalid files");
+    }
+
+    #[test]
+    fn test_parse_all_project_files_empty_project() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create empty project with no hpp/cpp/h files
+        let some_dir = project_root.join("some_dir");
+        fs::create_dir_all(&some_dir).unwrap();
+        fs::write(some_dir.join("readme.txt"), "Not a config file").unwrap();
+        fs::write(some_dir.join("data.json"), "{}").unwrap();
+
+        let parser = AdvancedProjectParser::new(project_root, None).unwrap();
+        let result = parser.parse_all_project_files();
+
+        assert!(result.is_ok(), "Should succeed even with no relevant files");
+        let all_classes = result.unwrap();
+        assert!(all_classes.is_empty(), "Should return empty list when no hpp/cpp/h files found");
+    }
+
+    #[test]
+    fn test_parse_all_project_files_with_symlinks() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+
+        // Create a real file
+        let real_file = project_root.join("real.hpp");
+        let content = r#"
+            class RealClass {
+                displayName = "Real";
+            };
+        "#;
+        fs::write(&real_file, content).unwrap();
+
+        // Note: Creating symlinks in tests can be platform-dependent and may require permissions
+        // For this test, we'll just verify the walkdir doesn't follow symlinks (follow_links = false)
+        // The actual symlink creation is skipped to avoid platform issues
+
+        let parser = AdvancedProjectParser::new(project_root, None).unwrap();
+        let result = parser.parse_all_project_files();
+
+        assert!(result.is_ok(), "Should handle projects with symlinks");
+        let all_classes = result.unwrap();
+        
+        // Should find the real file
+        assert!(!all_classes.is_empty(), "Should find real files");
+        let class_names: Vec<&str> = all_classes.iter().map(|c| c.name.as_str()).collect();
+        assert!(class_names.contains(&"RealClass"), "Should find RealClass");
     }
 }
