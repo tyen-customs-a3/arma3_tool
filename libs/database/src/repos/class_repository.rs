@@ -299,6 +299,63 @@ impl<'a> ClassRepository<'a> {
             Ok(class_map.into_values().collect())
         })
     }
+
+    /// Check if a class inherits from any of the specified base classes
+    /// Optimized version for checking multiple base classes at once
+    pub fn inherits_from_any(&self, class_id: &str, base_classes: &[String], max_depth: Option<i32>) -> Result<bool> {
+        if base_classes.is_empty() {
+            return Ok(false);
+        }
+
+        // Quick check if the class itself is one of the base classes (case-insensitive)
+        if base_classes.iter().any(|base| base.to_lowercase() == class_id.to_lowercase()) {
+            return Ok(true);
+        }
+
+        let max_depth = max_depth.unwrap_or(50);
+        
+        self.db.with_connection(|conn| {
+            // Build placeholders for the base classes
+            let placeholders = (2..=base_classes.len() + 1)
+                .map(|i| format!("UPPER(?{})", i))
+                .collect::<Vec<_>>()
+                .join(",");
+                
+            let query = format!(
+                "WITH RECURSIVE inheritance_chain(id, parent_id, depth) AS (
+                    -- Base case: start with the given class
+                    SELECT id, parent_id, 0 as depth
+                    FROM classes
+                    WHERE UPPER(id) = UPPER(?1)
+                    
+                    UNION ALL
+                    
+                    -- Recursive case: follow parent relationships
+                    SELECT c.id, c.parent_id, ic.depth + 1
+                    FROM classes c
+                    JOIN inheritance_chain ic ON UPPER(ic.parent_id) = UPPER(c.id)
+                    WHERE ic.depth < ?{} AND ic.parent_id IS NOT NULL
+                )
+                SELECT EXISTS(
+                    SELECT 1 FROM inheritance_chain 
+                    WHERE UPPER(id) IN ({})
+                ) as inherits",
+                base_classes.len() + 2, // Position for max_depth parameter
+                placeholders
+            );
+            
+            let mut stmt = conn.prepare(&query)?;
+            
+            // Build parameters: class_id, base_classes..., max_depth
+            let mut params: Vec<&dyn rusqlite::ToSql> = vec![&class_id as &dyn rusqlite::ToSql];
+            params.extend(base_classes.iter().map(|base| base as &dyn rusqlite::ToSql));
+            params.push(&max_depth);
+            
+            let inherits: bool = stmt.query_row(params.as_slice(), |row| row.get(0))?;
+            
+            Ok(inherits)
+        })
+    }
 }
 
 // Function that converts Option<usize> to Option<i64> properly
