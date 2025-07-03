@@ -496,8 +496,8 @@ impl<'a> ClassRepository<'a> {
             return Ok(false);
         }
 
-        // Quick check if the class itself is one of the base classes
-        if base_classes.iter().any(|base| base == class_id) {
+        // Quick check if the class itself is one of the base classes (case-insensitive)
+        if base_classes.iter().any(|base| base.to_lowercase() == class_id.to_lowercase()) {
             return Ok(true);
         }
 
@@ -506,7 +506,7 @@ impl<'a> ClassRepository<'a> {
         self.db.with_connection(|conn| {
             // Build placeholders for the base classes
             let placeholders = (2..=base_classes.len() + 1)
-                .map(|i| format!("?{}", i))
+                .map(|i| format!("UPPER(?{})", i))
                 .collect::<Vec<_>>()
                 .join(",");
                 
@@ -515,19 +515,19 @@ impl<'a> ClassRepository<'a> {
                     -- Base case: start with the given class
                     SELECT id, parent_id, 0 as depth
                     FROM classes
-                    WHERE id = ?1
+                    WHERE UPPER(id) = UPPER(?1)
                     
                     UNION ALL
                     
                     -- Recursive case: follow parent relationships
                     SELECT c.id, c.parent_id, ic.depth + 1
                     FROM classes c
-                    JOIN inheritance_chain ic ON ic.parent_id = c.id
+                    JOIN inheritance_chain ic ON UPPER(ic.parent_id) = UPPER(c.id)
                     WHERE ic.depth < ?{} AND ic.parent_id IS NOT NULL
                 )
                 SELECT EXISTS(
                     SELECT 1 FROM inheritance_chain 
-                    WHERE id IN ({})
+                    WHERE UPPER(id) IN ({})
                 ) as inherits",
                 base_classes.len() + 2, // Position for max_depth parameter
                 placeholders
@@ -736,5 +736,141 @@ mod tests {
         assert!(!repo.inherits_from("A", "C", None).unwrap()); // Reverse direction
         
         println!("All basic tests passed!");
+    }
+
+    #[test]
+    fn test_inherits_from_any() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_inherits_from_any.db");
+        
+        // Create database
+        let db = DatabaseManager::new(&db_path).unwrap();
+        let repo = ClassRepository::new(&db);
+        
+        // Create inheritance hierarchy: 
+        // Vehicle -> Car -> SportsCar
+        //         -> Truck -> PickupTruck
+        let vehicle = ClassModel::new(
+            "Vehicle".to_string(), 
+            None::<String>,
+            None::<String>,
+            Some(1),
+            false
+        );
+        
+        let car = ClassModel::new(
+            "Car".to_string(), 
+            Some("Vehicle".to_string()),
+            None::<String>,
+            Some(2),
+            false
+        );
+        
+        let sports_car = ClassModel::new(
+            "SportsCar".to_string(), 
+            Some("Car".to_string()),
+            None::<String>,
+            Some(3),
+            false
+        );
+        
+        let truck = ClassModel::new(
+            "Truck".to_string(), 
+            Some("Vehicle".to_string()),
+            None::<String>,
+            Some(4),
+            false
+        );
+        
+        let pickup_truck = ClassModel::new(
+            "PickupTruck".to_string(), 
+            Some("Truck".to_string()),
+            None::<String>,
+            Some(5),
+            false
+        );
+        
+        // Insert all classes
+        repo.create(&vehicle).unwrap();
+        repo.create(&car).unwrap();
+        repo.create(&sports_car).unwrap();
+        repo.create(&truck).unwrap();
+        repo.create(&pickup_truck).unwrap();
+        
+        // Test inherits_from_any with various scenarios
+        
+        // Test 1: SportsCar should inherit from any of [Vehicle, Car]
+        let base_classes = vec!["Vehicle".to_string(), "Car".to_string()];
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, None).unwrap());
+        
+        // Test 2: PickupTruck should inherit from Vehicle but not Car
+        let base_classes = vec!["Vehicle".to_string()];
+        assert!(repo.inherits_from_any("PickupTruck", &base_classes, None).unwrap());
+        
+        let base_classes = vec!["Car".to_string()];
+        assert!(!repo.inherits_from_any("PickupTruck", &base_classes, None).unwrap());
+        
+        // Test 3: Multiple base classes - should match any
+        let base_classes = vec!["Car".to_string(), "Truck".to_string()];
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, None).unwrap()); // Matches Car
+        assert!(repo.inherits_from_any("PickupTruck", &base_classes, None).unwrap()); // Matches Truck
+        
+        // Test 4: Self-inheritance
+        let base_classes = vec!["SportsCar".to_string()];
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, None).unwrap());
+        
+        // Test 5: Empty base classes list
+        let base_classes = vec![];
+        assert!(!repo.inherits_from_any("SportsCar", &base_classes, None).unwrap());
+        
+        // Test 6: Non-existent class
+        let base_classes = vec!["NonExistent".to_string()];
+        assert!(!repo.inherits_from_any("SportsCar", &base_classes, None).unwrap());
+        
+        // Test 7: Case sensitivity - should be case-insensitive according to task
+        let base_classes = vec!["vehicle".to_string(), "CAR".to_string()]; // Mixed case
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, None).unwrap());
+        assert!(repo.inherits_from_any("sportscar", &base_classes, None).unwrap());
+        
+        // Test 8: Max depth limiting
+        let base_classes = vec!["Vehicle".to_string()];
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, Some(10)).unwrap());
+        assert!(repo.inherits_from_any("SportsCar", &base_classes, Some(2)).unwrap());
+        assert!(!repo.inherits_from_any("SportsCar", &base_classes, Some(1)).unwrap()); // Too shallow
+        
+        println!("All inherits_from_any tests passed!");
+    }
+
+    #[test]
+    fn test_inherits_from_any_edge_cases() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test_inherits_from_any_edge.db");
+        
+        // Create database
+        let db = DatabaseManager::new(&db_path).unwrap();
+        let repo = ClassRepository::new(&db);
+        
+        // Test with empty database
+        let base_classes = vec!["NonExistent".to_string()];
+        assert!(!repo.inherits_from_any("AlsoNonExistent", &base_classes, None).unwrap());
+        
+        // Create a single class with no parent
+        let standalone = ClassModel::new(
+            "Standalone".to_string(), 
+            None::<String>,
+            None::<String>,
+            Some(1),
+            false
+        );
+        repo.create(&standalone).unwrap();
+        
+        // Test standalone class
+        let base_classes = vec!["Standalone".to_string()];
+        assert!(repo.inherits_from_any("Standalone", &base_classes, None).unwrap()); // Self
+        
+        let base_classes = vec!["Other".to_string()];
+        assert!(!repo.inherits_from_any("Standalone", &base_classes, None).unwrap());
+        
+        println!("All edge case tests passed!");
     }
 } 
