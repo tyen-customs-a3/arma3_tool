@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Pre-commit hook to prevent Claude references in staged files
+
+echo "Checking for Claude references in staged files..."
+
+# Check for Claude references in staged files (exclude hooks directory)
+if git diff --cached --name-only | grep -v "^hooks/" | xargs grep -l -i "claude\|anthropic" 2>/dev/null; then
+    echo "❌ ERROR: Found Claude/Anthropic references in staged files:"
+    git diff --cached --name-only | grep -v "^hooks/" | xargs grep -n -i "claude\|anthropic" 2>/dev/null || true
+    echo ""
+    echo "Please remove all references to Claude, Anthropic, or AI assistance before committing."
+    echo "This includes:"
+    echo "  - Code comments mentioning Claude"
+    echo "  - Generated with Claude messages"
+    echo "  - Co-Authored-By: Claude lines"
+    echo "  - Any other AI-related references"
+    exit 1
+fi
+
+echo "✅ No Claude references found in staged files."
+exit 0

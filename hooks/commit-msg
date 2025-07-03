@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# Commit-msg hook to prevent Claude references in commit messages
+
+commit_msg_file="$1"
+
+echo "Checking commit message for Claude references..."
+
+if grep -q -i "claude\|anthropic\|ai.*assist\|generated.*with.*claude\|co-authored-by.*claude" "$commit_msg_file"; then
+    echo "❌ ERROR: Found AI references in commit message:"
+    grep -n -i "claude\|anthropic\|ai.*assist\|generated.*with.*claude\|co-authored-by.*claude" "$commit_msg_file" || true
+    echo ""
+    echo "Please remove all references to Claude, Anthropic, or AI assistance from the commit message."
+    exit 1
+fi
+
+echo "✅ No Claude references found in commit message."
+exit 0
