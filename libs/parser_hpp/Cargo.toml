@@ -24,6 +24,9 @@ gamedata_scanner_models = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 
+# Additional dependencies from parser_simple
+regex = { workspace = true }
+
 serde = { workspace = true }
 tempfile = { workspace = true }
 

@@ -10,12 +10,23 @@ mod file_processor;
 mod ast_transformer;
 pub mod models; // Ensure models module is public if types are used in public API
 mod query;
+mod simple_parser;
 
 pub use error::ParseError;
 pub use file_processor::{ParseResult, ParseWarning}; // Export new parsing result types
 pub use models::{GameClass, ClassProperty, PropertyValue, FileParser}; // Re-export all needed types
 pub use query::DependencyExtractor;
+pub use simple_parser::{SimpleClassScanner, parse_file_simple};
 use workspace_manager::WorkspaceManager;
+
+/// Parsing mode selection for different performance/accuracy tradeoffs
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserMode {
+    /// Fast regex-based parsing - quick but less accurate
+    Simple,
+    /// Full HEMTT integration - slower but handles includes/macros
+    Advanced,
+}
 
 /// The main parser for an Arma 3 project.
 /// It should be instantiated once per project directory.
@@ -634,5 +645,99 @@ enabled = true
         assert!(dependencies.contains("test_vest"));
         assert!(dependencies.contains("test_backpack"));
         assert!(dependencies.contains("test_magazine"));
+    }
+
+    #[test]
+    fn test_parser_mode_enum() {
+        // Test that ParserMode enum works as expected
+        assert_eq!(ParserMode::Simple, ParserMode::Simple);
+        assert_eq!(ParserMode::Advanced, ParserMode::Advanced);
+        assert_ne!(ParserMode::Simple, ParserMode::Advanced);
+        
+        // Test Debug formatting
+        assert_eq!(format!("{:?}", ParserMode::Simple), "Simple");
+        assert_eq!(format!("{:?}", ParserMode::Advanced), "Advanced");
+    }
+
+    #[test]
+    fn test_simple_parser_integration() {
+        let temp_dir = tempdir().unwrap();
+        let test_file = temp_dir.path().join("simple_test.hpp");
+        
+        let config_content = r#"
+            class BaseClass {
+                displayName = "Base";
+            };
+            class DerivedClass : BaseClass {
+                displayName = "Derived";
+            };
+            // Forward declaration
+            class ForwardClass;
+        "#;
+        
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Test the simple parser directly
+        let classes = parse_file_simple(&test_file);
+        
+        assert_eq!(classes.len(), 3);
+        
+        // Verify class names
+        let names: Vec<&str> = classes.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"BaseClass"));
+        assert!(names.contains(&"DerivedClass"));
+        assert!(names.contains(&"ForwardClass"));
+        
+        // Verify inheritance
+        let derived = classes.iter().find(|c| c.name == "DerivedClass").unwrap();
+        assert_eq!(derived.parent.as_deref(), Some("BaseClass"));
+        
+        // Verify forward declaration
+        let forward = classes.iter().find(|c| c.name == "ForwardClass").unwrap();
+        assert!(forward.is_forward_declaration);
+    }
+
+    #[test]
+    fn test_advanced_vs_simple_parser_compatibility() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a dummy addon structure
+        let addons_dir = project_root.join("addons");
+        fs::create_dir_all(&addons_dir).unwrap();
+        let main_addon_dir = addons_dir.join("main");
+        fs::create_dir_all(&main_addon_dir).unwrap();
+        
+        let config_content = r#"
+            class BaseClass {
+                displayName = "Base";
+            };
+            class DerivedClass : BaseClass {
+                displayName = "Derived";
+            };
+        "#;
+        
+        let test_file = main_addon_dir.join("test.hpp");
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Test advanced parser
+        let advanced_parser = AdvancedProjectParser::new(project_root, None).unwrap();
+        let (advanced_classes, _) = advanced_parser.parse_file(Path::new("addons/main/test.hpp")).unwrap();
+        
+        // Test simple parser
+        let simple_classes = parse_file_simple(&test_file);
+        
+        // Both should find the same number of classes
+        assert_eq!(advanced_classes.len(), simple_classes.len());
+        
+        // Both should find the same class names
+        let advanced_names: std::collections::HashSet<_> = advanced_classes.iter().map(|c| &c.name).collect();
+        let simple_names: std::collections::HashSet<_> = simple_classes.iter().map(|c| &c.name).collect();
+        assert_eq!(advanced_names, simple_names);
+        
+        // Verify inheritance is detected by both
+        let advanced_derived = advanced_classes.iter().find(|c| c.name == "DerivedClass").unwrap();
+        let simple_derived = simple_classes.iter().find(|c| c.name == "DerivedClass").unwrap();
+        assert_eq!(advanced_derived.parent, simple_derived.parent);
     }
 }
