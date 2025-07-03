@@ -106,8 +106,8 @@ async fn main() -> Result<()> {
             arma3_tool::cli::run_export(
                 final_analysis_db_path,
                 output,
-                item_types,
-                filter_parents,
+                Some(item_types),
+                filter_parents.map(PathBuf::from),
                 limit,
             ).await?;
         }
