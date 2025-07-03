@@ -101,8 +101,8 @@ fn handle_failing_file(
 /// - A vector of parser warnings (PE12 and other warnings that don't cause failures)
 ///
 /// Phase 6 cleanup: Clear distinction between warnings (PE12, etc.) and hard errors.
-/// Only true errors from parser_advanced propagate as FileFailure, not PE12 warnings.
-pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) -> (bool, Option<FileFailure>, Vec<::parser_advanced::ParseWarning>) {
+/// Only true errors from parser_hpp propagate as FileFailure, not PE12 warnings.
+pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) -> (bool, Option<FileFailure>, Vec<::parser_hpp::ParseWarning>) {
     let file_path_str = file_path.to_string_lossy().to_string();
     debug!("Processing file: {}", file_path_str);
     
@@ -252,7 +252,7 @@ pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) ->
 /// Process a file using the gamedata scanner
 /// Returns either (classes, warnings) on success or error string on hard failure
 /// Phase 6 cleanup: PE12 warnings are included in success case, not error case
-fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gamedata_scanner_models::GameClass>, Vec<::parser_advanced::ParseWarning>), String> {
+fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gamedata_scanner_models::GameClass>, Vec<::parser_hpp::ParseWarning>), String> {
     if use_advanced {
         // Find the project root by looking for hemtt.toml, starting from the file's directory
         let project_root = find_project_root(file_path)
@@ -272,7 +272,7 @@ fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gam
         };
         
         // Create the AdvancedProjectParser with consistent project root
-        let project_parser = ::parser_advanced::AdvancedProjectParser::new(
+        let project_parser = ::parser_hpp::AdvancedProjectParser::new(
             &project_root,
             config_path.as_deref()
         ).map_err(|e| format!("Failed to create AdvancedProjectParser: {:?}", e))?;
@@ -299,8 +299,9 @@ fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gam
             }
         }
     } else {
-        // Call ::parser_simple::parse_file(file_path) and return empty warnings
-        let simple_classes = ::parser_simple::parse_file(file_path);
+        // Call ::parser_hpp::parse_file(file_path) and return empty warnings
+        let simple_classes = ::parser_hpp::parse_file(file_path)
+            .map_err(|e| format!("{:?}", e))?;
         Ok((simple_classes, Vec::new()))
     }
 }
