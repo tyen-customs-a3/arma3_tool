@@ -1,18 +1,21 @@
 use anyhow::{anyhow, Result};
 use arma3_database::{DatabaseManager, ClassRepository};
-use log::{info, warn};
+use crate::config::ItemFilterConfig;
+use log::{info, warn, debug};
+use rayon::prelude::*;
 use serde_json;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
-/// Export items from the analysis database to CSV format
+/// Export items from the analysis database to CSV format using inheritance-based categorization
 pub async fn run_export(
     db_path: PathBuf,
     output: PathBuf,
-    item_types: String,
-    filter_parents: Option<String>,
+    item_types: Option<String>,
+    config_path: Option<PathBuf>,
     limit: usize,
 ) -> Result<()> {
     // Check if database exists
@@ -27,165 +30,160 @@ pub async fn run_export(
     // Create class repository
     let class_repo = ClassRepository::new(&db);
 
-    // Create source path cache
-    let source_paths = SourcePathCache::new(&db);
+    // Load configuration file
+    let config_file = config_path.unwrap_or_else(|| PathBuf::from("item_filter_config.json"));
+    info!("Loading configuration from: {}", config_file.display());
+    
+    let config = ItemFilterConfig::from_json_file(&config_file)
+        .map_err(|e| anyhow!("Failed to load configuration: {}", e))?;
 
-    // Determine parent filters based on item types or custom filters
-    let parent_filters = if let Some(custom_filters) = filter_parents {
-        custom_filters.split(',').map(|s| s.trim().to_string()).collect()
+    // Determine which item types to process
+    let types_to_process = if let Some(types_str) = item_types {
+        types_str.split(',').map(|s| s.trim().to_string()).collect::<Vec<_>>()
     } else {
-        get_parent_filters_for_item_types(&item_types)
+        config.get_item_types().into_iter().map(|s| s.clone()).collect()
     };
 
-    info!("Using parent filters: {:?}", parent_filters);
+    info!("Processing item types: {:?}", types_to_process);
 
-    // Create output file
-    let mut file = File::create(&output)
-        .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
-    
-    info!("Exporting to: {}", output.display());
+    // Validate that all requested types exist in config
+    for item_type in &types_to_process {
+        if config.get_base_classes(item_type).is_none() {
+            warn!("Item type '{}' not found in configuration, skipping", item_type);
+        }
+    }
 
-    // Write CSV header
-    writeln!(file, "id,label,type,parent_id,container_class,source_path,properties")
-        .map_err(|e| anyhow!("Failed to write CSV header: {}", e))?;
-
-    // Get all classes
+    // Get all classes from database
+    info!("Fetching all classes from database...");
     let classes = class_repo.get_all()
         .map_err(|e| anyhow!("Failed to get classes from database: {}", e))?;
     
     info!("Found {} classes in database", classes.len());
 
-    // Apply filters and process classes
-    let mut exported_count = 0;
-    let mut filtered_count = 0;
+    // Create source path cache
+    let source_paths = SourcePathCache::new(&db);
+
+    // Process classes in parallel using inheritance-based categorization
+    info!("Processing classes with inheritance-based categorization...");
     
-    for class in classes {
+    let results = Mutex::new(Vec::new());
+    
+    classes.par_iter().for_each(|class| {
         // Skip forward declarations
         if class.is_forward_declaration {
-            continue;
+            return;
         }
 
-        // Apply parent filter if specified and not empty
-        if !parent_filters.is_empty() {
-            let mut matches_filter = false;
-            
-            if let Some(parent) = &class.parent_id {
-                matches_filter = parent_filters.iter().any(|filter| parent.starts_with(filter));
-            }
-            
-            // Also check the class name itself against filters
-            if !matches_filter {
-                matches_filter = parent_filters.iter().any(|filter| class.id.starts_with(filter));
-            }
-            
-            if !matches_filter {
-                filtered_count += 1;
-                continue;
+        // Apply exclusion check: skip if scope <= max_scope (typically 1)
+        if let Some(scope_prop) = class.properties.get("scope") {
+            if let arma3_models::types::PropertyValue::Number(scope) = scope_prop {
+                if *scope as i32 <= config.get_max_scope() {
+                    debug!("Excluding class {} with scope {}", class.id, scope);
+                    return;
+                }
             }
         }
 
-        // Get source path if available
-        let source_path = if let Some(idx) = class.source_file_index {
-            source_paths.get_path(idx)
-        } else {
-            String::new()
-        };
-
-        // Create a label (use displayName if available, otherwise use class ID)
-        let display_name = class.properties.get("displayName")
-            .map(|v| match v {
-                arma3_models::types::PropertyValue::String(s) => s.clone(),
-                _ => class.id.clone(),
-            })
-            .unwrap_or_else(|| class.id.clone());
-
-        // Convert properties to JSON
-        let properties_json = serde_json::to_string(&class.properties)
-            .map_err(|e| anyhow!("Failed to serialize properties: {}", e))?;
-
-        // Write CSV line
-        writeln!(
-            file,
-            "{},{},{},{},{},{},{}",
-            escape_csv(&class.id),
-            escape_csv(&display_name),
-            "class",
-            escape_csv(&class.parent_id.unwrap_or_default()),
-            escape_csv(&class.container_class.unwrap_or_default()),
-            escape_csv(&source_path),
-            escape_csv(&properties_json)
-        ).map_err(|e| anyhow!("Failed to write CSV line: {}", e))?;
-
-        exported_count += 1;
-
-        // Check limit
-        if limit > 0 && exported_count >= limit {
-            info!("Reached export limit of {} classes", limit);
-            break;
+        // Check exclusion by prefix
+        if config.is_excluded_by_prefix(&class.id) {
+            debug!("Excluding class {} by prefix", class.id);
+            return;
         }
+
+        // Try to categorize this class using inheritance checking
+        let mut class_categories = Vec::new();
+        
+        for item_type in &types_to_process {
+            if let Some(base_classes) = config.get_base_classes(item_type) {
+                // Convert to Vec<String> for the inherits_from_any call
+                let base_classes_vec = base_classes.clone();
+                
+                match class_repo.inherits_from_any(&class.id, &base_classes_vec, None) {
+                    Ok(true) => {
+                        class_categories.push(item_type.clone());
+                        debug!("Class {} matches item type {}", class.id, item_type);
+                    }
+                    Ok(false) => {
+                        // Class doesn't inherit from any base classes for this type
+                    }
+                    Err(e) => {
+                        warn!("Error checking inheritance for class {}: {}", class.id, e);
+                    }
+                }
+            }
+        }
+
+        // If class matches any categories, add it to results
+        if !class_categories.is_empty() {
+            // Get source path if available
+            let source_path = if let Some(idx) = class.source_file_index {
+                source_paths.get_path(idx)
+            } else {
+                String::new()
+            };
+
+            // Create a label (use displayName if available, otherwise use class ID)
+            let display_name = class.properties.get("displayName")
+                .map(|v| match v {
+                    arma3_models::types::PropertyValue::String(s) => s.clone(),
+                    _ => class.id.clone(),
+                })
+                .unwrap_or_else(|| class.id.clone());
+
+            // Convert properties to JSON
+            let properties_json = serde_json::to_string(&class.properties)
+                .unwrap_or_else(|_| "{}".to_string());
+
+            // Create CSV record
+            let csv_line = format!(
+                "{},{},{},{},{},{},{}",
+                escape_csv(&class.id),
+                escape_csv(&display_name),
+                escape_csv(&class_categories.join(";")), // Multiple categories separated by semicolon
+                escape_csv(&class.parent_id.clone().unwrap_or_default()),
+                escape_csv(&class.container_class.clone().unwrap_or_default()),
+                escape_csv(&source_path),
+                escape_csv(&properties_json)
+            );
+
+            results.lock().unwrap().push(csv_line);
+        }
+    });
+
+    // Write results to CSV file
+    info!("Writing results to CSV file: {}", output.display());
+    let mut file = File::create(&output)
+        .map_err(|e| anyhow!("Failed to create output file: {}", e))?;
+
+    // Write CSV header
+    writeln!(file, "id,label,type,parent_id,container_class,source_path,properties")
+        .map_err(|e| anyhow!("Failed to write CSV header: {}", e))?;
+
+    // Write results (applying limit if specified)
+    let mut results = results.into_inner().unwrap();
+    results.sort(); // Sort for consistent output
+
+    let exported_count = if limit > 0 && limit < results.len() {
+        results.truncate(limit);
+        info!("Applied limit of {} classes", limit);
+        limit
+    } else {
+        results.len()
+    };
+
+    for line in results {
+        writeln!(file, "{}", line)
+            .map_err(|e| anyhow!("Failed to write CSV line: {}", e))?;
     }
 
     info!(
-        "Export completed successfully. Exported {} classes (filtered out {} classes) to {}",
-        exported_count, filtered_count, output.display()
+        "Export completed successfully. Exported {} classes using inheritance-based categorization to {}",
+        exported_count, output.display()
     );
 
     Ok(())
 }
 
-/// Get parent class filters for specified item types
-fn get_parent_filters_for_item_types(item_types: &str) -> Vec<String> {
-    let types: Vec<String> = item_types.split(',').map(|s| s.trim().to_lowercase()).collect();
-    let mut filters = Vec::new();
-
-    for item_type in types {
-        match item_type.as_str() {
-            "weapons" => {
-                filters.extend_from_slice(&[
-                    "arifle_", "hgun_", "lmg_", "mmg_", "srifle_", "smg_",
-                    "Rifle_Base_F", "Pistol_Base_F", "Launcher_Base_F",
-                    "RifleCore", "LauncherCore", "PistolCore",
-                ]);
-            },
-            "uniforms" => {
-                filters.extend_from_slice(&[
-                    "Uniform_Base", "UniformItem", "U_",
-                ]);
-            },
-            "vests" => {
-                filters.extend_from_slice(&[
-                    "Vest_", "V_", "VestItem", "Vest_Camo_Base",
-                ]);
-            },
-            "backpacks" => {
-                filters.extend_from_slice(&[
-                    "Bag_Base", "B_", "Backpack_Base",
-                ]);
-            },
-            "vehicles" => {
-                filters.extend_from_slice(&[
-                    "Car_F", "Tank_F", "Helicopter_Base_F", "Plane_Base_F",
-                    "Ship_F", "StaticWeapon", "AllVehicles",
-                ]);
-            },
-            "items" => {
-                filters.extend_from_slice(&[
-                    "ItemCore", "ItemInfo", "AccessoryPointer_Base_F",
-                    "AccessoryMuzzle_Base_F", "optic_", "muzzle_", "acc_",
-                ]);
-            },
-            "all" => {
-                // Return empty filters to include everything
-                return Vec::new();
-            },
-            _ => {
-                warn!("Unknown item type: {}", item_type);
-            }
-        }
-    }
-
-    filters.into_iter().map(|s| s.to_string()).collect()
-}
 
 /// Map of file indices to source paths
 struct SourcePathCache {

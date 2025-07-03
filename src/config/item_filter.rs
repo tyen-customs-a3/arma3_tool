@@ -4,51 +4,27 @@ use std::fs;
 use std::path::Path;
 
 /// Configuration for item filtering and categorization
+/// Matches the JSON structure specified in the PRD
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemFilterConfig {
     pub version: String,
-    pub description: String,
     pub item_types: HashMap<String, ItemTypeConfig>,
     pub exclusion_rules: ExclusionRules,
-    pub validation_rules: ValidationRules,
 }
 
 /// Configuration for a specific item type (weapons, backpacks, etc.)
+/// Simplified structure matching PRD specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemTypeConfig {
-    pub description: String,
     pub base_classes: Vec<String>,
-    pub required_properties: HashMap<String, serde_json::Value>,
-    #[serde(default)]
-    pub optional_properties: HashMap<String, serde_json::Value>,
-    #[serde(default)]
-    pub required_nested_properties: HashMap<String, String>,
 }
 
 /// Rules for excluding classes from exports
+/// Simplified structure matching PRD specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExclusionRules {
-    pub description: String,
-    pub excluded_base_classes: Vec<String>,
-    pub excluded_prefixes: Vec<String>,
     pub max_scope: i32,
-}
-
-/// Validation rules for the filtering system
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationRules {
-    pub description: String,
-    pub global_requirements: HashMap<String, PropertyRequirement>,
-    pub inheritance_depth_limit: i32,
-    pub cache_inheritance_results: bool,
-}
-
-/// Requirement for a specific property
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PropertyRequirement {
-    pub operator: String,
-    pub value: serde_json::Value,
-    pub description: String,
+    pub excluded_prefixes: Vec<String>,
 }
 
 impl ItemFilterConfig {
@@ -72,11 +48,6 @@ impl ItemFilterConfig {
         self.item_types.get(item_type).map(|config| &config.base_classes)
     }
 
-    /// Check if a base class should be excluded
-    pub fn is_excluded_base_class(&self, class_name: &str) -> bool {
-        self.exclusion_rules.excluded_base_classes.contains(&class_name.to_string())
-    }
-
     /// Check if a class name matches excluded prefixes
     pub fn is_excluded_by_prefix(&self, class_name: &str) -> bool {
         self.exclusion_rules.excluded_prefixes.iter()
@@ -91,6 +62,11 @@ impl ItemFilterConfig {
     /// Get configuration for a specific item type
     pub fn get_item_type_config(&self, item_type: &str) -> Option<&ItemTypeConfig> {
         self.item_types.get(item_type)
+    }
+
+    /// Get the maximum scope value for exclusion
+    pub fn get_max_scope(&self) -> i32 {
+        self.exclusion_rules.max_scope
     }
 
     /// Validate the configuration
@@ -112,9 +88,9 @@ impl ItemFilterConfig {
             }
         }
 
-        // Validate inheritance depth limit is reasonable
-        if self.validation_rules.inheritance_depth_limit <= 0 || self.validation_rules.inheritance_depth_limit > 1000 {
-            return Err("Inheritance depth limit must be between 1 and 1000".into());
+        // Validate max_scope is reasonable
+        if self.exclusion_rules.max_scope < 0 || self.exclusion_rules.max_scope > 10 {
+            return Err("max_scope must be between 0 and 10".into());
         }
 
         Ok(())
@@ -123,30 +99,45 @@ impl ItemFilterConfig {
 
 impl Default for ItemFilterConfig {
     fn default() -> Self {
+        let mut item_types = HashMap::new();
+        
+        // Add default item types as specified in PRD
+        item_types.insert("weapons".to_string(), ItemTypeConfig {
+            base_classes: vec![
+                "Rifle_Base_F".to_string(),
+                "Pistol_Base_F".to_string(),
+                "Launcher_Base_F".to_string(),
+            ],
+        });
+        
+        item_types.insert("uniforms".to_string(), ItemTypeConfig {
+            base_classes: vec![
+                "Uniform_Base".to_string(),
+                "U_BasicBody".to_string(),
+            ],
+        });
+        
+        item_types.insert("vests".to_string(), ItemTypeConfig {
+            base_classes: vec![
+                "Vest_Base".to_string(),
+                "Vest_Camo_Base".to_string(),
+            ],
+        });
+        
+        item_types.insert("backpacks".to_string(), ItemTypeConfig {
+            base_classes: vec![
+                "Bag_Base".to_string(),
+            ],
+        });
+
         Self {
             version: "1.0".to_string(),
-            description: "Default item filtering configuration".to_string(),
-            item_types: HashMap::new(),
+            item_types,
             exclusion_rules: ExclusionRules {
-                description: "Default exclusion rules".to_string(),
-                excluded_base_classes: vec![
-                    "RscConfActionButton".to_string(),
-                    "RscActiveText".to_string(),
-                    "RscButton".to_string(),
-                    "B_Side".to_string(),
-                    "BaseWest".to_string(),
-                ],
-                excluded_prefixes: vec![
-                    "B_hub".to_string(),
-                    "B_m0".to_string(),
-                ],
                 max_scope: 1,
-            },
-            validation_rules: ValidationRules {
-                description: "Default validation rules".to_string(),
-                global_requirements: HashMap::new(),
-                inheritance_depth_limit: 50,
-                cache_inheritance_results: true,
+                excluded_prefixes: vec![
+                    "B_soldier_f".to_string(),
+                ],
             },
         }
     }
@@ -161,27 +152,17 @@ mod tests {
         let json_config = r#"
         {
             "version": "1.0",
-            "description": "Test configuration",
             "item_types": {
                 "weapons": {
-                    "description": "All weapon types",
-                    "base_classes": ["Weapon_Base_F", "Rifle_Base_F"],
-                    "required_properties": {
-                        "scope": 2
-                    }
+                    "base_classes": ["Rifle_Base_F", "Pistol_Base_F"]
+                },
+                "uniforms": {
+                    "base_classes": ["Uniform_Base", "U_BasicBody"]
                 }
             },
             "exclusion_rules": {
-                "description": "Test exclusion rules",
-                "excluded_base_classes": ["RscActiveText"],
-                "excluded_prefixes": ["B_hub"],
-                "max_scope": 1
-            },
-            "validation_rules": {
-                "description": "Test validation rules",
-                "global_requirements": {},
-                "inheritance_depth_limit": 50,
-                "cache_inheritance_results": true
+                "max_scope": 1,
+                "excluded_prefixes": ["B_soldier_f"]
             }
         }
         "#;
@@ -189,17 +170,38 @@ mod tests {
         let config = ItemFilterConfig::from_json_str(json_config).unwrap();
         
         assert_eq!(config.version, "1.0");
-        assert_eq!(config.item_types.len(), 1);
+        assert_eq!(config.item_types.len(), 2);
         
         let weapons_config = config.get_item_type_config("weapons").unwrap();
         assert_eq!(weapons_config.base_classes.len(), 2);
-        assert!(weapons_config.base_classes.contains(&"Weapon_Base_F".to_string()));
+        assert!(weapons_config.base_classes.contains(&"Rifle_Base_F".to_string()));
         
-        assert!(config.is_excluded_base_class("RscActiveText"));
-        assert!(!config.is_excluded_base_class("Weapon_Base_F"));
+        assert_eq!(config.get_max_scope(), 1);
         
-        assert!(config.is_excluded_by_prefix("B_hub_test"));
+        assert!(config.is_excluded_by_prefix("B_soldier_f_test"));
         assert!(!config.is_excluded_by_prefix("arifle_MX_F"));
+    }
+
+    #[test]
+    fn test_config_loading_from_file() {
+        // Test loading our actual config file
+        let config = ItemFilterConfig::from_json_file("item_filter_config.json");
+        
+        // Should load successfully
+        assert!(config.is_ok());
+        
+        let config = config.unwrap();
+        assert_eq!(config.version, "1.0");
+        assert!(config.item_types.contains_key("weapons"));
+        assert!(config.item_types.contains_key("uniforms"));
+        assert!(config.item_types.contains_key("vests"));
+        assert!(config.item_types.contains_key("backpacks"));
+        
+        // Check weapons base classes
+        let weapons = config.get_base_classes("weapons").unwrap();
+        assert!(weapons.contains(&"Rifle_Base_F".to_string()));
+        assert!(weapons.contains(&"Pistol_Base_F".to_string()));
+        assert!(weapons.contains(&"Launcher_Base_F".to_string()));
     }
 
     #[test]
@@ -216,7 +218,10 @@ mod tests {
         let invalid_config2 = ItemFilterConfig {
             version: "1.0".to_string(),
             item_types: HashMap::new(),
-            ..Default::default()
+            exclusion_rules: ExclusionRules {
+                max_scope: 1,
+                excluded_prefixes: vec![],
+            },
         };
         
         assert!(ItemFilterConfig::from_json_str(&serde_json::to_string(&invalid_config2).unwrap()).is_err());
@@ -227,7 +232,41 @@ mod tests {
         let config = ItemFilterConfig::default();
         
         assert_eq!(config.version, "1.0");
-        assert!(config.exclusion_rules.excluded_base_classes.contains(&"RscActiveText".to_string()));
-        assert_eq!(config.validation_rules.inheritance_depth_limit, 50);
+        assert_eq!(config.item_types.len(), 4);
+        assert!(config.item_types.contains_key("weapons"));
+        assert!(config.item_types.contains_key("uniforms"));
+        assert!(config.item_types.contains_key("vests"));
+        assert!(config.item_types.contains_key("backpacks"));
+        
+        assert_eq!(config.exclusion_rules.max_scope, 1);
+        assert!(config.exclusion_rules.excluded_prefixes.contains(&"B_soldier_f".to_string()));
+    }
+
+    #[test]
+    fn test_exclusion_methods() {
+        let config = ItemFilterConfig::default();
+        
+        // Test prefix exclusion
+        assert!(config.is_excluded_by_prefix("B_soldier_f_test"));
+        assert!(!config.is_excluded_by_prefix("arifle_MX_F"));
+        
+        // Test max scope
+        assert_eq!(config.get_max_scope(), 1);
+    }
+
+    #[test]
+    fn test_item_type_access() {
+        let config = ItemFilterConfig::default();
+        
+        // Test getting item types
+        let item_types = config.get_item_types();
+        assert_eq!(item_types.len(), 4);
+        
+        // Test getting base classes
+        let weapon_bases = config.get_base_classes("weapons").unwrap();
+        assert!(weapon_bases.contains(&"Rifle_Base_F".to_string()));
+        
+        // Test non-existent item type
+        assert!(config.get_base_classes("non_existent").is_none());
     }
 } 

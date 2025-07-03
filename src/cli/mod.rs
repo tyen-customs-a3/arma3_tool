@@ -4,6 +4,7 @@ mod process;
 mod report;
 mod fuzzy_report;
 mod export;
+mod export_optimized;
 
 pub use commands::Commands;
 pub use extract::run_extract;
@@ -11,6 +12,7 @@ pub use process::run_process;
 pub use report::run_report;
 pub use fuzzy_report::run_fuzzy_report;
 pub use export::run_export;
+pub use export_optimized::run_export_optimized;
 
 use clap::Parser;
 use std::path::{Path, PathBuf};
