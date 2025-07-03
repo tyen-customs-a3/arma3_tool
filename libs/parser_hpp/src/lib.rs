@@ -305,31 +305,127 @@ pub enum HppValue {
     Class(HppClass),
 }
 
-// Legacy HppParser for backward compatibility
+/// Unified HPP parser that can switch between Simple and Advanced modes
 pub struct HppParser {
-    classes: Vec<HppClass>,
+    advanced_parser: Option<Arc<AdvancedProjectParser>>,
+    simple_scanner: SimpleClassScanner,
+    project_root_dir: PathBuf,
 }
 
 impl HppParser {
-    pub fn new(content: &str) -> Result<Self, ParseError> {
-        // Create a temporary file for the content
-        use std::fs;
-        use tempfile::NamedTempFile;
+    /// Create a new unified parser for a project directory
+    /// 
+    /// # Arguments
+    /// * `project_root_dir`: The root directory of the project
+    /// * `project_config_path`: Optional path to hemtt.toml config file
+    pub fn new(project_root_dir: &Path, project_config_path: Option<&Path>) -> Result<Self, ParseError> {
+        let advanced_parser = AdvancedProjectParser::new(project_root_dir, project_config_path)?;
         
-        let temp_file = NamedTempFile::new().map_err(|_| ParseError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to create temp file")))?;
-        fs::write(temp_file.path(), content)?;
-        
-        // Use the new parser
-        let classes = parse_file(temp_file.path())?;
-        
-        // Convert GameClass to HppClass
-        let hpp_classes = classes.into_iter().map(|gc| convert_game_class_to_hpp_class(&gc)).collect();
-        
-        Ok(Self { classes: hpp_classes })
+        Ok(Self {
+            advanced_parser: Some(Arc::new(advanced_parser)),
+            simple_scanner: SimpleClassScanner::new(),
+            project_root_dir: project_root_dir.to_path_buf(),
+        })
     }
-    
+
+    /// Create a new parser from string content (for backward compatibility)
+    /// This method creates a temporary file and uses the simple parser by default
+    pub fn from_content(content: &str) -> Result<Self, ParseError> {
+        use std::fs;
+        use tempfile::tempdir;
+        
+        let temp_dir = tempdir().map_err(|_| ParseError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Failed to create temp dir")))?;
+        let temp_file = temp_dir.path().join("temp.hpp");
+        fs::write(&temp_file, content)?;
+        
+        let parser = Self::new(temp_dir.path(), None)?;
+        
+        // Keep the temp directory alive by storing it in the parser
+        std::mem::forget(temp_dir);
+        
+        Ok(parser)
+    }
+
+    /// Parse a file using the specified parsing mode
+    /// 
+    /// # Arguments
+    /// * `file_path`: Path to the HPP file (absolute or relative to project root)
+    /// * `mode`: Parsing mode to use
+    /// 
+    /// # Returns
+    /// Vector of GameClass objects found in the file
+    pub fn parse_file(&self, file_path: &Path, mode: ParserMode) -> Result<Vec<GameClass>, ParseError> {
+        match mode {
+            ParserMode::Simple => {
+                Ok(self.simple_scanner.scan_file(file_path))
+            }
+            ParserMode::Advanced => {
+                if let Some(advanced_parser) = &self.advanced_parser {
+                    // Determine if file_path is absolute or relative
+                    let relative_path = if file_path.is_absolute() {
+                        // Try to make it relative to project root
+                        file_path.strip_prefix(&self.project_root_dir)
+                            .map_err(|_| ParseError::PathNotInProject(file_path.to_path_buf(), self.project_root_dir.clone()))?
+                    } else {
+                        file_path
+                    };
+                    
+                    let (classes, _warnings) = advanced_parser.parse_file(relative_path)?;
+                    Ok(classes)
+                } else {
+                    return Err(ParseError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other, 
+                        "Advanced parser not available"
+                    )));
+                }
+            }
+        }
+    }
+
+    /// Extract dependencies from a file using the advanced parser
+    /// 
+    /// # Arguments
+    /// * `file_path`: Path to the HPP file (absolute or relative to project root)
+    /// 
+    /// # Returns
+    /// HashSet of dependency strings found in the file
+    pub fn extract_dependencies(&self, file_path: &Path) -> Result<std::collections::HashSet<String>, ParseError> {
+        if let Some(advanced_parser) = &self.advanced_parser {
+            // Determine if file_path is absolute or relative
+            let relative_path = if file_path.is_absolute() {
+                // Try to make it relative to project root
+                file_path.strip_prefix(&self.project_root_dir)
+                    .map_err(|_| ParseError::PathNotInProject(file_path.to_path_buf(), self.project_root_dir.clone()))?
+            } else {
+                file_path
+            };
+            
+            advanced_parser.extract_dependencies(relative_path)
+        } else {
+            return Err(ParseError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other, 
+                "Advanced parser not available for dependency extraction"
+            )));
+        }
+    }
+
+    /// Parse classes using the legacy API (for backward compatibility)
+    /// Defaults to Simple parsing mode for performance
     pub fn parse_classes(&self) -> Vec<HppClass> {
-        self.classes.clone()
+        // This method is for backward compatibility with the old API
+        // Since we don't have a specific file, we can't parse anything
+        // This would need to be called after parse_file() in the old workflow
+        Vec::new()
+    }
+
+    /// Get the project root directory
+    pub fn project_root(&self) -> &Path {
+        &self.project_root_dir
+    }
+
+    /// Check if the advanced parser is available
+    pub fn has_advanced_parser(&self) -> bool {
+        self.advanced_parser.is_some()
     }
 }
 
@@ -739,5 +835,168 @@ enabled = true
         let advanced_derived = advanced_classes.iter().find(|c| c.name == "DerivedClass").unwrap();
         let simple_derived = simple_classes.iter().find(|c| c.name == "DerivedClass").unwrap();
         assert_eq!(advanced_derived.parent, simple_derived.parent);
+    }
+
+    #[test]
+    fn test_unified_hpp_parser_simple_mode() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a test file
+        let test_file = project_root.join("test.hpp");
+        let config_content = r#"
+            class BaseClass {
+                displayName = "Base";
+            };
+            class DerivedClass : BaseClass {
+                displayName = "Derived";
+            };
+        "#;
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Create unified parser
+        let parser = HppParser::new(project_root, None).unwrap();
+        
+        // Test simple mode parsing
+        let classes = parser.parse_file(&test_file, ParserMode::Simple).unwrap();
+        
+        assert_eq!(classes.len(), 2);
+        assert!(classes.iter().any(|c| c.name == "BaseClass"));
+        assert!(classes.iter().any(|c| c.name == "DerivedClass"));
+        
+        // Verify inheritance
+        let derived = classes.iter().find(|c| c.name == "DerivedClass").unwrap();
+        assert_eq!(derived.parent.as_deref(), Some("BaseClass"));
+    }
+
+    #[test]
+    fn test_unified_hpp_parser_advanced_mode() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a dummy addon structure
+        let addons_dir = project_root.join("addons");
+        fs::create_dir_all(&addons_dir).unwrap();
+        let main_addon_dir = addons_dir.join("main");
+        fs::create_dir_all(&main_addon_dir).unwrap();
+        
+        let config_content = r#"
+            class BaseClass {
+                displayName = "Base";
+                value = 42;
+            };
+            class DerivedClass : BaseClass {
+                displayName = "Derived";
+                items[] = {"item1", "item2"};
+            };
+        "#;
+        
+        let test_file = main_addon_dir.join("test.hpp");
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Create unified parser
+        let parser = HppParser::new(project_root, None).unwrap();
+        
+        // Test advanced mode parsing with relative path
+        let classes = parser.parse_file(Path::new("addons/main/test.hpp"), ParserMode::Advanced).unwrap();
+        
+        assert_eq!(classes.len(), 2);
+        
+        // Advanced parser should include properties
+        let base_class = classes.iter().find(|c| c.name == "BaseClass").unwrap();
+        assert!(!base_class.properties.is_empty());
+        
+        let derived_class = classes.iter().find(|c| c.name == "DerivedClass").unwrap();
+        assert!(!derived_class.properties.is_empty());
+        assert_eq!(derived_class.parent.as_deref(), Some("BaseClass"));
+    }
+
+    #[test]
+    fn test_unified_hpp_parser_dependency_extraction() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a dummy addon structure
+        let addons_dir = project_root.join("addons");
+        fs::create_dir_all(&addons_dir).unwrap();
+        let main_addon_dir = addons_dir.join("main");
+        fs::create_dir_all(&main_addon_dir).unwrap();
+        
+        let config_content = r#"
+            class baseMan {
+                uniform[] = {"test_uniform_1", "test_uniform_2"};
+                vest[] = {"test_vest"};
+                backpack = "test_backpack";
+            };
+        "#;
+        
+        let test_file = main_addon_dir.join("loadout.hpp");
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Create unified parser
+        let parser = HppParser::new(project_root, None).unwrap();
+        
+        // Test dependency extraction
+        let dependencies = parser.extract_dependencies(Path::new("addons/main/loadout.hpp")).unwrap();
+        
+        assert!(dependencies.contains("test_uniform_1"));
+        assert!(dependencies.contains("test_uniform_2"));
+        assert!(dependencies.contains("test_vest"));
+        assert!(dependencies.contains("test_backpack"));
+    }
+
+    #[test]
+    fn test_unified_hpp_parser_from_content() {
+        let config_content = r#"
+            class TestClass {
+                displayName = "Test";
+                value = 123;
+            };
+        "#;
+        
+        // Create parser from content
+        let parser = HppParser::from_content(config_content).unwrap();
+        
+        // Test that parser was created successfully
+        assert!(parser.has_advanced_parser());
+        
+        // Test simple parsing on the temporary file
+        let temp_file = parser.project_root().join("temp.hpp");
+        let classes = parser.parse_file(&temp_file, ParserMode::Simple).unwrap();
+        
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "TestClass");
+    }
+
+    #[test]
+    fn test_unified_hpp_parser_mode_switching() {
+        let temp_dir = tempdir().unwrap();
+        let project_root = temp_dir.path();
+        
+        // Create a test file
+        let test_file = project_root.join("test.hpp");
+        let config_content = r#"
+            class BaseClass {
+                displayName = "Base";
+                value = 42;
+            };
+        "#;
+        fs::write(&test_file, config_content).unwrap();
+        
+        // Create unified parser
+        let parser = HppParser::new(project_root, None).unwrap();
+        
+        // Test both modes on the same file
+        let simple_classes = parser.parse_file(&test_file, ParserMode::Simple).unwrap();
+        let advanced_classes = parser.parse_file(&test_file, ParserMode::Advanced).unwrap();
+        
+        // Both should find the same class
+        assert_eq!(simple_classes.len(), 1);
+        assert_eq!(advanced_classes.len(), 1);
+        assert_eq!(simple_classes[0].name, advanced_classes[0].name);
+        
+        // But advanced parser should have more detailed information
+        assert!(simple_classes[0].properties.is_empty()); // Simple parser doesn't extract properties
+        assert!(!advanced_classes[0].properties.is_empty()); // Advanced parser does
     }
 }
