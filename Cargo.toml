@@ -53,6 +53,14 @@ members = [
 name = "arma3tool_cli"
 path = "src/bin/arma3tool_cli.rs"
 
+[[bin]]
+name = "export_performance"
+path = "benches/export_performance.rs"
+
+[[bin]]
+name = "export_comparison"
+path = "benches/export_comparison.rs"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
