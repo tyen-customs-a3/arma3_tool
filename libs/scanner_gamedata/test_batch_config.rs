@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Test the advanced parser directly
     let file_parent = temp_file.parent().unwrap();
-    let parser = parser_advanced::AdvancedProjectParser::new(
+    let parser = parser_hpp::AdvancedProjectParser::new(
         file_parent,
         Some(&hemtt_toml_path)
     )?;

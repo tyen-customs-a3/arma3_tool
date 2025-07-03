@@ -8,8 +8,7 @@ name = "test_batch_config"
 path = "test_batch_config.rs"
 
 [dependencies]
-parser_advanced = { workspace = true }
-parser_simple = { workspace = true }
+parser_hpp = { workspace = true }
 gamedata_scanner_models = { workspace = true }
 hemtt-common = { workspace = true }
 rayon = { workspace = true }

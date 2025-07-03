@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use crate::{HppClass, HppValue};
+use crate::{GameClass, PropertyValue};
 
 /// Represents a query pattern to search for and extract data from HPP classes
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ impl QueryPattern {
 
 /// Extracts class dependencies from an HPP file using predefined patterns
 pub struct DependencyExtractor {
-    classes: Vec<HppClass>,
+    classes: Vec<GameClass>,
     patterns: Vec<QueryPattern>,
     /// Cache of property names to look for
     property_names: HashSet<String>,
@@ -42,7 +42,7 @@ pub struct DependencyExtractor {
 
 impl DependencyExtractor {
     /// Create a new dependency extractor with default patterns for loadout files
-    pub fn new(classes: Vec<HppClass>) -> Self {
+    pub fn new(classes: Vec<GameClass>) -> Self {
         let patterns = vec![
             // Base equipment
             QueryPattern::new("*", &[
@@ -101,9 +101,9 @@ impl DependencyExtractor {
     /// Process a class and its properties recursively
     fn process_class(
         &self,
-        class: &HppClass,
+        class: &GameClass,
         current_path: &[String],
-        property_index: &HashMap<&String, &HppValue>,
+        property_index: &HashMap<&String, &PropertyValue>,
         dependencies: &mut HashSet<String>
     ) {
         // Build the current class path
@@ -117,13 +117,13 @@ impl DependencyExtractor {
                 for prop_name in &pattern.properties {
                     if let Some(value) = property_index.get(prop_name) {
                         match value {
-                            HppValue::String(s) => {
+                            PropertyValue::String(s) => {
                                 dependencies.insert(s.to_string());
                             }
-                            HppValue::Array(arr) => {
+                            PropertyValue::Array(arr) => {
                                 dependencies.extend(arr.iter().cloned());
                             }
-                            HppValue::Class(nested_class) => {
+                            PropertyValue::Class(nested_class) => {
                                 // For nested classes, process them with the current path
                                 let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
                                     .filter(|p| self.property_names.contains(&p.name))
@@ -140,7 +140,7 @@ impl DependencyExtractor {
         
         // Process nested classes in properties
         for prop in &class.properties {
-            if let HppValue::Class(nested_class) = &prop.value {
+            if let PropertyValue::Class(nested_class) = &prop.value {
                 let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
                     .filter(|p| self.property_names.contains(&p.name))
                     .map(|p| (&p.name, &p.value))
@@ -154,23 +154,27 @@ impl DependencyExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::HppProperty;
+    use crate::ClassProperty;
+    use std::path::PathBuf;
 
     #[test]
     fn test_simple_extraction() {
-        let class = HppClass {
+        let class = GameClass {
             name: "baseMan".to_string(),
             parent: None,
             properties: vec![
-                HppProperty {
+                ClassProperty {
                     name: "uniform".to_string(),
-                    value: HppValue::Array(vec!["test_uniform".to_string()]),
+                    value: PropertyValue::Array(vec!["test_uniform".to_string()]),
                 },
-                HppProperty {
+                ClassProperty {
                     name: "vest".to_string(),
-                    value: HppValue::Array(vec!["test_vest".to_string()]),
+                    value: PropertyValue::Array(vec!["test_vest".to_string()]),
                 },
             ],
+            container_class: None,
+            file_path: PathBuf::from("test.hpp"),
+            is_forward_declaration: false,
         };
 
         let extractor = DependencyExtractor::new(vec![class]);
@@ -182,26 +186,32 @@ mod tests {
 
     #[test]
     fn test_nested_extraction() {
-        let nested_class = HppClass {
+        let nested_class = GameClass {
             name: "primaryWeapon".to_string(),
             parent: None,
             properties: vec![
-                HppProperty {
+                ClassProperty {
                     name: "name".to_string(),
-                    value: HppValue::String("test_rifle".to_string()),
+                    value: PropertyValue::String("test_rifle".to_string()),
                 },
             ],
+            container_class: Some("rifleman".to_string()),
+            file_path: PathBuf::from("test.hpp"),
+            is_forward_declaration: false,
         };
 
-        let class = HppClass {
+        let class = GameClass {
             name: "rifleman".to_string(),
             parent: Some("baseMan".to_string()),
             properties: vec![
-                HppProperty {
+                ClassProperty {
                     name: "primaryWeapon".to_string(),
-                    value: HppValue::Class(nested_class),
+                    value: PropertyValue::Class(Box::new(nested_class)),
                 },
             ],
+            container_class: None,
+            file_path: PathBuf::from("test.hpp"),
+            is_forward_declaration: false,
         };
 
         let extractor = DependencyExtractor::new(vec![class]);
