@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
 use tempfile::{Builder, TempDir};
 use uuid::Uuid;
-use crate::error::types::{Result, FileSystemError, PboError};
+use crate::ops::{PboOperationResult, PboOperationError};
 
 #[derive(Debug, Clone)]
 pub struct TempFileManager {
@@ -24,39 +24,33 @@ impl TempFileManager {
         }
     }
 
-    pub fn create_temp_dir(&self) -> Result<PathBuf> {
+    pub fn create_temp_dir(&self) -> PboOperationResult<PathBuf> {
         let unique_name = format!("temp_{}", Uuid::new_v4());
         let path = self.root_dir.path().join(unique_name);
         
         std::fs::create_dir_all(&path).map_err(|e| {
-            PboError::FileSystem(FileSystemError::CreateDir {
-                path: path.clone(),
-                reason: e.to_string(),
-            })
+            PboOperationError::io_error("creating temp directory", e)
         })?;
         
         self.temp_dirs.lock()
-            .map_err(|_| PboError::FileSystem(FileSystemError::PathValidation(
+            .map_err(|_| PboOperationError::unknown(
                 "Failed to lock temp dirs".to_string()
-            )))?
+            ))?
             .insert(path.clone());
             
         Ok(path)
     }
 
-    pub fn cleanup_temp_dir(&self, path: &Path) -> Result<()> {
+    pub fn cleanup_temp_dir(&self, path: &Path) -> PboOperationResult<()> {
         let mut temp_dirs = self.temp_dirs.lock()
-            .map_err(|_| PboError::FileSystem(FileSystemError::PathValidation(
+            .map_err(|_| PboOperationError::unknown(
                 "Failed to lock temp dirs".to_string()
-            )))?;
+            ))?;
             
         if temp_dirs.remove(path) {
             if path.exists() {
                 std::fs::remove_dir_all(path).map_err(|e| {
-                    PboError::FileSystem(FileSystemError::Delete {
-                        path: path.to_path_buf(),
-                        reason: e.to_string(),
-                    })
+                    PboOperationError::io_error("removing temp directory", e)
                 })?;
             }
         }

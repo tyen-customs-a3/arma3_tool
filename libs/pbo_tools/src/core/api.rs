@@ -79,14 +79,15 @@ pub trait PboApiOps {
 ///
 /// Basic usage:
 /// ```no_run
-/// use pbo_tools::core::PboApi;
+/// use pbo_tools::core::{PboApi, PboApiOps};
+/// use std::path::Path;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let api = PboApi::builder()
 ///     .with_timeout(30)
 ///     .build();
 ///
-/// let files = api.list_contents("mission.pbo").await?;
+/// let files = api.list_contents(Path::new("mission.pbo")).await?;
 /// println!("Found {} files", files.len());
 /// # Ok(())
 /// # }

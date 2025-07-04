@@ -259,36 +259,6 @@ impl From<std::io::Error> for PboOperationError {
     }
 }
 
-impl From<crate::error::types::PboError> for PboOperationError {
-    fn from(err: crate::error::types::PboError) -> Self {
-        match err {
-            crate::error::types::PboError::InvalidPath(path) => {
-                Self::file_not_found(path)
-            }
-            crate::error::types::PboError::InvalidFormat(reason) => {
-                Self::invalid_format(reason)
-            }
-            crate::error::types::PboError::ValidationFailed(reason) => {
-                Self::validation_failed(reason)
-            }
-            crate::error::types::PboError::CommandNotFound(cmd) => {
-                Self::unsupported_operation(format!("Command not found: {}", cmd))
-            }
-            crate::error::types::PboError::Extraction(extract_err) => {
-                Self::extraction_failed("unknown", format!("{:?}", extract_err))
-            }
-            crate::error::types::PboError::FileSystem(fs_err) => {
-                Self::unknown(format!("File system error: {:?}", fs_err))
-            }
-            crate::error::types::PboError::Timeout(timeout) => {
-                Self::timeout(format!("Operation timed out after {} seconds", timeout))
-            }
-            crate::error::types::PboError::Encoding { context, path } => {
-                Self::invalid_format(format!("Encoding error: {} for {}", context, path.display()))
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

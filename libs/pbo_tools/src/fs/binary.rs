@@ -1,39 +1,30 @@
 use std::path::Path;
 use log::{debug, info};
-use crate::error::types::{PboError, FileSystemError, Result};
+use crate::ops::{PboOperationResult, PboOperationError};
 use std::fs;
 use crate::core::config::PboConfig;
 
-pub fn convert_binary_file(input: &Path, output: &Path) -> Result<()> {
+pub fn convert_binary_file(input: &Path, output: &Path) -> PboOperationResult<()> {
     debug!("Converting binary file from {:?} to {:?}", input, output);
     
     // Ensure parent directory exists
     if let Some(parent) = output.parent() {
         debug!("Creating parent directory: {:?}", parent);
         fs::create_dir_all(parent).map_err(|e| {
-            PboError::FileSystem(FileSystemError::CreateDir {
-                path: parent.to_path_buf(),
-                reason: e.to_string(),
-            })
+            PboOperationError::io_error("creating parent directory", e)
         })?;
     }
 
     // Check if source file exists
     if !input.exists() {
-        let err = PboError::FileSystem(FileSystemError::ReadFile {
-            path: input.to_path_buf(),
-            reason: "Source file does not exist".to_string(),
-        });
+        let err = PboOperationError::file_not_found(input);
         debug!("Error: {}", err);
         return Err(err);
     }
 
     debug!("Renaming file");
     fs::rename(input, output).map_err(|e| {
-        let err = PboError::FileSystem(FileSystemError::WriteFile {
-            path: output.to_path_buf(),
-            reason: e.to_string(),
-        });
+        let err = PboOperationError::io_error("renaming file", e);
         debug!("Error during rename: {}", err);
         err
     })?;
@@ -42,7 +33,7 @@ pub fn convert_binary_file(input: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn process_binary_files(source_dir: &Path, config: &PboConfig) -> Result<()> {
+pub fn process_binary_files(source_dir: &Path, config: &PboConfig) -> PboOperationResult<()> {
     if !source_dir.is_dir() {
         debug!("Source directory {:?} is not a directory", source_dir);
         return Ok(());
@@ -50,16 +41,10 @@ pub fn process_binary_files(source_dir: &Path, config: &PboConfig) -> Result<()>
 
     debug!("Processing binary files in {:?}", source_dir);
     for entry in fs::read_dir(source_dir).map_err(|e| {
-        PboError::FileSystem(FileSystemError::ReadFile {
-            path: source_dir.to_path_buf(),
-            reason: e.to_string(),
-        })
+        PboOperationError::io_error("reading directory", e)
     })? {
         let entry = entry.map_err(|e| {
-            PboError::FileSystem(FileSystemError::ReadFile {
-                path: source_dir.to_path_buf(),
-                reason: e.to_string(),
-            })
+            PboOperationError::io_error("reading directory entry", e)
         })?;
 
         let path = entry.path();
