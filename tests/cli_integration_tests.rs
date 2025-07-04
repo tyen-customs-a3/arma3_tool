@@ -1,6 +1,6 @@
 //! CLI Integration tests that verify CLI commands work correctly through workflow orchestration
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
 use std::fs;
@@ -16,7 +16,7 @@ fn get_binary_path() -> PathBuf {
 }
 
 /// Create test PBO files for CLI testing
-fn create_test_data(dir: &PathBuf) -> std::io::Result<()> {
+fn create_test_data(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     
     // Create mock PBO files
