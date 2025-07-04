@@ -1,20 +1,14 @@
 [package]
-name = "arma3_reporter"
+name = "arma3_config"
 version = "0.1.0"
 edition = "2021"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [dependencies]
-# Internal dependencies
-arma3_database = { workspace = true }
-
-# External dependencies
-chrono = { workspace = true }
-log = { workspace = true }
-rayon = { workspace = true }
+arma3_extractor = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-strsim = { workspace = true }
+toml = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
