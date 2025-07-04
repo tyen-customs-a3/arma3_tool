@@ -151,8 +151,8 @@ impl ReportWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reporter::models::{MissingClassMatch, PotentialMatch};
-    use crate::reporter::analyzers::MAX_FUZZY_MATCHES; // Import for test
+    use crate::models::{MissingClassMatch, PotentialMatch};
+    use crate::analyzers::MAX_FUZZY_MATCHES; // Import for test
     use tempfile::tempdir;
     use std::collections::{HashMap, HashSet};
 
