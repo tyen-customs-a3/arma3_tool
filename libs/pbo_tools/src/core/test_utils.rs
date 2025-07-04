@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use tempfile::TempDir;
 use super::api::PboApi;
-use crate::error::types::Result;
+use crate::ops::PboOperationResult;
 
 pub struct TestFixture {
     pub temp_dir: TempDir,
@@ -44,7 +44,7 @@ impl TestFixture {
         path
     }
 
-    pub fn cleanup(self) -> Result<()> {
+    pub fn cleanup(self) -> PboOperationResult<()> {
         Ok(()) // TempDir handles cleanup automatically when dropped
     }
 }

@@ -1,8 +1,7 @@
 pub mod cli;
 pub mod core;
-pub mod error;
-pub mod extract;
 pub mod fs;
+pub mod ops;
 #[cfg(test)]
 pub mod test_utils;
 
@@ -12,8 +11,10 @@ pub use core::{
     config::PboConfig,
     constants::{DEFAULT_TIMEOUT, DEFAULT_MAX_RETRIES},
 };
-pub use error::types::{PboError, ExtractError, FileSystemError, Result};
-pub use extract::{ExtractOptions, ExtractResult};
+pub use ops::{
+    PboOperations, PboFileInfo, PboProperties, PboValidation,
+    PboOperationError, PboOperationResult, HemttPboOperations,
+};
 
 /// Version of the library
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

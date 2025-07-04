@@ -1,20 +1,21 @@
 use std::path::Path;
 use std::time::Duration;
-use std::sync::{mpsc, Arc};
-use std::thread;
+use std::sync::Arc;
 use log::{debug, warn};
-use crate::error::types::{Result, PboError, ExtractError};
-use crate::extract::{ExtractResult, ExtractorClone, DefaultExtractor, ExtractOptions};
-use crate::fs::TempFileManager;
+use crate::ops::{
+    PboOperations, HemttPboOperations, PboFileInfo, PboProperties, PboValidation,
+    PboOperationResult, PboOperationError
+};
 use super::config::PboConfig;
 use super::constants::DEFAULT_TIMEOUT;
 
-/// Core trait defining operations available for PBO files.
+/// Core trait defining operations available for PBO files using modern HEMTT backend.
 /// 
 /// This trait provides the main interface for working with PBO files, including:
-/// - Listing contents (with various detail levels)
-/// - Extracting files (with filtering and customization options)
-/// - Advanced operations with custom options
+/// - Listing contents with detailed metadata
+/// - Extracting files (with filtering and pattern matching)
+/// - Accessing PBO properties and validation
+/// - Native Rust operations without external dependencies
 ///
 /// # Examples
 ///
@@ -22,51 +23,74 @@ use super::constants::DEFAULT_TIMEOUT;
 /// use pbo_tools::core::{PboApi, PboApiOps};
 /// use std::path::Path;
 ///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let api = PboApi::new(30); // 30 second timeout
 /// let pbo_path = Path::new("mission.pbo");
 ///
 /// // List contents
-/// let result = api.list_contents(&pbo_path).unwrap();
-/// println!("Files in PBO: {:?}", result.get_file_list());
+/// let files = api.list_contents(&pbo_path).await?;
+/// println!("Found {} files", files.len());
 ///
 /// // Extract specific files
 /// let output_dir = Path::new("output");
-/// api.extract_files(&pbo_path, &output_dir, Some("*.cpp")).unwrap();
+/// api.extract_filtered(&pbo_path, &output_dir, "*.cpp").await?;
+/// # Ok(())
+/// # }
 /// ```
+#[async_trait::async_trait]
 pub trait PboApiOps {
-    /// List contents of a PBO file with standard output format
-    fn list_contents(&self, pbo_path: &Path) -> Result<ExtractResult>;
+    /// List all files in a PBO with detailed metadata
+    async fn list_contents(&self, pbo_path: &Path) -> PboOperationResult<Vec<PboFileInfo>>;
     
-    /// List contents of a PBO file in brief directory-style format
-    fn list_contents_brief(&self, pbo_path: &Path) -> Result<ExtractResult>;
+    /// Extract a specific file from a PBO
+    async fn extract_file(&self, pbo_path: &Path, file_path: &str, output_path: &Path) -> PboOperationResult<()>;
     
-    /// Extract files from a PBO with optional file filtering
-    fn extract_files(&self, pbo_path: &Path, output_dir: &Path, file_filter: Option<&str>) -> Result<ExtractResult>;
+    /// Extract all files from a PBO
+    async fn extract_all(&self, pbo_path: &Path, output_dir: &Path) -> PboOperationResult<()>;
     
-    /// List contents with custom options for fine-grained control
-    fn list_with_options(&self, pbo_path: &Path, options: ExtractOptions) -> Result<ExtractResult>;
+    /// Extract files matching a pattern from a PBO
+    async fn extract_filtered(&self, pbo_path: &Path, output_dir: &Path, filter: &str) -> PboOperationResult<()>;
     
-    /// Extract files with custom options for fine-grained control
-    fn extract_with_options(&self, pbo_path: &Path, output_dir: &Path, options: ExtractOptions) -> Result<ExtractResult>;
+    /// Get PBO properties and metadata
+    async fn get_properties(&self, pbo_path: &Path) -> PboOperationResult<PboProperties>;
+    
+    /// Validate a PBO file for integrity and correctness
+    async fn validate_pbo(&self, pbo_path: &Path) -> PboOperationResult<PboValidation>;
+    
+    /// Read a file from a PBO into memory
+    async fn read_file(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<Vec<u8>>;
+    
+    /// Check if a file exists in a PBO
+    async fn file_exists(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<bool>;
+    
+    /// Get information about a specific file in a PBO
+    async fn get_file_info(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<Option<PboFileInfo>>;
 }
 
-/// Main API for working with PBO files.
+/// Main API for working with PBO files using native HEMTT backend.
 ///
 /// PboApi provides a high-level interface for PBO operations with:
-/// - Configurable timeout handling
-/// - Custom configuration options
-/// - Error handling and validation
-/// - Progress tracking and logging
+/// - Native Rust implementation (no external dependencies)
+/// - Async operations for better performance
+/// - Comprehensive error handling
+/// - Cross-platform compatibility
 ///
 /// # Examples
 ///
 /// Basic usage:
 /// ```no_run
-/// use pbo_tools::core::PboApi;
+/// use pbo_tools::core::{PboApi, PboApiOps};
+/// use std::path::Path;
 ///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let api = PboApi::builder()
 ///     .with_timeout(30)
 ///     .build();
+///
+/// let files = api.list_contents(Path::new("mission.pbo")).await?;
+/// println!("Found {} files", files.len());
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// Advanced configuration:
@@ -83,11 +107,10 @@ pub trait PboApiOps {
 ///     .with_timeout(30)
 ///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PboApi {
-    temp_manager: TempFileManager,
     config: Arc<PboConfig>,
-    extractor: Box<dyn ExtractorClone>,
+    pbo_ops: HemttPboOperations,
     timeout: Duration,
 }
 
@@ -102,187 +125,127 @@ impl PboApi {
             .build()
     }
 
-    pub fn extract_prefix(&self, output: &str) -> Option<String> {
-        output
-            .lines()
-            .find(|line| line.starts_with("prefix="))
-            .and_then(|line| {
-                line.split('=')
-                    .nth(1)
-                    .map(|prefix| prefix.trim().trim_end_matches(';').to_string())
-            })
-            .filter(|prefix| !prefix.is_empty())
-    }
-
-    fn validate_pbo_exists(&self, pbo_path: &Path) -> Result<()> {
-        if !pbo_path.exists() {
-            return Err(PboError::InvalidPath(pbo_path.to_path_buf()));
-        }
-        Ok(())
-    }
-
-    fn validate_output_dir(&self, output_dir: &Path) -> Result<()> {
-        if !output_dir.exists() {
-            // Try to create it
-            if let Some(parent) = output_dir.parent() {
-                if !parent.exists() {
-                    return Err(PboError::InvalidPath(output_dir.to_path_buf()));
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn with_timeout<T, F>(&self, operation: F) -> Result<T>
+    /// Execute an async operation with timeout handling
+    async fn with_timeout<T, F>(&self, operation: F) -> PboOperationResult<T>
     where
-        F: FnOnce() -> Result<T> + Send + 'static,
-        T: Send + 'static,
+        F: std::future::Future<Output = PboOperationResult<T>>,
     {
-        let (tx, rx) = mpsc::channel();
-        let (cancel_tx, cancel_rx) = mpsc::channel();
-        let timeout = self.timeout;
-
-        let handle = thread::spawn(move || {
-            // Set up cancellation check
-            let start = std::time::Instant::now();
-            let result = operation();
-
-            // Check for cancellation periodically
-            if cancel_rx.try_recv().is_ok() {
-                debug!("Operation was canceled after {} ms", start.elapsed().as_millis());
-                return;
-            }
-
-            // Try to send result back
-            if tx.send(result).is_err() {
-                warn!("Failed to send operation result - receiver dropped");
-            }
-        });
-
-        // Wait for result with timeout
-        let result = match rx.recv_timeout(timeout) {
+        match tokio::time::timeout(self.timeout, operation).await {
             Ok(result) => result,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                debug!("Operation timed out after {} seconds", timeout.as_secs());
-                // Try to cancel the operation
-                if let Err(e) = cancel_tx.send(()) {
-                    warn!("Failed to send cancellation signal: {}", e);
-                }
-                
-                // Give the thread a short time to clean up
-                let _ = thread::spawn(move || {
-                    thread::sleep(Duration::from_secs(1));
-                    if let Err(e) = handle.join() {
-                        warn!("Operation thread did not terminate cleanly: {:?}", e);
-                    }
-                });
-
-                Err(PboError::Timeout(timeout.as_secs() as u32))
+            Err(_) => {
+                warn!("Operation timed out after {} seconds", self.timeout.as_secs());
+                Err(PboOperationError::timeout(format!("Operation timed out after {} seconds", self.timeout.as_secs())))
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                warn!("Operation thread terminated unexpectedly");
-                Err(PboError::Extraction(ExtractError::Canceled(
-                    "Operation thread terminated unexpectedly".to_string()
-                )))
-            }
-        };
+        }
+    }
 
-        result
+    /// Validate that a PBO file exists and is accessible
+    fn validate_pbo_path(&self, pbo_path: &Path) -> PboOperationResult<()> {
+        if !pbo_path.exists() {
+            return Err(PboOperationError::file_not_found(pbo_path));
+        }
+        
+        // Check for common PBO extensions
+        if let Some(extension) = pbo_path.extension() {
+            let ext_str = extension.to_string_lossy().to_lowercase();
+            if !["pbo", "xbo", "ifa"].contains(&ext_str.as_str()) {
+                return Err(PboOperationError::invalid_format(
+                    format!("File does not have a valid PBO extension: {}", pbo_path.display())
+                ));
+            }
+        } else {
+            return Err(PboOperationError::invalid_format(
+                format!("File has no extension: {}", pbo_path.display())
+            ));
+        }
+        
+        Ok(())
+    }
+
+    /// Validate and create output directory if needed
+    fn ensure_output_dir(&self, output_dir: &Path) -> PboOperationResult<()> {
+        if !output_dir.exists() {
+            std::fs::create_dir_all(output_dir)
+                .map_err(|e| PboOperationError::io_error("creating output directory", e))?;
+        }
+        Ok(())
     }
 }
 
+#[async_trait::async_trait]
 impl PboApiOps for PboApi {
-    fn list_contents(&self, pbo_path: &Path) -> Result<ExtractResult> {
-        let options = ExtractOptions {
-            no_pause: true,
-            warnings_as_errors: true,
-            ..Default::default()
-        };
-        self.list_with_options(pbo_path, options)
-    }
-
-    fn list_contents_brief(&self, pbo_path: &Path) -> Result<ExtractResult> {
-        let options = ExtractOptions {
-            no_pause: true,
-            warnings_as_errors: true,
-            brief_listing: true,
-            ..Default::default()
-        };
-        self.list_with_options(pbo_path, options)
-    }
-
-    fn extract_files(&self, pbo_path: &Path, output_dir: &Path, file_filter: Option<&str>) -> Result<ExtractResult> {
-        let options = ExtractOptions {
-            no_pause: true,
-            warnings_as_errors: true,
-            file_filter: file_filter.map(String::from),
-            ..Default::default()
-        };
-        self.extract_with_options(pbo_path, output_dir, options)
-    }
-
-    fn list_with_options(&self, pbo_path: &Path, options: ExtractOptions) -> Result<ExtractResult> {
-        self.validate_pbo_exists(pbo_path)?;
-        let pbo_path = pbo_path.to_owned();
-        let extractor = self.extractor.clone();
-        let options = options.clone();
+    async fn list_contents(&self, pbo_path: &Path) -> PboOperationResult<Vec<PboFileInfo>> {
+        debug!("Listing contents of PBO: {}", pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
         
-        self.with_timeout(move || {
-            debug!("Listing contents of PBO with options: {:?}", options);
-            let result = extractor.list_with_options(&pbo_path, options)?;
-            
-            if !result.is_success() {
-                debug!("PBO listing failed: {}", result);
-                return Err(PboError::Extraction(ExtractError::CommandFailed {
-                    cmd: "extractpbo".to_string(),
-                    reason: result.get_error_message()
-                        .unwrap_or_else(|| "Unknown error".to_string()),
-                }));
-            }
-            
-            Ok(result)
-        })
+        self.with_timeout(self.pbo_ops.list_contents(pbo_path)).await
     }
 
-    fn extract_with_options(&self, pbo_path: &Path, output_dir: &Path, options: ExtractOptions) -> Result<ExtractResult> {
-        self.validate_pbo_exists(pbo_path)?;
-        self.validate_output_dir(output_dir)?;
+    async fn extract_file(&self, pbo_path: &Path, file_path: &str, output_path: &Path) -> PboOperationResult<()> {
+        debug!("Extracting file '{}' from {} to {}", file_path, pbo_path.display(), output_path.display());
+        self.validate_pbo_path(pbo_path)?;
         
-        // Validate file filter
-        if let Some(filter) = &options.file_filter {
-            if filter.trim().is_empty() {
-                return Err(PboError::ValidationFailed("File filter cannot be empty".to_string()));
-            }
-            
-            // Validate regex patterns specifically (patterns that don't use glob wildcards)
-            if !filter.contains('*') && !filter.contains('?') {
-                // If it's not a glob pattern, treat it as regex and validate it
-                if let Err(_) = regex::Regex::new(filter) {
-                    return Err(PboError::ValidationFailed(format!("Invalid file filter pattern: {}", filter)));
-                }
-            }
+        if let Some(parent) = output_path.parent() {
+            self.ensure_output_dir(parent)?;
         }
         
-        let pbo_path = pbo_path.to_owned();
-        let output_dir = output_dir.to_owned();
-        let extractor = self.extractor.clone();
-        let options = options.clone();
+        self.with_timeout(self.pbo_ops.extract_file(pbo_path, file_path, output_path)).await
+    }
+
+    async fn extract_all(&self, pbo_path: &Path, output_dir: &Path) -> PboOperationResult<()> {
+        debug!("Extracting all files from {} to {}", pbo_path.display(), output_dir.display());
+        self.validate_pbo_path(pbo_path)?;
+        self.ensure_output_dir(output_dir)?;
         
-        self.with_timeout(move || {
-            debug!("Extracting files with options: {:?}", options);
-            let result = extractor.extract_with_options(&pbo_path, &output_dir, options)?;
-            
-            if !result.is_success() {
-                debug!("PBO extraction failed: {}", result);
-                return Err(PboError::Extraction(ExtractError::CommandFailed {
-                    cmd: "extractpbo".to_string(),
-                    reason: result.get_error_message()
-                        .unwrap_or_else(|| "Unknown error".to_string()),
-                }));
-            }
-            
-            Ok(result)
-        })
+        self.with_timeout(self.pbo_ops.extract_all(pbo_path, output_dir)).await
+    }
+
+    async fn extract_filtered(&self, pbo_path: &Path, output_dir: &Path, filter: &str) -> PboOperationResult<()> {
+        debug!("Extracting filtered files from {} to {} with filter '{}'", 
+               pbo_path.display(), output_dir.display(), filter);
+        self.validate_pbo_path(pbo_path)?;
+        self.ensure_output_dir(output_dir)?;
+        
+        if filter.trim().is_empty() {
+            return Err(PboOperationError::invalid_path("Filter cannot be empty"));
+        }
+        
+        self.with_timeout(self.pbo_ops.extract_filtered(pbo_path, filter, output_dir)).await
+    }
+
+    async fn get_properties(&self, pbo_path: &Path) -> PboOperationResult<PboProperties> {
+        debug!("Getting properties for PBO: {}", pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
+        
+        self.with_timeout(self.pbo_ops.get_properties(pbo_path)).await
+    }
+
+    async fn validate_pbo(&self, pbo_path: &Path) -> PboOperationResult<PboValidation> {
+        debug!("Validating PBO: {}", pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
+        
+        self.with_timeout(self.pbo_ops.validate_pbo(pbo_path)).await
+    }
+
+    async fn read_file(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<Vec<u8>> {
+        debug!("Reading file '{}' from {}", file_path, pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
+        
+        self.with_timeout(self.pbo_ops.read_file(pbo_path, file_path)).await
+    }
+
+    async fn file_exists(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<bool> {
+        debug!("Checking if file '{}' exists in {}", file_path, pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
+        
+        self.with_timeout(self.pbo_ops.file_exists(pbo_path, file_path)).await
+    }
+
+    async fn get_file_info(&self, pbo_path: &Path, file_path: &str) -> PboOperationResult<Option<PboFileInfo>> {
+        debug!("Getting file info for '{}' from {}", file_path, pbo_path.display());
+        self.validate_pbo_path(pbo_path)?;
+        
+        self.with_timeout(self.pbo_ops.get_file_info(pbo_path, file_path)).await
     }
 }
 
@@ -291,7 +254,7 @@ impl PboApiOps for PboApi {
 /// The builder pattern allows for flexible configuration of:
 /// - Operation timeout
 /// - PBO handling configuration
-/// - Custom extractors (for testing or specialized use cases)
+/// - Custom runtime settings
 ///
 /// # Examples
 ///
@@ -325,9 +288,8 @@ impl PboApiBuilder {
 
     pub fn build(self) -> PboApi {
         PboApi {
-            temp_manager: TempFileManager::new(),
             config: Arc::new(self.config.unwrap_or_default()),
-            extractor: Box::new(DefaultExtractor::new()),
+            pbo_ops: HemttPboOperations::new(),
             timeout: self.timeout.unwrap_or_else(|| Duration::from_secs(u64::from(DEFAULT_TIMEOUT))),
         }
     }
