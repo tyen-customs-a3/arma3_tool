@@ -321,6 +321,8 @@ mod tests {
         // Should fail execution
         let result = handler.execute(&context).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Mock extraction failed"));
+        let error_message = result.unwrap_err().to_string();
+        // The mock fails during validation, not extraction
+        assert!(error_message.contains("Mock validation failed"));
     }
 }
