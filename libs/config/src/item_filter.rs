@@ -19,6 +19,20 @@ pub struct ItemTypeConfig {
     pub base_classes: Vec<String>,
 }
 
+impl ItemTypeConfig {
+    /// Create a new item type config with a single base class
+    pub fn new(base_class: String) -> Self {
+        Self {
+            base_classes: vec![base_class],
+        }
+    }
+
+    /// Create a new item type config with multiple base classes
+    pub fn with_base_classes(base_classes: Vec<String>) -> Self {
+        Self { base_classes }
+    }
+}
+
 /// Rules for excluding classes from exports
 /// Simplified structure matching PRD specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
