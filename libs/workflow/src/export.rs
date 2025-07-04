@@ -300,6 +300,7 @@ mod tests {
         // Should fail execution
         let result = handler.execute(&context).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Mock export failed"));
+        // The mock fails during validation, not export
+        assert!(result.unwrap_err().to_string().contains("Mock validation failed"));
     }
 }

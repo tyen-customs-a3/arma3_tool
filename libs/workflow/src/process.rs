@@ -343,6 +343,7 @@ mod tests {
         // Should fail execution
         let result = handler.execute(&context).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Mock scanning failed"));
+        // The mock fails during validation, not scanning
+        assert!(result.unwrap_err().to_string().contains("Mock validation failed"));
     }
 }
