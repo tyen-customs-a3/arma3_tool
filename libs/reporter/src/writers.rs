@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use log::info;
 
-use crate::reporter::error::{ReporterError, Result as ReporterResult};
-use crate::reporter::models::{DependencyReport, FuzzyMissingClassReport};
+use crate::error::{ReporterError, Result as ReporterResult};
+use crate::models::{DependencyReport, FuzzyMissingClassReport};
 
 /// Creates report files in different formats
 pub struct ReportWriter {
@@ -130,7 +130,7 @@ impl ReportWriter {
                 // Write missing class name (no quotes, assuming class names don't contain commas)
                 let mut row_parts = vec![missing_match.missing_class_name.clone()];
 
-                for i in 0..crate::reporter::analyzers::MAX_FUZZY_MATCHES {
+                for i in 0..crate::analyzers::MAX_FUZZY_MATCHES {
                     if let Some(pot_match) = missing_match.potential_matches.get(i) {
                         // Add potential match name (no quotes)
                         row_parts.push(pot_match.class_name.clone());
@@ -151,8 +151,8 @@ impl ReportWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reporter::models::{MissingClassMatch, PotentialMatch};
-    use crate::reporter::analyzers::MAX_FUZZY_MATCHES; // Import for test
+    use crate::models::{MissingClassMatch, PotentialMatch};
+    use crate::analyzers::MAX_FUZZY_MATCHES; // Import for test
     use tempfile::tempdir;
     use std::collections::{HashMap, HashSet};
 

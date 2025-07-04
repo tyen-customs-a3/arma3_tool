@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use hemtt_sqm::{Class, SqmFile, Value};
+use hemtt_sqm::{Class, SqmFile};
 use crate::models::{ClassExt, DependencyCollector};
 
 /// Represents a query pattern to search for and extract data from SQM classes

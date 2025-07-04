@@ -494,6 +494,9 @@ mod tests {
         assert!(db_manager.needs_extraction(&pbo_path, PboType::GameData, &["hpp".to_string()]).unwrap());
         
         // Test file modification triggering extraction
+        // Sleep briefly to ensure different modification time
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        
         // Touch the file to update its modification time
         let mut file = File::create(&pbo_path).unwrap();
         file.write_all(b"Updated content").unwrap();

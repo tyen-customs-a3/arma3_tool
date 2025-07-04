@@ -10,14 +10,11 @@ use arma3_database::{
 };
 
 use crate::{
-    config::ScanConfig,
-    reporter::{
-        analyzers::DependencyAnalyzer,
-        class_graph::ClassHierarchyWriter,
-        error::Result as ReporterResult,
-        models::{DependencyReport, FuzzyMissingClassReport},
-        writers::ReportWriter,
-    },
+    analyzers::DependencyAnalyzer,
+    class_graph::ClassHierarchyWriter,
+    error::Result as ReporterResult,
+    models::{DependencyReport, FuzzyMissingClassReport},
+    writers::ReportWriter,
 };
 
 /// Coordinates the dependency analysis and reporting process
@@ -25,17 +22,17 @@ pub struct ReportCoordinator<'a> {
     db: &'a DatabaseManager,
     class_repo: ClassRepository<'a>,
     mission_repo: MissionRepository<'a>,
-    config: &'a ScanConfig,
+    ignore_classes_file: Option<PathBuf>,
 }
 
 impl<'a> ReportCoordinator<'a> {
     /// Create a new report coordinator
-    pub fn new(db: &'a DatabaseManager, config: &'a ScanConfig) -> Self {
+    pub fn new(db: &'a DatabaseManager, ignore_classes_file: Option<PathBuf>) -> Self {
         Self {
             db,
             class_repo: ClassRepository::new(db),
             mission_repo: MissionRepository::new(db),
-            config,
+            ignore_classes_file,
         }
     }
 
@@ -43,8 +40,12 @@ impl<'a> ReportCoordinator<'a> {
     pub fn run_report(&self, output_dir: &PathBuf) -> ReporterResult<()> {
         info!("Starting dependency analysis and reporting process...");
 
-        // Create analyzer with config
-        let analyzer = DependencyAnalyzer::with_config(&self.class_repo, &self.mission_repo, self.config)?;
+        // Create analyzer with ignore classes file
+        let analyzer = DependencyAnalyzer::with_ignored_classes_file(
+            &self.class_repo, 
+            &self.mission_repo, 
+            self.ignore_classes_file.as_deref()
+        )?;
 
         // Run analysis
         let analysis = analyzer.analyze_dependencies()?;
@@ -128,11 +129,11 @@ impl<'a> ReportCoordinator<'a> {
         // Write to CSV
         let report_path = output_dir.join("mission_class_sources.csv");
         let file =
-            File::create(&report_path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+            File::create(&report_path).map_err(|e| crate::error::ReporterError::Io(e))?;
         let mut writer = BufWriter::new(file);
 
         writeln!(writer, "mission_id,class_name,source_path")
-            .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+            .map_err(|e| crate::error::ReporterError::Io(e))?;
 
         for (mission_id, class_name, source_path) in results {
             // Basic CSV escaping: wrap fields containing commas or quotes in double quotes, double internal quotes.
@@ -140,12 +141,12 @@ impl<'a> ReportCoordinator<'a> {
             // Source path might, but often won't.
             let source_path_str = source_path.unwrap_or_else(|| "".to_string());
             writeln!(writer, "{},{},{}", mission_id, class_name, source_path_str)
-                .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+                .map_err(|e| crate::error::ReporterError::Io(e))?;
         }
 
         writer
             .flush()
-            .map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+            .map_err(|e| crate::error::ReporterError::Io(e))?;
 
         info!(
             "Mission class source report generated at: {}",
@@ -173,8 +174,12 @@ impl<'a> ReportCoordinator<'a> {
     pub fn generate_fuzzy_missing_class_report(&self, output_dir: &PathBuf) -> ReporterResult<()> {
         info!("Starting fuzzy missing class report generation...");
 
-        // Create analyzer with config
-        let analyzer = DependencyAnalyzer::with_config(&self.class_repo, &self.mission_repo, self.config)?;
+        // Create analyzer with ignore classes file
+        let analyzer = DependencyAnalyzer::with_ignored_classes_file(
+            &self.class_repo, 
+            &self.mission_repo, 
+            self.ignore_classes_file.as_deref()
+        )?;
 
         // Run fuzzy analysis
         let fuzzy_matches = analyzer.analyze_fuzzy_missing_classes()?;
@@ -201,10 +206,10 @@ mod tests {
     use tempfile::tempdir;
     use std::fs;
 
-    fn create_basic_config_and_db(dir_path: &std::path::Path) -> (DatabaseManager, ScanConfig) {
+    fn create_basic_config_and_db(dir_path: &std::path::Path) -> (DatabaseManager, arma3_config::ScanConfig) {
         let db_path = dir_path.join("test.db");
         let db = DatabaseManager::new(&db_path).unwrap();
-        let config = ScanConfig::default();
+        let config = arma3_config::ScanConfig::default();
         (db, config)
     }
 
@@ -212,7 +217,7 @@ mod tests {
     fn test_report_coordinator() {
         let dir = tempdir().unwrap();
         let (db, config) = create_basic_config_and_db(dir.path());
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
 
         let class_repo = coordinator.class_repo();
         class_repo.create(&ClassModel::new("GameClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
@@ -236,7 +241,7 @@ mod tests {
     fn test_class_graph_generation() {
         let dir = tempdir().unwrap();
         let (db, config) = create_basic_config_and_db(dir.path());
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
         let class_repo = coordinator.class_repo();
         class_repo.create(&ClassModel::new("ParentClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
         class_repo.create(&ClassModel::new("ChildClass1".to_string(),Some("ParentClass".to_string()), None::<String>, Some(2),false)).unwrap();
@@ -255,12 +260,12 @@ mod tests {
         let db = DatabaseManager::new(&db_path).unwrap();
         
         // Config with an ignore file
-        let mut config = ScanConfig::default();
+        let mut config = arma3_config::ScanConfig::default();
         let ignore_file_path = dir.path().join("ignored_fuzzy.txt");
         fs::write(&ignore_file_path, "IgnoredFuzzyClass\n").unwrap();
         config.ignore_classes_file = Some(ignore_file_path);
 
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
         let class_repo = coordinator.class_repo();
         let mission_repo = coordinator.mission_repo();
 

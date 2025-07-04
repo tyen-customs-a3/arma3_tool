@@ -1,10 +1,15 @@
 pub mod cli;
-pub mod config;
 pub mod error;
-pub mod reporter;
-pub mod scanner;
-pub mod types;
 
-pub use config::ScanConfig;
-pub use error::{Result, ToolError};
-pub use types::*;
+// Re-export configuration from arma3_config
+pub use arma3_config::{ScanConfig, ItemFilterConfig, VisualizationConfig};
+
+// Re-export workflow types from arma3_workflow
+pub use arma3_workflow::{
+    WorkflowType, ContentType, Workflow,
+    WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ReportFormat,
+    ExtractionSummary, ProcessingSummary, ReportingSummary,
+    WorkflowError, Result as WorkflowResult,
+};
+
+pub use error::Result;

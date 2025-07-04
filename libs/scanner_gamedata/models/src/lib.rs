@@ -156,6 +156,12 @@ pub struct ScanResult {
     pub scan_time_ms: Option<u64>,
 }
 
+impl Default for ScanResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScanResult {
     /// Create a new empty scan result
     pub fn new() -> Self {
@@ -179,7 +185,7 @@ impl ScanResult {
     pub fn add_class(&mut self, class: GameClass) {
         self.class_map
             .entry(class.name.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(class);
         self.classes_found += 1;
     }
@@ -194,7 +200,7 @@ impl ScanResult {
             for class in classes {
                 self.class_map
                     .entry(class_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(class);
             }
         }

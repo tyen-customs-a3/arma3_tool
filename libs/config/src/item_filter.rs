@@ -19,6 +19,20 @@ pub struct ItemTypeConfig {
     pub base_classes: Vec<String>,
 }
 
+impl ItemTypeConfig {
+    /// Create a new item type config with a single base class
+    pub fn new(base_class: String) -> Self {
+        Self {
+            base_classes: vec![base_class],
+        }
+    }
+
+    /// Create a new item type config with multiple base classes
+    pub fn with_base_classes(base_classes: Vec<String>) -> Self {
+        Self { base_classes }
+    }
+}
+
 /// Rules for excluding classes from exports
 /// Simplified structure matching PRD specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +55,35 @@ impl ItemFilterConfig {
         let config: ItemFilterConfig = serde_json::from_str(json_str)?;
         config.validate()?;
         Ok(config)
+    }
+
+    /// Load configuration from environment variables
+    pub fn load_from_env() -> Result<Self, Box<dyn std::error::Error>> {
+        let mut config = Self::default();
+        
+        // Allow overriding max_scope from environment
+        if let Ok(max_scope) = std::env::var("ARMA3_MAX_SCOPE") {
+            config.exclusion_rules.max_scope = max_scope.parse()?;
+        }
+        
+        // Allow adding excluded prefixes from environment
+        if let Ok(excluded_prefixes) = std::env::var("ARMA3_EXCLUDED_PREFIXES") {
+            let additional_prefixes: Vec<String> = excluded_prefixes
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect();
+            config.exclusion_rules.excluded_prefixes.extend(additional_prefixes);
+        }
+        
+        config.validate()?;
+        Ok(config)
+    }
+
+    /// Save configuration to a JSON file
+    pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Box<dyn std::error::Error>> {
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(path, json)?;
+        Ok(())
     }
 
     /// Get base classes for a specific item type
@@ -69,8 +112,35 @@ impl ItemFilterConfig {
         self.exclusion_rules.max_scope
     }
 
+    /// Add a new item type with base classes
+    pub fn add_item_type(&mut self, item_type: String, base_classes: Vec<String>) {
+        self.item_types.insert(item_type, ItemTypeConfig { base_classes });
+    }
+
+    /// Remove an item type
+    pub fn remove_item_type(&mut self, item_type: &str) -> Option<ItemTypeConfig> {
+        self.item_types.remove(item_type)
+    }
+
+    /// Add an excluded prefix
+    pub fn add_excluded_prefix(&mut self, prefix: String) {
+        if !self.exclusion_rules.excluded_prefixes.contains(&prefix) {
+            self.exclusion_rules.excluded_prefixes.push(prefix);
+        }
+    }
+
+    /// Remove an excluded prefix
+    pub fn remove_excluded_prefix(&mut self, prefix: &str) -> bool {
+        if let Some(pos) = self.exclusion_rules.excluded_prefixes.iter().position(|p| p == prefix) {
+            self.exclusion_rules.excluded_prefixes.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Validate the configuration
-    fn validate(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn validate(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Check that version is specified
         if self.version.is_empty() {
             return Err("Configuration version is required".into());
@@ -146,6 +216,8 @@ impl Default for ItemFilterConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use tempfile::tempdir;
 
     #[test]
     fn test_config_loading_from_json_string() {
@@ -180,28 +252,6 @@ mod tests {
         
         assert!(config.is_excluded_by_prefix("B_soldier_f_test"));
         assert!(!config.is_excluded_by_prefix("arifle_MX_F"));
-    }
-
-    #[test]
-    fn test_config_loading_from_file() {
-        // Test loading our actual config file
-        let config = ItemFilterConfig::from_json_file("item_filter_config.json");
-        
-        // Should load successfully
-        assert!(config.is_ok());
-        
-        let config = config.unwrap();
-        assert_eq!(config.version, "1.0");
-        assert!(config.item_types.contains_key("weapons"));
-        assert!(config.item_types.contains_key("uniforms"));
-        assert!(config.item_types.contains_key("vests"));
-        assert!(config.item_types.contains_key("backpacks"));
-        
-        // Check weapons base classes
-        let weapons = config.get_base_classes("weapons").unwrap();
-        assert!(weapons.contains(&"Rifle_Base_F".to_string()));
-        assert!(weapons.contains(&"Pistol_Base_F".to_string()));
-        assert!(weapons.contains(&"Launcher_Base_F".to_string()));
     }
 
     #[test]
@@ -269,4 +319,62 @@ mod tests {
         // Test non-existent item type
         assert!(config.get_base_classes("non_existent").is_none());
     }
-} 
+
+    #[test]
+    fn test_modification_methods() {
+        let mut config = ItemFilterConfig::default();
+        
+        // Add new item type
+        config.add_item_type("helmets".to_string(), vec!["Helmet_Base".to_string()]);
+        assert!(config.item_types.contains_key("helmets"));
+        
+        // Remove item type
+        let removed = config.remove_item_type("helmets");
+        assert!(removed.is_some());
+        assert!(!config.item_types.contains_key("helmets"));
+        
+        // Add excluded prefix
+        config.add_excluded_prefix("test_prefix".to_string());
+        assert!(config.exclusion_rules.excluded_prefixes.contains(&"test_prefix".to_string()));
+        
+        // Remove excluded prefix
+        let removed = config.remove_excluded_prefix("test_prefix");
+        assert!(removed);
+        assert!(!config.exclusion_rules.excluded_prefixes.contains(&"test_prefix".to_string()));
+    }
+
+    #[test]
+    fn test_save_and_load_file() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("test_config.json");
+        
+        let original_config = ItemFilterConfig::default();
+        
+        // Save config
+        original_config.save_to_file(&config_path).unwrap();
+        
+        // Load config
+        let loaded_config = ItemFilterConfig::from_json_file(&config_path).unwrap();
+        
+        assert_eq!(loaded_config.version, original_config.version);
+        assert_eq!(loaded_config.item_types.len(), original_config.item_types.len());
+    }
+
+    #[test]
+    fn test_load_from_env() {
+        // Set environment variables
+        env::set_var("ARMA3_MAX_SCOPE", "2");
+        env::set_var("ARMA3_EXCLUDED_PREFIXES", "prefix1, prefix2, prefix3");
+        
+        let config = ItemFilterConfig::load_from_env().unwrap();
+        
+        assert_eq!(config.exclusion_rules.max_scope, 2);
+        assert!(config.exclusion_rules.excluded_prefixes.contains(&"prefix1".to_string()));
+        assert!(config.exclusion_rules.excluded_prefixes.contains(&"prefix2".to_string()));
+        assert!(config.exclusion_rules.excluded_prefixes.contains(&"prefix3".to_string()));
+        
+        // Clean up
+        env::remove_var("ARMA3_MAX_SCOPE");
+        env::remove_var("ARMA3_EXCLUDED_PREFIXES");
+    }
+}

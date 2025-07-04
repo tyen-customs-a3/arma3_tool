@@ -6,14 +6,12 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use strsim::normalized_levenshtein; // Changed from jaro_winkler
 
-use crate::config::ScanConfig;
-
 use arma3_database::queries::{
     class_repository::ClassRepository, mission_repository::MissionRepository,
 };
 
-use crate::reporter::error::Result as ReporterResult;
-use crate::reporter::models::{DependencyAnalysis, MissingClassMatch, PotentialMatch};
+use crate::error::Result as ReporterResult;
+use crate::models::{DependencyAnalysis, MissingClassMatch, PotentialMatch};
 
 const FUZZY_SIMILARITY_THRESHOLD: f64 = 0.6; // Minimum similarity to be considered a match (lowered from 0.7)
 pub const MAX_FUZZY_MATCHES: usize = 3;         // Max number of potential matches to report - Made public
@@ -26,11 +24,11 @@ pub struct DependencyAnalyzer<'a> {
 }
 
 impl<'a> DependencyAnalyzer<'a> {
-    /// Create a new dependency analyzer with configuration
-    pub fn with_config(
+    /// Create a new dependency analyzer with ignored classes file
+    pub fn with_ignored_classes_file(
         class_repo: &'a ClassRepository<'a>,
         mission_repo: &'a MissionRepository<'a>,
-        config: &ScanConfig,
+        ignore_classes_file: Option<&Path>,
     ) -> ReporterResult<Self> {
         let mut analyzer = Self {
             class_repo,
@@ -38,8 +36,8 @@ impl<'a> DependencyAnalyzer<'a> {
             ignored_classes: HashSet::new(),
         };
 
-        // Load ignored classes if configured
-        if let Some(ignore_file) = &config.ignore_classes_file {
+        // Load ignored classes if provided
+        if let Some(ignore_file) = ignore_classes_file {
             analyzer.load_ignored_classes(ignore_file)?;
         }
 
@@ -62,12 +60,12 @@ impl<'a> DependencyAnalyzer<'a> {
     fn load_ignored_classes(&mut self, path: &Path) -> ReporterResult<()> {
         info!("Loading ignored classes from {}", path.display());
         
-        let file = File::open(path).map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+        let file = File::open(path).map_err(|e| crate::error::ReporterError::Io(e))?;
         let reader = io::BufReader::new(file);
         let mut count = 0;
 
         for line in reader.lines() {
-            let line = line.map_err(|e| crate::reporter::error::ReporterError::Io(e))?;
+            let line = line.map_err(|e| crate::error::ReporterError::Io(e))?;
             let trimmed = line.trim();
             
             // Skip empty lines and comments
@@ -230,26 +228,24 @@ mod tests {
     use chrono::Utc;
     use tempfile::tempdir;
 
-    fn setup_db_and_config(dir_path: &Path) -> (DatabaseManager, ScanConfig) {
+    fn setup_db_and_ignore_file(dir_path: &Path) -> (DatabaseManager, PathBuf) {
         let db_path = dir_path.join("test.db");
         let db = DatabaseManager::new(&db_path).unwrap();
         
-        let mut config = ScanConfig::default();
         let ignore_file_path = dir_path.join("ignored_classes.txt");
         std::fs::write(&ignore_file_path, "IgnoredClass\n#Comment\nAnotherIgnoredClass").unwrap();
-        config.ignore_classes_file = Some(ignore_file_path);
         
-        (db, config)
+        (db, ignore_file_path)
     }
 
     #[test]
     fn test_dependency_analyzer() {
         let dir = tempdir().unwrap();
-        let (db, config) = setup_db_and_config(dir.path());
+        let (db, ignore_file_path) = setup_db_and_ignore_file(dir.path());
         
         let class_repo = ClassRepository::new(&db);
         let mission_repo = MissionRepository::new(&db);
-        let analyzer = DependencyAnalyzer::with_config(&class_repo, &mission_repo, &config).unwrap();
+        let analyzer = DependencyAnalyzer::with_ignored_classes_file(&class_repo, &mission_repo, Some(&ignore_file_path)).unwrap();
 
         class_repo.create(&ClassModel::new("GameClass".to_string(), None::<String>, None::<String>, Some(1), false)).unwrap();
         
@@ -275,11 +271,11 @@ mod tests {
     #[test]
     fn test_fuzzy_missing_class_analyzer() {
         let dir = tempdir().unwrap();
-        let (db, config) = setup_db_and_config(dir.path());
+        let (db, ignore_file_path) = setup_db_and_ignore_file(dir.path());
 
         let class_repo = ClassRepository::new(&db);
         let mission_repo = MissionRepository::new(&db);
-        let analyzer = DependencyAnalyzer::with_config(&class_repo, &mission_repo, &config).unwrap();
+        let analyzer = DependencyAnalyzer::with_ignored_classes_file(&class_repo, &mission_repo, Some(&ignore_file_path)).unwrap();
 
         // Known classes
         class_repo.create(&ClassModel::new("MyExactClass".to_string(), None::<String>, None::<String>, Some(1), false)).unwrap();
@@ -314,10 +310,10 @@ mod tests {
      #[test]
     fn test_fuzzy_max_matches() {
         let dir = tempdir().unwrap();
-        let (db, config) = setup_db_and_config(dir.path());
+        let (db, ignore_file_path) = setup_db_and_ignore_file(dir.path());
         let class_repo = ClassRepository::new(&db);
         let mission_repo = MissionRepository::new(&db);
-        let analyzer = DependencyAnalyzer::with_config(&class_repo, &mission_repo, &config).unwrap();
+        let analyzer = DependencyAnalyzer::with_ignored_classes_file(&class_repo, &mission_repo, Some(&ignore_file_path)).unwrap();
 
         // Create more than MAX_FUZZY_MATCHES similar classes
         class_repo.create(&ClassModel::new("TestClass1".to_string(), None::<String>, None::<String>, Some(1), false)).unwrap();

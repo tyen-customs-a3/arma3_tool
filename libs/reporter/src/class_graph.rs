@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
-use crate::reporter::error::{ReporterError, Result as ReporterResult};
+use crate::error::{ReporterError, Result as ReporterResult};
 use arma3_database::queries::class_repository::ClassRepository;
 
 /// Handles writing class hierarchy as a node-edge CSV file

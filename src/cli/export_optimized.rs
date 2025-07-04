@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use arma3_database::{DatabaseManager, ClassRepository};
-use crate::config::ItemFilterConfig;
+use arma3_config::ItemFilterConfig;
 use log::{info, warn, debug};
 use rayon::prelude::*;
 use serde_json;
