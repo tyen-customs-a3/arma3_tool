@@ -6,14 +6,10 @@ use tempfile::TempDir;
 use std::fs;
 use tokio;
 
-use arma3_tool::cli::handlers::{extract, process, report, export};
+use arma3_tool::cli::{run_extract, run_process, run_report, run_export};
 use arma3_workflow::orchestrator::WorkflowOrchestrator;
 use arma3_workflow::types::{Workflow, WorkflowType, ContentType};
 use arma3_workflow::types::options::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ExportOptions, ReportFormat};
-use arma3_workflow::extract::ExtractWorkflowHandler;
-use arma3_workflow::process::ProcessWorkflowHandler;
-use arma3_workflow::report::ReportWorkflowHandler;
-use arma3_workflow::export::ExportWorkflowHandler;
 use arma3_database::DatabaseManager;
 use arma3_extractor::ExtractionConfig;
 
@@ -32,7 +28,12 @@ fn create_test_pbo_files(dir: &PathBuf) -> std::io::Result<()> {
 /// Helper function to create test extraction config
 fn create_test_extraction_config(work_dir: &PathBuf, db_path: &PathBuf) -> ExtractionConfig {
     ExtractionConfig {
+        cache_dir: work_dir.clone(),
+        game_data_cache_dir: work_dir.join("gamedata"),
+        mission_cache_dir: work_dir.join("missions"),
+        game_data_dirs: vec![work_dir.join("gamedata_pbos")],
         game_data_extensions: vec!["cpp".to_string(), "hpp".to_string()],
+        mission_dirs: vec![work_dir.join("mission_pbos")],
         mission_extensions: vec!["sqf".to_string(), "sqm".to_string()],
         threads: 2,
         timeout: 10,

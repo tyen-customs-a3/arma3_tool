@@ -6,7 +6,7 @@ use std::fs;
 use tokio;
 
 use arma3_database::DatabaseManager;
-use arma3_workflow::orchestrator::WorkflowOrchestrator;
+// use arma3_workflow::orchestrator::WorkflowOrchestrator; // TODO: Add workflow tests when needed
 use arma3_workflow::types::{Workflow, WorkflowType, ContentType};
 use arma3_workflow::types::options::{WorkflowOptions, ProcessingOptions, ReportingOptions, ReportFormat};
 
@@ -14,7 +14,7 @@ use arma3_workflow::types::options::{WorkflowOptions, ProcessingOptions, Reporti
 async fn create_test_database(db_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(db_path, "")?;
     
-    let db = DatabaseManager::new(db_path)?;
+    let _db = DatabaseManager::new(db_path)?;
     
     // In a real test, we would populate the database with test data
     // For now, we just ensure the database can be created and opened

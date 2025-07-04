@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 use std::fs;
 use tokio;
@@ -354,7 +354,7 @@ async fn test_high_concurrency_stress() {
     let completed = completion_count.load(Ordering::Relaxed);
     
     // All workflows should complete
-    assert_eq!(completed, num_workflows);
+    assert_eq!(completed, num_workflows as usize);
     
     // Should complete within reasonable time (adjust based on system performance)
     assert!(elapsed.as_secs() < 10);
