@@ -15,6 +15,7 @@ gamedata_scanner = { workspace = true }
 mission_scanner = { workspace = true }
 
 anyhow = { workspace = true }
+async-trait = "0.1"
 chrono = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
