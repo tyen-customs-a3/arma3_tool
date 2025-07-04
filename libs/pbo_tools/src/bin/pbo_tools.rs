@@ -5,13 +5,14 @@ use pbo_tools::cli::args::Cli;
 use pbo_tools::cli::CliProcessor;
 use pbo_tools::core::constants::DEFAULT_TIMEOUT;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     
     let cli = Cli::parse();
-    let processor = CliProcessor::new(DEFAULT_TIMEOUT);
+    let processor = CliProcessor::new(cli.timeout);
     
-    if let Err(e) = processor.process_command(cli.command) {
+    if let Err(e) = processor.process_command(cli.command).await {
         error!("{}", e);
         std::process::exit(1);
     }
