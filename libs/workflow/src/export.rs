@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
-use log::{info, debug, error};
+use log::{info, debug};
 
 use crate::error::{WorkflowError, Result};
 use crate::orchestrator::{
@@ -9,6 +9,7 @@ use crate::orchestrator::{
 };
 use crate::types::WorkflowType;
 use crate::types::options::ExportOptions;
+use crate::types::summary::ExportSummary;
 
 /// Handler for export workflow stages
 pub struct ExportWorkflowHandler {
@@ -30,15 +31,6 @@ pub trait ExporterInterface: Send + Sync {
     async fn validate_export_config(&self, options: &ExportOptions) -> Result<()>;
 }
 
-/// Summary of export operations
-#[derive(Debug, Clone)]
-pub struct ExportSummary {
-    pub exported_files: usize,
-    pub export_format: String,
-    pub export_time: Duration,
-    pub total_size: u64,
-    pub output_files: Vec<PathBuf>,
-}
 
 impl ExportWorkflowHandler {
     /// Create a new export workflow handler
@@ -54,7 +46,7 @@ impl WorkflowHandler for ExportWorkflowHandler {
     }
 
     fn can_handle(&self, workflow_type: &WorkflowType) -> bool {
-        matches!(workflow_type, WorkflowType::Complete)
+        matches!(workflow_type, WorkflowType::Export | WorkflowType::Complete)
     }
 
     async fn execute(&self, context: &WorkflowContext) -> Result<WorkflowStageResult> {
@@ -81,18 +73,18 @@ impl WorkflowHandler for ExportWorkflowHandler {
         
         let duration = start_time.elapsed();
         
-        info!("Export completed in {:?}: {} files exported in {} format", 
-              duration, export_summary.exported_files, export_summary.export_format);
+        info!("Export completed in {:?}: {} exports generated", 
+              duration, export_summary.exports_generated);
         
         Ok(WorkflowStageResult {
             stage: self.name().to_string(),
             success: true,
             duration,
             summary: WorkflowStageSummary::Export {
-                exported_files: export_summary.exported_files,
-                export_format: export_summary.export_format,
+                exported_files: export_summary.exports_generated,
+                export_format: export_options.format.clone(),
             },
-            output_files: export_summary.output_files,
+            output_files: export_summary.export_paths,
             warnings: Vec::new(),
         })
     }
@@ -151,16 +143,12 @@ impl ExporterInterface for MockExporter {
             return Err(WorkflowError::export_error("Mock export failed"));
         }
         
-        Ok(ExportSummary {
-            exported_files: 2,
-            export_format: options.format.clone(),
-            export_time: Duration::from_secs(2),
-            total_size: 1024 * 1024 * 10, // 10MB
-            output_files: vec![
-                output_dir.join("export.zip"),
-                output_dir.join("export.json"),
-            ],
-        })
+        let mut summary = ExportSummary::new();
+        summary.add_generated_export(output_dir.join("export.zip"));
+        summary.add_generated_export(output_dir.join("export.json"));
+        summary.set_elapsed_time(std::time::Duration::from_secs(2));
+        
+        Ok(summary)
     }
     
     async fn validate_export_config(&self, _options: &ExportOptions) -> Result<()> {

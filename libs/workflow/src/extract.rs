@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
-use log::{info, debug, error};
+use log::{info, debug};
 
 use crate::error::{WorkflowError, Result};
 use crate::orchestrator::{
@@ -160,7 +160,7 @@ impl ExtractorInterface for MockExtractor {
                 PathBuf::from("test4.pbo"),
                 PathBuf::from("test5.pbo"),
             ],
-            elapsed_time: Duration::from_secs(10),
+            elapsed_time: std::time::Duration::from_secs(10),
             errors: Vec::new(),
         })
     }

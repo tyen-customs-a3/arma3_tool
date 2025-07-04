@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
-use log::{info, debug, error};
+use log::{info, debug};
 
 use crate::error::{WorkflowError, Result};
 use crate::orchestrator::{
@@ -164,7 +164,7 @@ impl ReporterInterface for MockReporter {
                 PathBuf::from("report.json"),
                 PathBuf::from("report.csv"),
             ],
-            elapsed_time: Duration::from_secs(5),
+            elapsed_time: std::time::Duration::from_secs(5),
             errors: Vec::new(),
         })
     }

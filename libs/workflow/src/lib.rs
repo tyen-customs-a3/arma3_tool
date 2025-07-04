@@ -9,7 +9,7 @@ pub mod export;
 // Re-export key types for convenience
 pub use types::workflow::{WorkflowType, ContentType, Workflow};
 pub use types::options::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ReportFormat, ExportOptions};
-pub use types::summary::{ExtractionSummary, ProcessingSummary, ReportingSummary};
+pub use types::summary::{ExtractionSummary, ProcessingSummary, ReportingSummary, ExportSummary};
 
 // Re-export orchestrator types
 pub use orchestrator::{
@@ -24,4 +24,4 @@ pub use error::{WorkflowError, Result};
 pub use extract::{ExtractWorkflowHandler, ExtractorInterface};
 pub use process::{ProcessWorkflowHandler, ScannerInterface};
 pub use report::{ReportWorkflowHandler, ReporterInterface};
-pub use export::{ExportWorkflowHandler, ExporterInterface, ExportSummary};
+pub use export::{ExportWorkflowHandler, ExporterInterface};

@@ -10,6 +10,8 @@ pub enum WorkflowType {
     Process,
     /// Generate reports only
     Report,
+    /// Export only
+    Export,
     /// Extract and process
     ExtractAndProcess,
     /// Process and report
@@ -34,12 +36,18 @@ impl WorkflowType {
         matches!(self, WorkflowType::Report | WorkflowType::ProcessAndReport | WorkflowType::Complete)
     }
     
+    /// Check if this workflow type includes export
+    pub fn includes_export(&self) -> bool {
+        matches!(self, WorkflowType::Export)
+    }
+    
     /// Get all workflow types
     pub fn all() -> Vec<WorkflowType> {
         vec![
             WorkflowType::Extract,
             WorkflowType::Process,
             WorkflowType::Report,
+            WorkflowType::Export,
             WorkflowType::ExtractAndProcess,
             WorkflowType::ProcessAndReport,
             WorkflowType::Complete,
@@ -53,6 +61,7 @@ impl std::fmt::Display for WorkflowType {
             WorkflowType::Extract => write!(f, "Extract"),
             WorkflowType::Process => write!(f, "Process"),
             WorkflowType::Report => write!(f, "Report"),
+            WorkflowType::Export => write!(f, "Export"),
             WorkflowType::ExtractAndProcess => write!(f, "Extract and Process"),
             WorkflowType::ProcessAndReport => write!(f, "Process and Report"),
             WorkflowType::Complete => write!(f, "Complete"),

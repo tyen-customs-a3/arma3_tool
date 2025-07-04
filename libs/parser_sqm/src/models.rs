@@ -25,7 +25,7 @@ impl ClassExt for Class {
         }
         
         // Search in nested classes
-        for (_, class_list) in &self.classes {
+        for class_list in self.classes.values() {
             for class in class_list {
                 results.extend(class.find_classes(predicate));
             }

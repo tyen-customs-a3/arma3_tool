@@ -203,6 +203,22 @@ pub struct ReportingSummary {
     pub errors: Vec<String>,
 }
 
+/// Summary of export operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportSummary {
+    /// Number of exports generated
+    pub exports_generated: usize,
+    
+    /// Export paths
+    pub export_paths: Vec<PathBuf>,
+    
+    /// Elapsed time
+    pub elapsed_time: Duration,
+    
+    /// Errors encountered during export
+    pub errors: Vec<String>,
+}
+
 impl ReportingSummary {
     /// Create a new reporting summary
     pub fn new() -> Self {
@@ -265,6 +281,68 @@ impl std::fmt::Display for ReportingSummary {
     }
 }
 
+impl ExportSummary {
+    /// Create a new export summary
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Add a generated export
+    pub fn add_generated_export(&mut self, path: PathBuf) {
+        self.exports_generated += 1;
+        self.export_paths.push(path);
+    }
+    
+    /// Add an error
+    pub fn add_error(&mut self, error: String) {
+        self.errors.push(error);
+    }
+    
+    /// Set the elapsed time
+    pub fn set_elapsed_time(&mut self, elapsed: Duration) {
+        self.elapsed_time = elapsed;
+    }
+    
+    /// Check if export was successful (no errors)
+    pub fn is_successful(&self) -> bool {
+        self.errors.is_empty()
+    }
+    
+    /// Get export generation rate (exports per second)
+    pub fn generation_rate(&self) -> f64 {
+        if self.elapsed_time.as_secs_f64() == 0.0 {
+            return 0.0;
+        }
+        
+        self.exports_generated as f64 / self.elapsed_time.as_secs_f64()
+    }
+}
+
+impl Default for ExportSummary {
+    fn default() -> Self {
+        Self {
+            exports_generated: 0,
+            export_paths: Vec::new(),
+            elapsed_time: Duration::from_secs(0),
+            errors: Vec::new(),
+        }
+    }
+}
+
+impl std::fmt::Display for ExportSummary {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Export Summary: {} exports generated in {:.2}s", 
+               self.exports_generated, 
+               self.elapsed_time.as_secs_f64())?;
+        
+        if !self.errors.is_empty() {
+            write!(f, " with {} errors", self.errors.len())?;
+        }
+        
+        Ok(())
+    }
+}
+
 /// Combined summary for all workflow operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowSummary {
@@ -276,6 +354,9 @@ pub struct WorkflowSummary {
     
     /// Reporting summary (if reporting was performed)
     pub reporting: Option<ReportingSummary>,
+    
+    /// Export summary (if export was performed)
+    pub export: Option<ExportSummary>,
     
     /// Total elapsed time for the entire workflow
     pub total_elapsed_time: Duration,
@@ -302,6 +383,11 @@ impl WorkflowSummary {
         self.reporting = Some(summary);
     }
     
+    /// Set export summary
+    pub fn set_export(&mut self, summary: ExportSummary) {
+        self.export = Some(summary);
+    }
+    
     /// Set total elapsed time
     pub fn set_total_elapsed_time(&mut self, elapsed: Duration) {
         self.total_elapsed_time = elapsed;
@@ -312,8 +398,9 @@ impl WorkflowSummary {
         let extraction_success = self.extraction.as_ref().map_or(true, |s| s.is_successful());
         let processing_success = self.processing.as_ref().map_or(true, |s| s.is_successful());
         let reporting_success = self.reporting.as_ref().map_or(true, |s| s.is_successful());
+        let export_success = self.export.as_ref().map_or(true, |s| s.is_successful());
         
-        extraction_success && processing_success && reporting_success
+        extraction_success && processing_success && reporting_success && export_success
     }
     
     /// Get total error count across all summaries
@@ -321,8 +408,9 @@ impl WorkflowSummary {
         let extraction_errors = self.extraction.as_ref().map_or(0, |s| s.errors.len());
         let processing_errors = self.processing.as_ref().map_or(0, |s| s.errors.len());
         let reporting_errors = self.reporting.as_ref().map_or(0, |s| s.errors.len());
+        let export_errors = self.export.as_ref().map_or(0, |s| s.errors.len());
         
-        extraction_errors + processing_errors + reporting_errors
+        extraction_errors + processing_errors + reporting_errors + export_errors
     }
 }
 
@@ -332,6 +420,7 @@ impl Default for WorkflowSummary {
             extraction: None,
             processing: None,
             reporting: None,
+            export: None,
             total_elapsed_time: Duration::from_secs(0),
         }
     }
@@ -351,6 +440,10 @@ impl std::fmt::Display for WorkflowSummary {
         
         if let Some(reporting) = &self.reporting {
             writeln!(f, "  {}", reporting)?;
+        }
+        
+        if let Some(export) = &self.export {
+            writeln!(f, "  {}", export)?;
         }
         
         if !self.is_successful() {

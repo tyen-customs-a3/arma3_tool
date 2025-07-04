@@ -1,12 +1,11 @@
 use std::time::{Duration, Instant};
 use std::path::PathBuf;
 use async_trait::async_trait;
-use futures::future::BoxFuture;
 use log::{info, warn, error};
 
 use crate::error::{WorkflowError, Result};
 use crate::types::{
-    WorkflowType, ContentType, Workflow, WorkflowOptions,
+    WorkflowType, Workflow,
     ExtractionSummary, ProcessingSummary, ReportingSummary
 };
 
@@ -89,7 +88,7 @@ pub trait WorkflowHandler: Send + Sync {
     async fn execute(&self, context: &WorkflowContext) -> Result<WorkflowStageResult>;
 
     /// Validate the workflow configuration before execution
-    async fn validate(&self, workflow: &Workflow) -> Result<()> {
+    async fn validate(&self, _workflow: &Workflow) -> Result<()> {
         // Default implementation does no validation
         Ok(())
     }
@@ -180,7 +179,7 @@ impl WorkflowOrchestrator {
             .map_err(|e| WorkflowError::io_error(PathBuf::new(), e.to_string()))?
             .into_path();
 
-        let mut context = WorkflowContext {
+        let context = WorkflowContext {
             workflow: workflow.clone(),
             start_time,
             work_dir,
@@ -348,6 +347,7 @@ impl WorkflowOrchestrator {
             WorkflowType::Extract => vec![WorkflowStageType::Extract],
             WorkflowType::Process => vec![WorkflowStageType::Process],
             WorkflowType::Report => vec![WorkflowStageType::Report],
+            WorkflowType::Export => vec![WorkflowStageType::Export],
             WorkflowType::ExtractAndProcess => vec![
                 WorkflowStageType::Extract,
                 WorkflowStageType::Process,
@@ -451,6 +451,7 @@ impl WorkflowResult {
 mod tests {
     use super::*;
     use crate::types::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions};
+    use crate::ContentType;
 
     #[tokio::test]
     async fn test_orchestrator_creation() {
