@@ -6,7 +6,10 @@ use log::{info, debug};
 use arma3_database::models::CacheConfig;
 use arma3_database::DatabaseManager;
 use arma3_extractor::ExtractionConfig;
-use arma3_workflow::{ScannerInterface, ProcessingOptions, ProcessingSummary, WorkflowError, Result};
+use arma3_workflow::process::ScannerInterface;
+use arma3_workflow::types::summary::ProcessingSummary;
+use arma3_workflow::types::options::ProcessingOptions;
+use arma3_workflow::error::{WorkflowError, Result};
 use crate::scanner::gamedata::GameDataScanner;
 use crate::scanner::mission::MissionScanner;
 
@@ -126,11 +129,10 @@ impl ScannerInterface for Arma3ScannerAdapter {
         }
 
         Ok(ProcessingSummary {
-            processed_pbos: total_pbos_processed,
-            files_processed: total_files_processed,
+            processed_files: total_files_processed,
+            processing_time: elapsed_time,
             entries_found: total_entries_found,
-            elapsed_time,
-            errors,
+            output_files: vec![], // Scanner doesn't generate output files directly
         })
     }
     
@@ -179,5 +181,218 @@ impl ScannerInterface for Arma3ScannerAdapter {
         
         debug!("Processing configuration validation passed");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    fn create_test_config(cache_dir: PathBuf) -> ExtractionConfig {
+        ExtractionConfig {
+            game_data_extensions: vec![],
+            mission_extensions: vec![],
+            threads: 4,
+            timeout: 30,
+            verbose: false,
+            db_path: cache_dir.join("test.db"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scanner_adapter_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        // Adapter should be created successfully
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&cache_dir).unwrap();
+        
+        let config = create_test_config(cache_dir.clone());
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string(), "sqf".to_string()],
+            source_directories: vec![source_dir],
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_nonexistent_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        
+        let config = create_test_config(cache_dir);
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![PathBuf::from("/nonexistent/path")],
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source directory does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_source_not_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_file = temp_dir.path().join("source_file.txt");
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(&source_file, "test content").unwrap();
+        
+        let config = create_test_config(cache_dir);
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![source_file],
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source path is not a directory"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_invalid_db_parent() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        
+        let config = create_test_config(cache_dir);
+        let db_path = PathBuf::from("/nonexistent/parent/test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![],
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Database directory parent does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_nonexistent_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(PathBuf::from("/nonexistent/cache"));
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![],
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cache directory does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_processing_config_empty_source_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        
+        let config = create_test_config(cache_dir);
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![], // Empty source directories should be valid for workflow
+            verbose: false,
+        };
+        
+        let result = adapter.validate_processing_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_scan_files_invalid_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(PathBuf::from("/nonexistent/cache"));
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let source_dir = temp_dir.path().join("source");
+        let output_dir = temp_dir.path().join("output");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&output_dir).unwrap();
+        
+        let options = ProcessingOptions {
+            max_files: 1000,
+            max_depth: 10,
+            extensions: vec!["cpp".to_string()],
+            source_directories: vec![source_dir.clone()],
+            verbose: false,
+        };
+        
+        // This should fail due to invalid cache directory
+        let result = adapter.scan_files(&source_dir, &output_dir, &options).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_processing_options_mapping() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        
+        let config = create_test_config(cache_dir);
+        let db_path = temp_dir.path().join("test.db");
+        let adapter = Arma3ScannerAdapter::new(config, db_path);
+        
+        let options = ProcessingOptions {
+            max_files: 500,
+            max_depth: 5,
+            extensions: vec!["cpp".to_string(), "sqf".to_string(), "sqm".to_string()],
+            source_directories: vec![],
+            verbose: true,
+        };
+        
+        // Test that options validation passes
+        let validation_result = adapter.validate_processing_config(&options).await;
+        assert!(validation_result.is_ok());
     }
 }

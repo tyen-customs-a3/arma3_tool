@@ -5,7 +5,10 @@ use log::{info, debug};
 
 use arma3_database::DatabaseManager;
 use arma3_reporter::ReportCoordinator;
-use arma3_workflow::{ReporterInterface, ReportingOptions, ReportingSummary, WorkflowError, Result};
+use arma3_workflow::report::ReporterInterface;
+use arma3_workflow::types::summary::ReportingSummary;
+use arma3_workflow::types::options::ReportingOptions;
+use arma3_workflow::error::{WorkflowError, Result};
 
 /// Adapter that bridges the legacy reporter system with the new workflow system
 pub struct Arma3ReporterAdapter {
@@ -120,10 +123,9 @@ impl ReporterInterface for Arma3ReporterAdapter {
         }
 
         Ok(ReportingSummary {
-            reports_generated,
-            report_paths,
-            elapsed_time,
-            errors,
+            generated_reports: reports_generated,
+            report_time: elapsed_time,
+            output_files: report_paths,
         })
     }
     
@@ -239,10 +241,9 @@ impl ReporterInterface for FuzzyReporterAdapter {
         }
 
         Ok(ReportingSummary {
-            reports_generated,
-            report_paths,
-            elapsed_time,
-            errors,
+            generated_reports: reports_generated,
+            report_time: elapsed_time,
+            output_files: report_paths,
         })
     }
     
@@ -280,5 +281,264 @@ impl ReporterInterface for FuzzyReporterAdapter {
         
         debug!("Fuzzy reporting configuration validation passed");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+    use arma3_workflow::types::options::ReportFormat;
+
+    fn create_test_database(path: &PathBuf) -> Result<()> {
+        // Create a simple test database file
+        fs::write(path, "test database")?;
+        Ok(())
+    }
+
+    fn create_test_reporting_options() -> ReportingOptions {
+        ReportingOptions {
+            format: ReportFormat::Markdown,
+            output_path: None,
+            source_directories: vec![],
+            include_mission_dependencies: true,
+            include_game_data_classes: true,
+            include_missing_dependencies: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_reporter_adapter_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        // Adapter should be created successfully
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_reporter_adapter_with_ignore_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ignore_path = temp_dir.path().join("ignore.txt");
+        create_test_database(&db_path).unwrap();
+        fs::write(&ignore_path, "ignored_class").unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, Some(ignore_path));
+        // Adapter should be created successfully
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_reporter_adapter_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = FuzzyReporterAdapter::new(db_path, None);
+        // Adapter should be created successfully
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let source_dir = temp_dir.path().join("source");
+        create_test_database(&db_path).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let mut options = create_test_reporting_options();
+        options.source_directories = vec![source_dir];
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_nonexistent_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let mut options = create_test_reporting_options();
+        options.source_directories = vec![PathBuf::from("/nonexistent/path")];
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source directory does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_source_not_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let source_file = temp_dir.path().join("source_file.txt");
+        create_test_database(&db_path).unwrap();
+        fs::write(&source_file, "test content").unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let mut options = create_test_reporting_options();
+        options.source_directories = vec![source_file];
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source path is not a directory"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_nonexistent_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("nonexistent.db");
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let options = create_test_reporting_options();
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Database file does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_no_report_types() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let mut options = create_test_reporting_options();
+        options.include_mission_dependencies = false;
+        options.include_game_data_classes = false;
+        options.include_missing_dependencies = false;
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("At least one report type must be enabled"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_with_ignore_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ignore_path = temp_dir.path().join("ignore.txt");
+        create_test_database(&db_path).unwrap();
+        fs::write(&ignore_path, "ignored_class").unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, Some(ignore_path));
+        let options = create_test_reporting_options();
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_reporting_config_nonexistent_ignore_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let ignore_path = temp_dir.path().join("nonexistent_ignore.txt");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, Some(ignore_path));
+        let options = create_test_reporting_options();
+        
+        // Should succeed but log a warning about missing ignore file
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_reporter_validate_config_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = FuzzyReporterAdapter::new(db_path, None);
+        let options = create_test_reporting_options();
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_reporter_validate_config_nonexistent_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("nonexistent.db");
+        
+        let adapter = FuzzyReporterAdapter::new(db_path, None);
+        let options = create_test_reporting_options();
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Database file does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_generate_reports_nonexistent_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("nonexistent.db");
+        let output_dir = temp_dir.path().join("output");
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let options = create_test_reporting_options();
+        
+        // This should fail because database doesn't exist
+        let result = adapter.generate_reports(&temp_dir.path().to_path_buf(), &output_dir, &options).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_fuzzy_generate_reports_nonexistent_database() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("nonexistent.db");
+        let output_dir = temp_dir.path().join("output");
+        
+        let adapter = FuzzyReporterAdapter::new(db_path, None);
+        let options = create_test_reporting_options();
+        
+        // This should fail because database doesn't exist
+        let result = adapter.generate_reports(&temp_dir.path().to_path_buf(), &output_dir, &options).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_reporting_options_mapping() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        
+        // Test with selective report types
+        let mut options = create_test_reporting_options();
+        options.include_mission_dependencies = true;
+        options.include_game_data_classes = false;
+        options.include_missing_dependencies = false;
+        
+        let validation_result = adapter.validate_reporting_config(&options).await;
+        assert!(validation_result.is_ok());
+        
+        // Test with different format
+        options.format = ReportFormat::Json;
+        let validation_result = adapter.validate_reporting_config(&options).await;
+        assert!(validation_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_empty_source_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        create_test_database(&db_path).unwrap();
+        
+        let adapter = Arma3ReporterAdapter::new(db_path, None);
+        let mut options = create_test_reporting_options();
+        options.source_directories = vec![]; // Empty should be valid for workflow
+        
+        let result = adapter.validate_reporting_config(&options).await;
+        assert!(result.is_ok());
     }
 }

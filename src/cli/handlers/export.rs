@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 use log::{info, debug};
 
-use workflow::orchestrator::WorkflowOrchestrator;
-use workflow::export::ExportWorkflowHandler;
-use workflow::types::{Workflow, WorkflowType, ContentType};
-use workflow::types::options::{WorkflowOptions, ExportOptions};
+use arma3_workflow::orchestrator::WorkflowOrchestrator;
+use arma3_workflow::export::ExportWorkflowHandler;
+use arma3_workflow::types::{Workflow, WorkflowType, ContentType};
+use arma3_workflow::types::options::{WorkflowOptions, ExportOptions};
 use arma3_database::DatabaseManager;
 use crate::cli::adapters::Arma3ExporterAdapter;
 
