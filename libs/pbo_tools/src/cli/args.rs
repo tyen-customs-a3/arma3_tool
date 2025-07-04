@@ -51,4 +51,18 @@ pub enum Commands {
         #[arg(short = 'w', long)]
         ignore_warnings: bool,
     },
+    /// Show PBO properties and metadata
+    Properties {
+        /// Path to PBO file
+        pbo_path: PathBuf,
+    },
+    /// Validate PBO file integrity
+    Validate {
+        /// Path to PBO file
+        pbo_path: PathBuf,
+
+        /// Enable verbose output
+        #[arg(short, long)]
+        verbose: bool,
+    },
 }

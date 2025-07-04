@@ -15,6 +15,8 @@ name = "pbo_tools"
 path = "src/bin/pbo_tools.rs"
 
 [dependencies]
+hemtt-pbo = { workspace = true }
+hemtt-common = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 tempfile = { workspace = true }
@@ -23,11 +25,15 @@ walkdir = { workspace = true }
 clap = { workspace = true }
 regex = { workspace = true }
 env_logger = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 env_logger = { workspace = true }
 tempfile = { workspace = true }
 walkdir = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints.rust]
 dead_code = "allow"

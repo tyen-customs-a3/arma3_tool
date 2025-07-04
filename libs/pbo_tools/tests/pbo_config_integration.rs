@@ -1,8 +1,8 @@
 use pbo_tools::core::{PboApi, PboConfig, PboApiOps};
 use std::path::Path;
 
-#[test]
-fn test_custom_config_integration() {
+#[tokio::test]
+async fn test_custom_config_integration() {
     let config = PboConfig::builder()
         .add_bin_mapping("custom.bin", "custom.txt")
         .case_sensitive(true)
@@ -15,6 +15,6 @@ fn test_custom_config_integration() {
         .build();
         
     let test_pbo = Path::new("tests/data/mirrorform.pbo");
-    let result = api.list_contents(test_pbo).unwrap();
-    assert!(result.is_success());
+    let result = api.list_contents(test_pbo).await.unwrap();
+    assert!(!result.is_empty());
 }

@@ -79,6 +79,7 @@ parser_sqf = { path = "libs/parser_sqf" }
 parser_sqm = { path = "libs/parser_sqm" }
 sqf-analyzer = { path = "libs/sqf-analyzer" }
 hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
+hemtt-pbo = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-config = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-preprocessor = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-workspace = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
@@ -87,6 +88,7 @@ hemtt-sqm = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1c
 
 # External dependencies
 anyhow = "1.0.97"
+async-trait = "0.1.84"
 bincode = { version = "2.0.1", features = ["serde"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive"] }
