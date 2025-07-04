@@ -1,4 +1,5 @@
-use crate::scanner::{gamedata::GameDataScanner, mission::MissionScanner};
+use crate::scanner::gamedata::GameDataScanner;
+use crate::scanner::mission::MissionScanner;
 use anyhow::Result;
 use arma3_database::models::CacheConfig;
 use arma3_database::DatabaseManager;

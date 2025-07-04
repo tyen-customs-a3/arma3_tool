@@ -11,13 +11,7 @@ pub use arma3_workflow::{
     WorkflowType, ContentType, Workflow,
     WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ReportFormat,
     ExtractionSummary, ProcessingSummary, ReportingSummary,
-};
-
-// Re-export reporter functionality from arma3_reporter
-pub use arma3_reporter::{
-    ReportCoordinator, DependencyAnalyzer, ReportWriter, ClassHierarchyWriter,
-    DependencyAnalysis, DependencyReport, FuzzyMissingClassReport, MissingClassMatch, PotentialMatch,
-    ReporterError, Result as ReporterResult,
+    WorkflowError, Result as WorkflowResult,
 };
 
 pub use error::{Result, ToolError};

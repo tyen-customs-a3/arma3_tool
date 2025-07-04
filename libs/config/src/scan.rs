@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
 use arma3_extractor::ExtractionConfig;
+use crate::error::{ConfigError, Result};
 
 /// Configuration for the application scan settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,53 +38,53 @@ impl Default for ScanConfig {
 
 impl ScanConfig {
     /// Load configuration from a JSON file
-    pub fn load(config_path: &str) -> Result<Self, String> {
-        match fs::read_to_string(config_path) {
-            Ok(content) => {
-                match serde_json::from_str(&content) {
-                    Ok(config) => Ok(config),
-                    Err(e) => Err(format!("Failed to parse config: {}", e)),
-                }
-            },
-            Err(e) => Err(format!("Failed to read config file: {}", e)),
-        }
+    pub fn load(config_path: &str) -> Result<Self> {
+        let path = PathBuf::from(config_path);
+        let content = fs::read_to_string(&path)
+            .map_err(|e| ConfigError::io_error(&path, e.to_string()))?;
+        
+        serde_json::from_str(&content)
+            .map_err(|e| ConfigError::parse_error(e.to_string()))
     }
     
     /// Save configuration to a JSON file
-    pub fn save(&self, config_path: &str) -> Result<(), String> {
-        match serde_json::to_string_pretty(self) {
-            Ok(json) => {
-                match fs::write(config_path, json) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(format!("Failed to write config file: {}", e)),
-                }
-            },
-            Err(e) => Err(format!("Failed to serialize config: {}", e)),
-        }
+    pub fn save(&self, config_path: &str) -> Result<()> {
+        let path = PathBuf::from(config_path);
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| ConfigError::serialization_error(e.to_string()))?;
+        
+        fs::write(&path, json)
+            .map_err(|e| ConfigError::io_error(&path, e.to_string()))
     }
 
     /// Load configuration from environment variables
-    pub fn load_from_env() -> Result<Self, String> {
+    pub fn load_from_env() -> Result<Self> {
+        Self::load_from_env_with_prefix("ARMA3")
+    }
+
+    /// Load configuration from environment variables with custom prefix
+    pub fn load_from_env_with_prefix(prefix: &str) -> Result<Self> {
         let mut config = Self::default();
         
-        if let Ok(game_data_dirs) = std::env::var("ARMA3_GAME_DATA_DIRS") {
+        if let Ok(game_data_dirs) = std::env::var(format!("{}_GAME_DATA_DIRS", prefix)) {
             config.game_data_dirs = game_data_dirs.split(',').map(|s| s.trim().to_string()).collect();
         }
         
-        if let Ok(mission_dirs) = std::env::var("ARMA3_MISSION_DIRS") {
+        if let Ok(mission_dirs) = std::env::var(format!("{}_MISSION_DIRS", prefix)) {
             config.mission_dirs = mission_dirs.split(',').map(|s| s.trim().to_string()).collect();
         }
         
-        if let Ok(cache_dir) = std::env::var("ARMA3_CACHE_DIR") {
+        if let Ok(cache_dir) = std::env::var(format!("{}_CACHE_DIR", prefix)) {
             config.cache_dir = PathBuf::from(cache_dir);
         }
         
-        if let Ok(report_dir) = std::env::var("ARMA3_REPORT_DIR") {
+        if let Ok(report_dir) = std::env::var(format!("{}_REPORT_DIR", prefix)) {
             config.report_dir = PathBuf::from(report_dir);
         }
         
-        if let Ok(threads) = std::env::var("ARMA3_THREADS") {
-            config.threads = threads.parse().map_err(|e| format!("Invalid threads value: {}", e))?;
+        if let Ok(threads) = std::env::var(format!("{}_THREADS", prefix)) {
+            config.threads = threads.parse()
+                .map_err(|e| ConfigError::environment_error(format!("Invalid threads value: {}", e)))?;
         }
         
         Ok(config)
@@ -126,13 +127,17 @@ impl ScanConfig {
     }
     
     /// Validate the configuration
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<()> {
         if self.game_data_dirs.is_empty() && self.mission_dirs.is_empty() {
-            return Err("At least one game data directory or mission directory must be specified".to_string());
+            return Err(ConfigError::validation_error(
+                "At least one game data directory or mission directory must be specified"
+            ));
         }
         
         if self.threads == 0 {
-            return Err("Number of threads must be greater than 0".to_string());
+            return Err(ConfigError::validation_error(
+                "Number of threads must be greater than 0"
+            ));
         }
         
         Ok(())
