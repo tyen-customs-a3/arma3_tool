@@ -7,6 +7,7 @@ authors = ["Tom Campbell <tyen901@gmail.com>"]
 [dependencies]
 # Internal dependencies
 arma3_database = { workspace = true }
+arma3_config = { workspace = true }
 
 # External dependencies
 chrono = { workspace = true }

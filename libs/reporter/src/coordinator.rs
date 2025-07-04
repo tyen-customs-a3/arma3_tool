@@ -206,10 +206,10 @@ mod tests {
     use tempfile::tempdir;
     use std::fs;
 
-    fn create_basic_config_and_db(dir_path: &std::path::Path) -> (DatabaseManager, ScanConfig) {
+    fn create_basic_config_and_db(dir_path: &std::path::Path) -> (DatabaseManager, arma3_config::ScanConfig) {
         let db_path = dir_path.join("test.db");
         let db = DatabaseManager::new(&db_path).unwrap();
-        let config = ScanConfig::default();
+        let config = arma3_config::ScanConfig::default();
         (db, config)
     }
 
@@ -217,7 +217,7 @@ mod tests {
     fn test_report_coordinator() {
         let dir = tempdir().unwrap();
         let (db, config) = create_basic_config_and_db(dir.path());
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
 
         let class_repo = coordinator.class_repo();
         class_repo.create(&ClassModel::new("GameClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
@@ -241,7 +241,7 @@ mod tests {
     fn test_class_graph_generation() {
         let dir = tempdir().unwrap();
         let (db, config) = create_basic_config_and_db(dir.path());
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
         let class_repo = coordinator.class_repo();
         class_repo.create(&ClassModel::new("ParentClass".to_string(), None::<String>, None::<String>, Some(1),false)).unwrap();
         class_repo.create(&ClassModel::new("ChildClass1".to_string(),Some("ParentClass".to_string()), None::<String>, Some(2),false)).unwrap();
@@ -260,12 +260,12 @@ mod tests {
         let db = DatabaseManager::new(&db_path).unwrap();
         
         // Config with an ignore file
-        let mut config = ScanConfig::default();
+        let mut config = arma3_config::ScanConfig::default();
         let ignore_file_path = dir.path().join("ignored_fuzzy.txt");
         fs::write(&ignore_file_path, "IgnoredFuzzyClass\n").unwrap();
         config.ignore_classes_file = Some(ignore_file_path);
 
-        let coordinator = ReportCoordinator::new(&db, &config);
+        let coordinator = ReportCoordinator::new(&db, config.ignore_classes_file.clone());
         let class_repo = coordinator.class_repo();
         let mission_repo = coordinator.mission_repo();
 
