@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 # Local dependencies
-parser_advanced = { workspace = true }
+parser_hpp = { workspace = true }
 gamedata_scanner_models = { workspace = true }
 
 # External dependencies

@@ -10,8 +10,7 @@ path = "src/bin/batch_check.rs"
 [dependencies]
 gamedata_scanner = { workspace = true }
 gamedata_scanner_models = { workspace = true }
-parser_advanced = { workspace = true }
-parser_simple = { workspace = true }
+parser_hpp = { workspace = true }
 hemtt-common = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

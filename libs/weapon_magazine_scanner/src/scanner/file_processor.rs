@@ -10,7 +10,7 @@ use std::thread;
 use crossbeam_channel;
 use std::sync::Arc;
 
-use parser_advanced::{AdvancedProjectParser};
+use parser_hpp::{AdvancedProjectParser};
 use crate::models::{WeaponInfo, MagazineWellInfo};
 use super::{WeaponExtractor, MagazineExtractor};
 
@@ -32,12 +32,12 @@ pub struct FileProcessingResult {
 }
 
 /// Extract mod source from CfgPatches
-fn extract_mod_source_from_patches(game_classes: &[parser_advanced::GameClass]) -> Option<String> {
+fn extract_mod_source_from_patches(game_classes: &[parser_hpp::GameClass]) -> Option<String> {
     for class in game_classes {
         if class.name == "CfgPatches" {
             // CfgPatches contains patch classes, each representing a mod
             for prop in &class.properties {
-                if let parser_advanced::PropertyValue::Class(_) = prop.value {
+                if let parser_hpp::PropertyValue::Class(_) = prop.value {
                     // The property name is the mod name
                     return Some(prop.name.clone());
                 }
@@ -207,7 +207,7 @@ impl FileProcessor {
         for class in &game_classes {
             if class.name == "CfgWeapons" {
                 for prop in &class.properties {
-                    if let parser_advanced::PropertyValue::Class(ref weapon_class_value) = prop.value {
+                    if let parser_hpp::PropertyValue::Class(ref weapon_class_value) = prop.value {
                          if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(weapon_class_value, original_absolute_path) {
                             weapon_info.mod_source = mod_source.clone();
                             weapons.push(weapon_info);
@@ -217,9 +217,9 @@ impl FileProcessor {
             } else {
                 for prop in &class.properties {
                     if prop.name == "CfgWeapons" {
-                        if let parser_advanced::PropertyValue::Class(ref cfg_weapons_class) = prop.value {
+                        if let parser_hpp::PropertyValue::Class(ref cfg_weapons_class) = prop.value {
                             for inner_prop in &cfg_weapons_class.properties {
-                                if let parser_advanced::PropertyValue::Class(ref weapon_class_value) = inner_prop.value {
+                                if let parser_hpp::PropertyValue::Class(ref weapon_class_value) = inner_prop.value {
                                     if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(weapon_class_value, original_absolute_path) {
                                         weapon_info.mod_source = mod_source.clone();
                                         weapons.push(weapon_info);
@@ -236,7 +236,7 @@ impl FileProcessor {
             } else {
                 for prop in &class.properties {
                     if prop.name == "CfgMagazineWells" {
-                         if let parser_advanced::PropertyValue::Class(ref cfg_magazine_wells_class) = prop.value {
+                         if let parser_hpp::PropertyValue::Class(ref cfg_magazine_wells_class) = prop.value {
                             MagazineExtractor::extract_magazine_wells_static(cfg_magazine_wells_class, original_absolute_path, &mod_source, &mut magazine_wells);
                         }
                     }
