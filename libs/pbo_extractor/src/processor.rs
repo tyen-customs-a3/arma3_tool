@@ -12,6 +12,7 @@ use std::collections::HashSet;
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
     /// API for interacting with PBO files
+    #[allow(dead_code)]
     pbo_api: PboApi,
     
     /// Number of threads to use for extraction

@@ -177,7 +177,7 @@ impl WorkflowOrchestrator {
         let start_time = Instant::now();
         let work_dir = tempfile::tempdir()
             .map_err(|e| WorkflowError::io_error(PathBuf::new(), e.to_string()))?
-            .into_path();
+            .keep();
 
         let context = WorkflowContext {
             workflow: workflow.clone(),
