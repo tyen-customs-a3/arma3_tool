@@ -1,6 +1,6 @@
 use anyhow::Result;
 use arma3_database::DatabaseManager;
-use crate::reporter::ReportCoordinator;
+use arma3_reporter::ReportCoordinator;
 use crate::config::ScanConfig;
 use std::path::PathBuf;
 use log::info;
@@ -21,8 +21,8 @@ pub async fn run_fuzzy_report(
     let db_manager = DatabaseManager::new(&db_path)?;
     info!("Database manager initialized for: {}", db_path.display());
 
-    // Create report coordinator
-    let coordinator = ReportCoordinator::new(&db_manager, config);
+    // Create report coordinator with ignore classes file from config
+    let coordinator = ReportCoordinator::new(&db_manager, config.ignore_classes_file.clone());
     info!("Report coordinator created.");
 
     // Generate the fuzzy missing class report

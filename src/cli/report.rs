@@ -1,4 +1,5 @@
-use crate::{reporter::ReportCoordinator, config::ScanConfig};
+use crate::config::ScanConfig;
+use arma3_reporter::ReportCoordinator;
 use anyhow::Result;
 use arma3_database::DatabaseManager;
 use log::info;
@@ -13,8 +14,8 @@ pub async fn run_report(db_path: PathBuf, output_dir: PathBuf, config: &ScanConf
     let db_manager = DatabaseManager::new(&db_path)
         .map_err(|e| anyhow::anyhow!("Failed to create database manager: {}", e))?;
 
-    // Create report coordinator with config
-    let coordinator = ReportCoordinator::new(&db_manager, config);
+    // Create report coordinator with ignore classes file from config
+    let coordinator = ReportCoordinator::new(&db_manager, config.ignore_classes_file.clone());
 
     // Generate dependency report
     info!("Generating dependency report...");
