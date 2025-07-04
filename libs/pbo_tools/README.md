@@ -1,24 +1,22 @@
 # PBO Tools RS
 
-A Rust library and CLI tool for working with PBO (Packed Binary Object) files. This toolkit provides functionality for listing, extracting, and managing PBO files with robust error handling and configuration options.
+A Rust library and CLI tool for working with PBO (Packed Binary Object) files. This toolkit provides native Rust functionality for listing, extracting, and managing PBO files using HEMTT's PBO crate, with robust error handling and async operations.
 
 ## Features
 
-- List contents of PBO files (standard and brief formats)
-- Extract files with optional filtering
-- Binary file conversion handling
-- Configurable timeout and retry mechanisms
-- Progress tracking and detailed logging
-- Error handling and validation
-- Temporary file management
+- **Native Rust Implementation**: No external dependencies required
+- **Async Operations**: Modern async/await support for better performance
+- **Cross-Platform**: Works on Linux, macOS, and Windows
+- List contents of PBO files with detailed metadata
+- Extract files with pattern filtering support
+- PBO properties and validation
+- Comprehensive error handling and logging
+- Configurable timeouts and retry mechanisms
 
 ## Prerequisites
 
-Before using this tool, ensure you have:
-- Rust toolchain installed
-- Mikero's Tools ExtractPbo binary in your system PATH
-  - Download from: [Mikero's Tools](https://mikero.bytex.digital/Downloads)
-  - Add the installation directory to your system's PATH environment variable
+- Rust toolchain installed (1.70+)
+- No external tools required - pure Rust implementation!
 
 ## Installation
 
@@ -42,66 +40,94 @@ Extract files from a PBO:
 pbo_tools extract path/to/file.pbo output/dir
 ```
 
+Show PBO properties and metadata:
+```bash
+pbo_tools properties path/to/file.pbo
+```
+
+Validate PBO integrity:
+```bash
+pbo_tools validate path/to/file.pbo
+```
+
 Options:
-- `--brief` - Use brief directory-style output listing
-- `--verbose` - Enable verbose output
-- `--filter` - Extract specific files (supports wildcards)
-- `--ignore-warnings` - Don't treat warnings as errors
+- `--verbose` - Enable verbose output with detailed file information
+- `--filter` - Extract specific files (supports glob patterns like *.cpp)
 - `--timeout` - Set operation timeout in seconds
 
 ### Library Usage
 
-Basic usage:
+Basic usage with async operations:
 ```rust
 use pbo_tools::core::PboApi;
 use std::path::Path;
 
-let api = PboApi::builder()
-    .with_timeout(30)
-    .build();
-
-// List contents
-let pbo_path = Path::new("mission.pbo");
-let result = api.list_contents(&pbo_path).unwrap();
-println!("Files in PBO: {:?}", result.get_file_list());
-
-// Extract specific files
-let output_dir = Path::new("output");
-api.extract_files(&pbo_path, &output_dir, Some("*.cpp")).unwrap();
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let api = PboApi::new();
+    
+    // List contents
+    let pbo_path = Path::new("mission.pbo");
+    let files = api.list_contents(&pbo_path).await?;
+    println!("Files in PBO: {} files", files.len());
+    
+    // Extract specific files with pattern filtering
+    let output_dir = Path::new("output");
+    api.extract_filtered(&pbo_path, "*.cpp", &output_dir).await?;
+    
+    // Get PBO properties
+    let properties = api.get_properties(&pbo_path).await?;
+    println!("PBO Version: {:?}", properties.version);
+    
+    // Validate PBO integrity
+    let validation = api.validate_pbo(&pbo_path).await?;
+    println!("PBO is valid: {}", validation.is_valid());
+    
+    Ok(())
+}
 ```
 
-Advanced configuration:
+Using the PBO operations trait directly:
 ```rust
-use pbo_tools::core::{PboApi, PboConfig};
+use pbo_tools::ops::{HemttPboOperations, PboOperations};
+use std::path::Path;
 
-let config = PboConfig::builder()
-    .case_sensitive(true)
-    .max_retries(5)
-    .build();
-
-let api = PboApi::builder()
-    .with_config(config)
-    .with_timeout(30)
-    .build();
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ops = HemttPboOperations::new();
+    
+    // List contents
+    let pbo_path = Path::new("mission.pbo");
+    let files = ops.list_contents(&pbo_path).await?;
+    
+    // Extract all files
+    let output_dir = Path::new("output");
+    ops.extract_all(&pbo_path, &output_dir).await?;
+    
+    Ok(())
+}
 ```
 
 ## Project Structure
 
 - `src/cli` - Command-line interface implementation
-- `src/core` - Core API and configuration
-- `src/error` - Error types and handling
-- `src/extract` - PBO extraction functionality
+- `src/core` - Core API and PBO operations
+- `src/ops` - Modern PBO operations using HEMTT backend
+  - `types` - Data structures for PBO operations
+  - `error` - Error handling for PBO operations
+  - `traits` - Async trait definitions
+  - `hemtt_backend` - HEMTT PBO implementation
 - `src/fs` - File system operations
 - `tests` - Integration and unit tests
 
 ## Error Handling
 
-The library uses custom error types for different scenarios:
-- `PboError` - Main error enum
-- `ExtractError` - Extraction-specific errors
+The library uses comprehensive error types for different scenarios:
+- `PboOperationError` - Main error enum for PBO operations
+- `PboError` - Legacy error support for backward compatibility
 - `FileSystemError` - File system operation errors
 
-All operations return a `Result` type for proper error handling.
+All operations return a `Result` type for proper error handling with detailed error messages and context.
 
 ## Contributing
 

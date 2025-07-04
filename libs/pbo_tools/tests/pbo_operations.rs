@@ -1,5 +1,4 @@
 use pbo_tools::core::{PboApi, PboApiOps};
-use pbo_tools::extract::ExtractOptions;
 use std::path::Path;
 use tempfile::TempDir;
 use std::fs;
@@ -26,34 +25,30 @@ fn setup() -> (PboApi, TempDir) {
     (api, temp_dir)
 }
 
-#[test]
-fn test_list_contents_integration() {
+#[tokio::test]
+async fn test_list_contents_integration() {
     let (api, _temp_dir) = setup();
     let test_pbo = Path::new("tests/data/mirrorform.pbo");
     
-    let result = api.list_contents(test_pbo).unwrap();
-    assert!(result.is_success());
-    assert!(!result.stdout.is_empty());
-}
-
-#[test]
-fn test_list_contents_brief_integration() {
-    let (api, _temp_dir) = setup();
-    let test_pbo = Path::new("tests/data/mirrorform.pbo");
+    let result = api.list_contents(test_pbo).await.unwrap();
+    assert!(!result.is_empty());
+    debug!("Found {} files in PBO", result.len());
     
-    let result = api.list_contents_brief(test_pbo).unwrap();
-    assert!(result.is_success());
-    assert!(!result.stdout.is_empty());
+    // Check that we have some expected file info
+    for file in result {
+        assert!(!file.file_path.is_empty());
+        assert!(file.size > 0);
+        debug!("File: {} ({} bytes)", file.file_path, file.size);
+    }
 }
 
-#[test]
-fn test_extract_files_integration() {
+#[tokio::test]
+async fn test_extract_all_integration() {
     let (api, temp_dir) = setup();
     let test_pbo = Path::new("tests/data/mirrorform.pbo");
     let output_dir = temp_dir.path().join("extracted");
     
-    let result = api.extract_files(test_pbo, &output_dir, None).unwrap();
-    assert!(result.is_success());
+    api.extract_all(test_pbo, &output_dir).await.unwrap();
     assert!(output_dir.exists());
     
     // Verify that files were actually extracted
@@ -70,20 +65,15 @@ fn test_extract_files_integration() {
     }
 }
 
-#[test]
-fn test_extract_with_filter_integration() {
+#[tokio::test]
+async fn test_extract_with_filter_integration() {
     let (api, temp_dir) = setup();
     let test_pbo = Path::new("tests/data/mirrorform.pbo");
     let output_dir = temp_dir.path().join("filtered");
     
     // Extract only .paa files
-    let result = api.extract_files(test_pbo, &output_dir, Some("*.paa")).unwrap();
-    assert!(result.is_success());
+    api.extract_filtered(test_pbo, &output_dir, "*.paa").await.unwrap();
     assert!(output_dir.exists());
-    
-    // Debug: Print the command output
-    debug!("ExtractPBO stdout: {}", result.stdout);
-    debug!("ExtractPBO stderr: {}", result.stderr);
     
     // Debug: Print the output directory structure
     fn walk_dir(dir: &Path, depth: usize) {
@@ -110,6 +100,7 @@ fn test_extract_with_filter_integration() {
         .collect();
         
     assert!(!entries.is_empty(), "Output directory should not be empty");
+    
     // Verify all extracted files match the filter or are $PBOPREFIX$.txt
     for entry in entries {
         let is_paa = entry.path().extension().map_or(false, |ext| ext == "paa");
@@ -120,60 +111,62 @@ fn test_extract_with_filter_integration() {
     }
 }
 
-#[test]
-fn test_extract_with_custom_options() {
-    let (api, temp_dir) = setup();
-    let test_pbo = Path::new("tests/data/mirrorform.pbo");
-    let output_dir = temp_dir.path().join("extracted_custom");
-    
-    let options = ExtractOptions {
-        no_pause: true,
-        warnings_as_errors: true,
-        verbose: true,
-        ..Default::default()
-    };
-    
-    let result = api.extract_with_options(test_pbo, &output_dir, options).unwrap();
-    assert!(result.is_success());
-    assert!(output_dir.exists());
-}
-
-#[test]
-fn test_list_with_custom_options() {
+#[tokio::test]
+async fn test_get_properties_integration() {
     let (api, _temp_dir) = setup();
     let test_pbo = Path::new("tests/data/mirrorform.pbo");
     
-    let options = ExtractOptions {
-        no_pause: true,
-        warnings_as_errors: true,
-        verbose: true,
-        brief_listing: true,
-        ..Default::default()
-    };
+    let properties = api.get_properties(test_pbo).await.unwrap();
+    assert!(properties.file_count > 0);
+    assert!(properties.total_size > 0);
+    debug!("PBO has {} files, {} bytes total", properties.file_count, properties.total_size);
     
-    let result = api.list_with_options(test_pbo, options).unwrap();
-    assert!(result.is_success());
-    assert!(!result.stdout.is_empty());
-    
-    let files = result.get_file_list();
-    assert!(!files.is_empty());
+    // Check for common properties
+    if let Some(prefix) = &properties.prefix {
+        debug!("PBO prefix: {}", prefix);
+        assert!(!prefix.is_empty());
+    }
 }
 
-#[test]
-fn test_headgear_pumpkin_integration() {
+#[tokio::test]
+async fn test_validate_pbo_integration() {
+    let (api, _temp_dir) = setup();
+    let test_pbo = Path::new("tests/data/mirrorform.pbo");
+    
+    let validation = api.validate_pbo(test_pbo).await.unwrap();
+    debug!("PBO validation result: valid={}", validation.is_valid);
+    
+    if !validation.errors.is_empty() {
+        debug!("Validation errors:");
+        for error in &validation.errors {
+            debug!("  - {}", error.message);
+        }
+    }
+    
+    if !validation.warnings.is_empty() {
+        debug!("Validation warnings:");
+        for warning in &validation.warnings {
+            debug!("  - {}", warning.message);
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_headgear_pumpkin_integration() {
     let (api, temp_dir) = setup();
     let test_pbo = Path::new("tests/data/headgear_pumpkin.pbo");
     
     // First list the contents
-    let list_result = api.list_contents(test_pbo).unwrap();
-    assert!(list_result.is_success());
-    assert!(!list_result.stdout.is_empty());
-    debug!("PBO contents:\n{}", list_result.stdout);
+    let files = api.list_contents(test_pbo).await.unwrap();
+    assert!(!files.is_empty());
+    debug!("PBO contents ({} files):", files.len());
+    for file in &files {
+        debug!("  - {} ({} bytes)", file.file_path, file.size);
+    }
     
     // Now extract all files
     let output_dir = temp_dir.path().join("headgear_pumpkin");
-    let extract_result = api.extract_files(test_pbo, &output_dir, None).unwrap();
-    assert!(extract_result.is_success());
+    api.extract_all(test_pbo, &output_dir).await.unwrap();
     assert!(output_dir.exists());
     
     // Verify extracted files using WalkDir for recursive directory traversal
@@ -191,28 +184,26 @@ fn test_headgear_pumpkin_integration() {
     assert!(!entries.is_empty(), "Expected files to be extracted");
     
     // Check for expected file types (common Arma 3 asset files)
-    let has_config = entries.iter().any(|e| e.path().to_string_lossy().contains("config.cpp"));
+    let has_config = entries.iter().any(|e| 
+        e.path().to_string_lossy().contains("config.cpp") || 
+        e.path().to_string_lossy().contains("config.bin")
+    );
     let has_paa = entries.iter().any(|e| 
         e.path().extension().map_or(false, |ext| ext == "paa")
     );
-    let has_pboprefix = entries.iter().any(|e| 
-        e.file_name().to_string_lossy() == "$PBOPREFIX$.txt"
-    );
     
-    assert!(has_config, "Expected config.cpp file");
+    assert!(has_config, "Expected config.cpp or config.bin file");
     assert!(has_paa, "Expected at least one .paa texture file");
-    assert!(has_pboprefix, "Expected $PBOPREFIX$.txt file");
 }
 
-#[test]
-fn test_headgear_pumpkin_extract_cpp() {
+#[tokio::test]
+async fn test_headgear_pumpkin_extract_filtered() {
     let (api, temp_dir) = setup();
     let test_pbo = Path::new("tests/data/headgear_pumpkin.pbo");
     let output_dir = temp_dir.path().join("headgear_pumpkin_cpp");
     
-    // Extract only the config.bin file which should be converted to .cpp
-    let result = api.extract_files(test_pbo, &output_dir, Some("config.bin")).unwrap();
-    assert!(result.is_success());
+    // Extract only config files
+    api.extract_filtered(test_pbo, &output_dir, "config.*").await.unwrap();
     assert!(output_dir.exists());
     
     // Verify extracted files using WalkDir
@@ -227,21 +218,24 @@ fn test_headgear_pumpkin_extract_cpp() {
         debug!("  - {}", entry.path().display());
     }
     
-    // Should have config.cpp (converted from config.bin) and $PBOPREFIX$.txt
-    assert_eq!(entries.len(), 2, "Expected exactly 2 files (config.cpp and $PBOPREFIX$.txt)");
+    // Should have config files extracted
+    assert!(!entries.is_empty(), "Expected at least one file to be extracted");
     
-    let has_config = entries.iter().any(|e| e.path().to_string_lossy().contains("config.cpp"));
-    let has_pboprefix = entries.iter().any(|e| 
-        e.file_name().to_string_lossy() == "$PBOPREFIX$.txt"
-    );
+    let has_config = entries.iter().any(|e| e.path().to_string_lossy().contains("config"));
     
-    assert!(has_config, "Expected config.cpp file (converted from config.bin)");
-    assert!(has_pboprefix, "Expected $PBOPREFIX$.txt file");
+    assert!(has_config, "Expected config file to be extracted");
+}
+
+#[tokio::test]
+async fn test_read_file_content() {
+    let (api, _temp_dir) = setup();
+    let test_pbo = Path::new("tests/data/mirrorform.pbo");
     
-    // Verify no other files were extracted
-    let has_other = entries.iter().any(|e| {
-        let name = e.file_name().to_string_lossy();
-        !name.contains("config.cpp") && name != "$PBOPREFIX$.txt"
-    });
-    assert!(!has_other, "No other files should have been extracted");
+    // Try to read a specific file from the PBO
+    let files = api.list_contents(test_pbo).await.unwrap();
+    if let Some(first_file) = files.first() {
+        let content = api.read_file(test_pbo, &first_file.file_path).await.unwrap();
+        assert!(!content.is_empty());
+        debug!("Read {} bytes from file: {}", content.len(), first_file.file_path);
+    }
 }

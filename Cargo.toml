@@ -47,8 +47,6 @@ members = [
     "libs/reporter",
     "libs/scanner_gamedata",
     "libs/scanner_gamedata/models",
-    "libs/scanner_gamedata/parser_advanced",
-    "libs/scanner_gamedata/parser_simple",
     "libs/scanner_gamedata/tool",
     "libs/scanner_mission",
     "libs/sqf-analyzer",
@@ -84,14 +82,13 @@ arma3_workflow = { path = "libs/workflow" }
 pbo_tools = { path = "libs/pbo_tools" }
 gamedata_scanner = { path = "libs/scanner_gamedata" }
 gamedata_scanner_models = { path = "libs/scanner_gamedata/models" }
-parser_advanced = { path = "libs/scanner_gamedata/parser_advanced" }
-parser_simple = { path = "libs/scanner_gamedata/parser_simple" }
 mission_scanner = { path = "libs/scanner_mission" }
 parser_hpp = { path = "libs/parser_hpp" }
 parser_sqf = { path = "libs/parser_sqf" }
 parser_sqm = { path = "libs/parser_sqm" }
 sqf-analyzer = { path = "libs/sqf-analyzer" }
 hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
+hemtt-pbo = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-config = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-preprocessor = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-workspace = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
@@ -100,6 +97,7 @@ hemtt-sqm = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1c
 
 # External dependencies
 anyhow = "1.0.97"
+async-trait = "0.1.84"
 bincode = { version = "2.0.1", features = ["serde"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 clap = { version = "4.5.32", features = ["derive"] }

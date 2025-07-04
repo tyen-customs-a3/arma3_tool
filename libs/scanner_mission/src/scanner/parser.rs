@@ -5,7 +5,7 @@ use std::path::Path;
 // External crate imports
 use anyhow::{Result, anyhow};
 use log::{debug, warn};
-use parser_hpp::{parse_file as parser_hpp_file, HppValue};
+use parser_hpp::{parse_file as parser_hpp_file, PropertyValue};
 use sqf_analyzer::{Args, analyze_sqf};
 use parser_sqm::extract_class_dependencies;
 
@@ -91,7 +91,7 @@ pub fn parse_hpp(file_path: &Path) -> Result<Vec<ClassReference>> {
         // Add both array properties and string properties
         for property in class.properties {
             match &property.value {
-                HppValue::Array(items) => {
+                PropertyValue::Array(items) => {
                     // Process array properties (uniform[], vest[], etc.)
                     let property_name = property.name.to_lowercase();
                     if is_equipment_array(&property_name) {
@@ -114,7 +114,7 @@ pub fn parse_hpp(file_path: &Path) -> Result<Vec<ClassReference>> {
                         }
                     }
                 },
-                HppValue::String(value) => {
+                PropertyValue::String(value) => {
                     // Process string properties (uniform=, vest=, etc.)
                     let property_name = property.name.to_lowercase();
                     if is_equipment_property(&property_name) {
