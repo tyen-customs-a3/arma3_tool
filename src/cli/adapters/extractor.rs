@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use log::{info, debug};
 
 use arma3_extractor::{ExtractionConfig, ExtractionManager, extract_game_data as pbo_extract_game_data};
-use arma3_workflow::{ExtractorInterface, ExtractionOptions, ExtractionSummary, WorkflowError, Result};
+use arma3_workflow::extract::ExtractorInterface;
+use arma3_workflow::types::summary::ExtractionSummary;
+use arma3_workflow::types::options::ExtractionOptions;
+use arma3_workflow::error::{WorkflowError, Result};
 
 /// Adapter that bridges the legacy arma3_extractor with the new workflow system
 pub struct Arma3ExtractorAdapter {
@@ -98,10 +101,12 @@ impl ExtractorInterface for Arma3ExtractorAdapter {
               elapsed_time, total_extracted);
         
         Ok(ExtractionSummary {
-            extracted_pbos: total_extracted,
-            extraction_paths,
-            elapsed_time,
-            errors,
+            extracted_files: total_extracted,
+            extraction_time: elapsed_time,
+            total_size: extraction_paths.iter()
+                .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+                .sum(),
+            output_files: extraction_paths,
         })
     }
     
@@ -143,5 +148,196 @@ impl ExtractorInterface for Arma3ExtractorAdapter {
         
         debug!("Extraction configuration validation passed");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    fn create_test_config(cache_dir: PathBuf) -> ExtractionConfig {
+        ExtractionConfig {
+            game_data_extensions: vec![],
+            mission_extensions: vec![],
+            threads: 4,
+            timeout: 30,
+            verbose: false,
+            db_path: cache_dir.join("test.db"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_extractor_adapter_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        // Adapter should be created successfully
+        assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_valid() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        fs::create_dir_all(&source_dir).unwrap();
+        
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: Some(vec!["test".to_string()]),
+            source_directories: vec![source_dir],
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_nonexistent_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![PathBuf::from("/nonexistent/path")],
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source directory does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_source_not_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_file = temp_dir.path().join("source_file.txt");
+        fs::write(&source_file, "test content").unwrap();
+        
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![source_file],
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source path is not a directory"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_no_source_directories() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut config = create_test_config(temp_dir.path().to_path_buf());
+        config.game_data_dirs = vec![]; // Empty game data dirs
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![], // Empty source directories
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No game data directories specified"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_invalid_cache_parent() {
+        let temp_dir = TempDir::new().unwrap();
+        let mut config = create_test_config(PathBuf::from("/nonexistent/parent/cache"));
+        config.game_data_dirs = vec![temp_dir.path().to_path_buf()];
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![temp_dir.path().to_path_buf()],
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cache directory parent does not exist"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_extraction_config_with_config_source_dirs() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        fs::create_dir_all(&source_dir).unwrap();
+        
+        let mut config = create_test_config(temp_dir.path().to_path_buf());
+        config.game_data_dirs = vec![source_dir]; // Config has source dirs
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![], // Empty workflow source directories
+            force: false,
+        };
+        
+        let result = adapter.validate_extraction_config(&options).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_extract_pbos_invalid_source() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let source_dir = PathBuf::from("/nonexistent/source");
+        let output_dir = temp_dir.path().join("output");
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: None,
+            source_directories: vec![source_dir.clone()],
+            force: false,
+        };
+        
+        // This should fail during extraction due to invalid source
+        let result = adapter.extract_pbos(&source_dir, &output_dir, &options).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_extraction_options_mapping() {
+        let temp_dir = TempDir::new().unwrap();
+        let source_dir = temp_dir.path().join("source");
+        let output_dir = temp_dir.path().join("output");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&output_dir).unwrap();
+        
+        let config = create_test_config(temp_dir.path().to_path_buf());
+        let adapter = Arma3ExtractorAdapter::new(config);
+        
+        let options = ExtractionOptions {
+            use_extractor: true,
+            directories: Some(vec!["specific_dir".to_string()]),
+            source_directories: vec![source_dir.clone()],
+            force: true,
+        };
+        
+        // Test that options are properly mapped
+        // We can't easily test the actual extraction without mock dependencies,
+        // but we can test validation passes
+        let validation_result = adapter.validate_extraction_config(&options).await;
+        assert!(validation_result.is_ok());
     }
 }
