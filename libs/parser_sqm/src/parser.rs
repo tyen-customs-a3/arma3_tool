@@ -1,4 +1,3 @@
-use std::error::Error;
 use hemtt_sqm::SqmFile;
 
 /// Parse SQM content and return a SqmFile structure from HEMTT's sqm library

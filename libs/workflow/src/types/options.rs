@@ -41,6 +41,12 @@ impl WorkflowOptions {
         self
     }
     
+    /// Create workflow options with custom export settings
+    pub fn with_export(mut self, export: ExportOptions) -> Self {
+        self.export = export;
+        self
+    }
+    
     /// Enable verbose mode for all options
     pub fn verbose(mut self) -> Self {
         self.processing.verbose = true;

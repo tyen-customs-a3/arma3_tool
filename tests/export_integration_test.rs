@@ -6,7 +6,7 @@ use tokio;
 use serde_json;
 
 use arma3_tool::cli::run_export;
-use arma3_tool::config::ItemFilterConfig;
+use arma3_config::ItemFilterConfig;
 use arma3_database::{DatabaseManager, ClassRepository, ClassModel};
 use arma3_models::types::PropertyValue;
 
@@ -238,7 +238,7 @@ fn create_inheritance_test_data() -> Vec<ClassModel> {
 
 /// Create a test configuration file
 fn create_test_config() -> ItemFilterConfig {
-    use arma3_tool::config::{ItemTypeConfig, ExclusionRules};
+    use arma3_config::{ItemTypeConfig, ExclusionRules};
     
     ItemFilterConfig {
         version: "1.0".to_string(),

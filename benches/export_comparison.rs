@@ -6,7 +6,7 @@ use tempfile::tempdir;
 use tokio;
 
 use arma3_tool::cli::{run_export, run_export_optimized};
-use arma3_tool::config::{ItemFilterConfig, ItemTypeConfig, ExclusionRules};
+use arma3_config::{ItemFilterConfig, ItemTypeConfig, ExclusionRules};
 use arma3_database::{DatabaseManager, ClassRepository, ClassModel};
 use arma3_models::types::PropertyValue;
 

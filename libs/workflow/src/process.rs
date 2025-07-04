@@ -1,7 +1,7 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use async_trait::async_trait;
-use log::{info, debug, error};
+use log::{info, debug};
 
 use crate::error::{WorkflowError, Result};
 use crate::orchestrator::{
@@ -162,7 +162,7 @@ impl ScannerInterface for MockScanner {
             processed_pbos: 3,
             files_processed: 25,
             entries_found: 150,
-            elapsed_time: Duration::from_secs(30),
+            elapsed_time: std::time::Duration::from_secs(30),
             errors: Vec::new(),
         })
     }

@@ -6,7 +6,6 @@ use tokio::task;
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
-use pbo_tools::extract::ExtractOptions;
 use pbo_tools::core::api::{PboApi, PboApiOps};
 use std::collections::HashSet;
 
@@ -83,7 +82,7 @@ impl PboProcessor {
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
             let semaphore_clone = Arc::clone(&semaphore);
-            let processor = self.pbo_api.clone();
+            let processor = PboApi::new(60); // Create a new instance with 60 second timeout (TODO: Make PboApi Clone-able)
 
             let task = task::spawn(async move {
                 // Acquire semaphore permit
@@ -107,14 +106,6 @@ impl PboProcessor {
                 
                 let temp_dir_path = temp_dir.path().to_path_buf();
 
-                // Setup extraction options with defaults
-                let mut options = ExtractOptions {
-                    no_pause: true,
-                    warnings_as_errors: false,
-                    brief_listing: false,
-                    ..Default::default()
-                };
-
                 // --- Filter Augmentation for pbo_tools ---
                 let mut pbo_tool_extensions = extensions.clone();
                 let user_wants_cpp = extensions.iter().any(|e| e == "cpp");
@@ -125,14 +116,20 @@ impl PboProcessor {
                     pbo_tool_extensions.push("bin".to_string());
                 }
 
-                // Set file extension filter for pbo_tools
-                if !pbo_tool_extensions.is_empty() {
-                    options.file_filter = Some(pbo_tool_extensions.join(","));
-                }
+                // Create a filter pattern for the requested extensions
+                let filter_pattern = if pbo_tool_extensions.is_empty() {
+                    "*".to_string() // Extract all files if no specific extensions requested
+                } else {
+                    // Create a pattern like "*.cpp,*.bin" 
+                    pbo_tool_extensions.iter()
+                        .map(|ext| format!("*.{}", ext))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
                 // -----------------------------------------
 
-                // Try to extract the PBO
-                match processor.extract_with_options(&pbo_path, temp_dir.path(), options) {
+                // Try to extract the PBO using the new filtered API
+                match processor.extract_filtered(&pbo_path, temp_dir.path(), &filter_pattern).await {
                     Ok(_) => {
                         // Add a small delay to ensure file handles are released
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;

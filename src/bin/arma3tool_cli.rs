@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use arma3_tool::cli::{Cli, Commands};
-use arma3_tool::config::ScanConfig;
+use arma3_config::ScanConfig;
 use clap::Parser;
 use std::path::PathBuf;
 

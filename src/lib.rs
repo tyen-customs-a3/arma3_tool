@@ -1,7 +1,5 @@
 pub mod cli;
-pub mod config;
 pub mod error;
-pub mod scanner;
 
 // Re-export configuration from arma3_config
 pub use arma3_config::{ScanConfig, ItemFilterConfig, VisualizationConfig};
@@ -14,4 +12,4 @@ pub use arma3_workflow::{
     WorkflowError, Result as WorkflowResult,
 };
 
-pub use error::{Result, ToolError};
+pub use error::Result;
