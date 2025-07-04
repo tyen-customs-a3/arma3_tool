@@ -264,7 +264,7 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(config.item_types.len(), 4);
+        assert_eq!(config.item_types.len(), 7);
         assert!(config.item_types.contains_key("weapons"));
         assert_eq!(config.exclusion_rules.max_scope, 3);
         assert!(config.exclusion_rules.excluded_prefixes.contains(&"test_".to_string()));

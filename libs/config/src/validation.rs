@@ -147,7 +147,7 @@ impl ConfigValidation for ScanConfig {
         
         // Check cache directory
         if let Some(parent) = self.cache_dir.parent() {
-            if !parent.exists() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
                 result.add_error(ValidationError::InvalidPath {
                     path: format!("Cache directory parent does not exist: {}", parent.display())
                 });
@@ -156,7 +156,7 @@ impl ConfigValidation for ScanConfig {
         
         // Check report directory
         if let Some(parent) = self.report_dir.parent() {
-            if !parent.exists() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
                 result.add_error(ValidationError::InvalidPath {
                     path: format!("Report directory parent does not exist: {}", parent.display())
                 });
@@ -479,7 +479,8 @@ mod tests {
     
     #[test]
     fn test_config_conflicts() {
-        let scan_config = ScanConfig::default();
+        let mut scan_config = ScanConfig::default();
+        scan_config.game_data_dirs.push("test_dir".to_string()); // Make it valid
         let item_filter_config = ItemFilterConfig::default();
         let mut viz_config = VisualizationConfig::default();
         
