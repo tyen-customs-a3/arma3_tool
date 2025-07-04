@@ -113,12 +113,13 @@ pub trait PboOperations: Send + Sync {
     /// 
     /// ```rust
     /// # use pbo_tools::ops::PboOperations;
+    /// # use std::path::Path;
     /// # async fn example(pbo_ops: impl PboOperations) -> Result<(), Box<dyn std::error::Error>> {
     /// // Extract all .cpp files
-    /// pbo_ops.extract_filtered("mod.pbo", "**/*.cpp", "output/").await?;
+    /// pbo_ops.extract_filtered(Path::new("mod.pbo"), "**/*.cpp", Path::new("output/")).await?;
     /// 
     /// // Extract all files in config directory
-    /// pbo_ops.extract_filtered("mod.pbo", "config/**", "output/").await?;
+    /// pbo_ops.extract_filtered(Path::new("mod.pbo"), "config/**", Path::new("output/")).await?;
     /// # Ok(())
     /// # }
     /// ```
