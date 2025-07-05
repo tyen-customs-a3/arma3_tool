@@ -1,0 +1,24 @@
+[package]
+name = "arma3-parser-sqf"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+arma3-parser-common = { workspace = true }
+hemtt-common = { workspace = true }
+hemtt-workspace = { workspace = true }
+hemtt-sqf = { workspace = true }
+hemtt-preprocessor = { workspace = true }
+tempfile = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "sqf_parser_benchmarks"
+harness = false

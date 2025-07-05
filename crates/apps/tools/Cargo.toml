@@ -1,0 +1,32 @@
+[package]
+name = "arma3-tools"
+version.workspace = true
+edition.workspace = true
+authors = ["Your Name <you@example.com>"]
+
+[lib]
+name = "arma3_tools"
+path = "src/lib.rs"
+
+[dependencies]
+clap = { workspace = true }
+walkdir = { workspace = true }
+arma3-pbo = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+thiserror = { workspace = true }
+tempfile = { workspace = true }
+fs_extra = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
+path-clean = { workspace = true }
+rayon = { workspace = true }
+regex = { workspace = true }
+
+[lints.rust]
+unsafe_code = "forbid"
+unused = "allow"
+
+[lints.clippy]
+enum_glob_use = "deny"

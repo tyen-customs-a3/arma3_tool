@@ -1,0 +1,24 @@
+[package]
+name = "arma3-scan-gamedata"
+version.workspace = true
+edition.workspace = true
+
+
+[dependencies]
+arma3-types = { workspace = true }
+arma3-parser-hpp = { workspace = true }
+arma3-parser-common = { workspace = true }
+arma3-config = { workspace = true }
+arma3-database = { workspace = true }
+hemtt-common = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+tempfile = { workspace = true }
+indicatif = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+dashmap = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+env_logger = { workspace = true }

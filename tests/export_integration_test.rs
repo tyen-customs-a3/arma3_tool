@@ -8,7 +8,7 @@ use serde_json;
 use arma3_tool::cli::run_export;
 use arma3_config::ItemFilterConfig;
 use arma3_database::{DatabaseManager, ClassRepository, ClassModel};
-use arma3_models::types::PropertyValue;
+use arma3_types::types::PropertyValue;
 
 /// Test data for creating inheritance hierarchies
 fn create_inheritance_test_data() -> Vec<ClassModel> {

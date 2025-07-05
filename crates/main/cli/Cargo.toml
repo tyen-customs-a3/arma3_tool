@@ -1,0 +1,41 @@
+[package]
+name = "arma3-cli"
+version.workspace = true
+edition.workspace = true
+description = "Unified CLI interface for Arma 3 tools"
+
+[[bin]]
+name = "arma3-cli"
+path = "src/main.rs"
+
+[dependencies]
+# Application layer dependencies
+arma3-workflow = { workspace = true }
+arma3-tools = { workspace = true }
+arma3-reporter = { workspace = true }
+arma3-scanner-tools = { workspace = true }
+
+# Infrastructure and service dependencies
+arma3-config = { workspace = true }
+arma3-database = { workspace = true }
+arma3-extract = { workspace = true }
+arma3-scan-gamedata = { workspace = true }
+arma3-scan-mission = { workspace = true }
+arma3-scan-weapons = { workspace = true }
+arma3-analyze = { workspace = true }
+
+# Core dependencies
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
+
+# External dependencies
+clap = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

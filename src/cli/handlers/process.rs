@@ -1,6 +1,6 @@
 use anyhow::Result;
-use arma3_extractor::ExtractionConfig;
-use gamedata_scanner::{Scanner, ScannerConfig};
+use arma3_extract::ExtractionConfig;
+use arma3_scan_gamedata::{Scanner, ScannerConfig};
 use arma3_workflow::{
     WorkflowOrchestrator, ProcessWorkflowHandler, ScannerInterface,
     Workflow, WorkflowType, ContentType, WorkflowOptions, ProcessingOptions,

@@ -1,0 +1,52 @@
+[package]
+name = "arma3-database"
+version.workspace = true
+edition.workspace = true
+description = "SQLite database integration for Arma 3 Tool"
+
+[dependencies]
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+rusqlite = { workspace = true }
+rayon = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+notify = { workspace = true, optional = true }
+csv = { workspace = true }
+strsim = { workspace = true }
+
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+petgraph = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+criterion = { workspace = true }
+rand = { workspace = true }
+
+[features]
+default = []
+trim_analysis = ["notify"]
+class_mapping = ["notify"]
+
+[[bin]]
+name = "trim_analysis"
+required-features = ["trim_analysis"]
+
+[[bin]]
+name = "class_mapping"
+required-features = ["class_mapping"]
+
+[[bin]]
+name = "find_similar_classes"
+
+[[bench]]
+name = "query_bench"
+harness = false

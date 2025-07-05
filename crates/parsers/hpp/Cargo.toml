@@ -1,0 +1,37 @@
+[package]
+name = "arma3-parser-hpp"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# HEMTT dependencies - local development (comment these out to use remote)
+hemtt-config = { workspace = true }
+hemtt-workspace = { workspace = true }
+hemtt-preprocessor = { workspace = true }
+hemtt-common = { workspace = true }
+
+
+# Additional dependencies from parser_advanced
+arma3-types = { workspace = true }
+arma3-parser-common = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+
+# Additional dependencies from parser_simple
+regex = { workspace = true }
+
+serde = { workspace = true }
+tempfile = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+env_logger = { workspace = true }
+tempfile = { workspace = true }
+
+[[bench]]
+name = "query_benchmarks"
+harness = false

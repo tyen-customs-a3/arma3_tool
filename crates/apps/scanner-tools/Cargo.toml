@@ -1,0 +1,30 @@
+[package]
+name = "arma3-scanner-tools"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "batch_check"
+path = "src/bin/batch_check.rs"
+
+[dependencies]
+arma3-scan-gamedata = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-hpp = { workspace = true }
+hemtt-common = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+chrono = { workspace = true }
+indicatif = { workspace = true }
+rayon = { workspace = true }
+
+
+[lints.rust]
+dead_code = "allow"
+unused_variables = "allow"
+unused_imports = "allow"
+unused_assignments = "allow"

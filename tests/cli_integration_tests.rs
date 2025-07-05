@@ -1,19 +1,9 @@
 //! CLI Integration tests that verify CLI commands work correctly through workflow orchestration
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
+use assert_cmd::Command;
 use tempfile::TempDir;
 use std::fs;
-
-/// Helper function to get the path to the compiled binary
-fn get_binary_path() -> PathBuf {
-    let mut path = std::env::current_exe().unwrap();
-    path.pop(); // Remove test executable name
-    if path.ends_with("deps") {
-        path.pop(); // Remove "deps" directory
-    }
-    path.join("arma3-tool")
-}
 
 /// Create test PBO files for CLI testing
 fn create_test_data(dir: &Path) -> std::io::Result<()> {
@@ -41,8 +31,8 @@ fn create_test_data(dir: &Path) -> std::io::Result<()> {
 
 #[test]
 fn test_cli_help_command() {
-    let output = Command::new(get_binary_path())
-        .arg("--help")
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd.arg("--help")
         .output()
         .expect("Failed to execute help command");
     
@@ -59,14 +49,8 @@ fn test_cli_help_command() {
 
 #[test]
 fn test_cli_extract_command_structure() {
-    let temp_dir = TempDir::new().unwrap();
-    let source_dir = temp_dir.path().join("source");
-    let output_dir = temp_dir.path().join("output");
-    
-    create_test_data(&source_dir).unwrap();
-    fs::create_dir_all(&output_dir).unwrap();
-    
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
         .arg("--help")
         .output()
@@ -77,13 +61,14 @@ fn test_cli_extract_command_structure() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     
     // Verify extract command has expected options
-    assert!(stdout.contains("source") || stdout.contains("input"));
-    assert!(stdout.contains("output"));
+    assert!(stdout.contains("cache-dir"));
+    assert!(stdout.contains("extractor-db-path"));
 }
 
 #[test]
 fn test_cli_process_command_structure() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("process")
         .arg("--help")
         .output()
@@ -94,12 +79,13 @@ fn test_cli_process_command_structure() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     
     // Verify process command has expected options
-    assert!(stdout.contains("database") || stdout.contains("db"));
+    assert!(stdout.contains("cache-dir") || stdout.contains("analysis-db-path"));
 }
 
 #[test]
 fn test_cli_report_command_structure() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("report")
         .arg("--help")
         .output()
@@ -110,13 +96,14 @@ fn test_cli_report_command_structure() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     
     // Verify report command has expected options
-    assert!(stdout.contains("database") || stdout.contains("db"));
-    assert!(stdout.contains("output"));
+    assert!(stdout.contains("analysis-db-path"));
+    assert!(stdout.contains("output-dir"));
 }
 
 #[test]
 fn test_cli_export_command_structure() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("export")
         .arg("--help")
         .output()
@@ -127,13 +114,14 @@ fn test_cli_export_command_structure() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     
     // Verify export command has expected options
-    assert!(stdout.contains("database") || stdout.contains("db"));
+    assert!(stdout.contains("analysis-db-path"));
     assert!(stdout.contains("output"));
 }
 
 #[test]
 fn test_cli_invalid_command() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("invalid_command")
         .output()
         .expect("Failed to execute invalid command");
@@ -144,7 +132,8 @@ fn test_cli_invalid_command() {
 
 #[test]
 fn test_cli_extract_missing_args() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
         .output()
         .expect("Failed to execute extract without args");
@@ -160,7 +149,8 @@ fn test_cli_extract_missing_args() {
 
 #[test]
 fn test_cli_process_missing_args() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("process")
         .output()
         .expect("Failed to execute process without args");
@@ -172,20 +162,19 @@ fn test_cli_process_missing_args() {
 #[test]
 fn test_cli_extract_nonexistent_source() {
     let temp_dir = TempDir::new().unwrap();
-    let nonexistent_source = temp_dir.path().join("nonexistent");
+    let _nonexistent_source = temp_dir.path().join("nonexistent");
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).unwrap();
     
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
-        .arg("--source")
-        .arg(&nonexistent_source)
-        .arg("--output")
+        .arg("--cache-dir")
         .arg(&output_dir)
         .output()
         .expect("Failed to execute extract with nonexistent source");
     
-    // Should fail due to nonexistent source directory
+    // Should fail due to missing config file
     assert!(!output.status.success());
 }
 
@@ -194,7 +183,8 @@ fn test_cli_process_nonexistent_database() {
     let temp_dir = TempDir::new().unwrap();
     let nonexistent_db = temp_dir.path().join("nonexistent.db");
     
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("process")
         .arg("--database")
         .arg(&nonexistent_db)
@@ -212,7 +202,8 @@ fn test_cli_report_nonexistent_database() {
     let output_dir = temp_dir.path().join("output");
     fs::create_dir_all(&output_dir).unwrap();
     
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("report")
         .arg("--database")
         .arg(&nonexistent_db)
@@ -231,7 +222,8 @@ fn test_cli_export_nonexistent_database() {
     let nonexistent_db = temp_dir.path().join("nonexistent.db");
     let output_file = temp_dir.path().join("export.csv");
     
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("export")
         .arg("--database")
         .arg(&nonexistent_db)
@@ -246,7 +238,8 @@ fn test_cli_export_nonexistent_database() {
 
 #[test]
 fn test_cli_version_command() {
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("--version")
         .output()
         .expect("Failed to execute version command");
@@ -268,19 +261,21 @@ fn test_cli_workflow_argument_validation() {
     create_test_data(&source_dir).unwrap();
     fs::create_dir_all(&output_dir).unwrap();
     
-    // Test extract with valid directory structure
-    let output = Command::new(get_binary_path())
+    // Test extract help command
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
-        .arg("--source")
-        .arg(&source_dir)
-        .arg("--output")
-        .arg(&output_dir)
-        .arg("--help")  // Use help to avoid actual execution
+        .arg("--help")
         .output()
-        .expect("Failed to execute extract with valid arguments");
+        .expect("Failed to execute extract help");
     
-    // Help should always succeed
     assert!(output.status.success());
+    
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    
+    // Verify extract command has expected options
+    assert!(stdout.contains("cache-dir"));
+    assert!(stdout.contains("extractor-db-path"));
 }
 
 #[test]
@@ -293,10 +288,11 @@ fn test_cli_concurrent_command_execution() {
     let mut handles = Vec::new();
     
     // Test multiple concurrent help commands
-    for i in 0..5 {
+    for _i in 0..5 {
         let success_clone = Arc::clone(&success);
         let handle = thread::spawn(move || {
-            let output = Command::new(get_binary_path())
+            let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+            let output = cmd
                 .arg("--help")
                 .output()
                 .expect("Failed to execute concurrent help command");
@@ -319,13 +315,12 @@ fn test_cli_concurrent_command_execution() {
 #[test]
 fn test_cli_error_message_quality() {
     let temp_dir = TempDir::new().unwrap();
-    let invalid_path = temp_dir.path().join("invalid_file.xyz");
+    let _invalid_path = temp_dir.path().join("invalid_file.xyz");
     
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
-        .arg("--source")
-        .arg(&invalid_path)
-        .arg("--output")
+        .arg("--cache-dir")
         .arg(&temp_dir.path())
         .output()
         .expect("Failed to execute extract with invalid source");
@@ -352,35 +347,33 @@ fn test_cli_error_message_quality() {
 fn test_cli_output_directory_creation() {
     let temp_dir = TempDir::new().unwrap();
     let source_dir = temp_dir.path().join("source");
-    let output_dir = temp_dir.path().join("deep").join("nested").join("output");
+    let _output_dir = temp_dir.path().join("deep").join("nested").join("output");
     
     create_test_data(&source_dir).unwrap();
     
-    // Test that CLI can handle creating nested output directories
-    let output = Command::new(get_binary_path())
+    // Test that CLI help works
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("extract")
-        .arg("--source")
-        .arg(&source_dir)
-        .arg("--output")
-        .arg(&output_dir)
-        .arg("--help")  // Use help to test argument validation
+        .arg("--help")
         .output()
-        .expect("Failed to execute extract with nested output");
+        .expect("Failed to execute extract help");
     
-    // Help command should succeed regardless of directory existence
+    // Help command should succeed
     assert!(output.status.success());
 }
 
 #[test]
 fn test_cli_config_file_handling() {
     let temp_dir = TempDir::new().unwrap();
-    let config_file = temp_dir.path().join("test_config.json");
+    let _config_file = temp_dir.path().join("test_config.json");
     
     // Create a test config file
     create_test_data(&temp_dir.path()).unwrap();
     
     // Test commands that might use config files
-    let output = Command::new(get_binary_path())
+    let mut cmd = Command::cargo_bin("arma3tool_cli").unwrap();
+    let output = cmd
         .arg("export")
         .arg("--help")
         .output()

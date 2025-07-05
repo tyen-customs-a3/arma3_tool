@@ -97,7 +97,7 @@ pub async fn run_export_optimized(
             // Create a label (use displayName if available, otherwise use class ID)
             let display_name = class.properties.get("displayName")
                 .map(|v| match v {
-                    arma3_models::types::PropertyValue::String(s) => s.clone(),
+                    arma3_types::types::PropertyValue::String(s) => s.clone(),
                     _ => class.id.clone(),
                 })
                 .unwrap_or_else(|| class.id.clone());
@@ -245,7 +245,7 @@ fn load_and_filter_classes(
 
             // Apply exclusion check: skip if scope <= max_scope (typically 1)
             if let Some(scope_prop) = class.properties.get("scope") {
-                if let arma3_models::types::PropertyValue::Number(scope) = scope_prop {
+                if let arma3_types::types::PropertyValue::Number(scope) = scope_prop {
                     if *scope as i32 <= config.get_max_scope() {
                         return false;
                     }
@@ -325,8 +325,8 @@ fn escape_csv(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::time::Instant;
+    
+    
     
     #[tokio::test]
     async fn test_optimized_export_small_dataset() -> Result<(), Box<dyn std::error::Error>> {

@@ -1,7 +1,0 @@
-[package]
-name = "arma3_models"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-serde = { workspace = true }

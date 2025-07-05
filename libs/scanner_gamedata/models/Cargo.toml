@@ -1,7 +1,0 @@
-[package]
-name = "gamedata_scanner_models"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-serde = { workspace = true } 

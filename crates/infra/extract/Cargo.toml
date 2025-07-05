@@ -1,0 +1,42 @@
+[package]
+name = "arma3-extract"
+version.workspace = true
+edition.workspace = true
+description = "PBO extraction and caching system for Arma 3 tools"
+
+[dependencies]
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
+arma3-pbo = { workspace = true }
+arma3-database = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+num_cpus = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true }
+walkdir = { workspace = true }
+
+[features]
+default = []
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "binary_conversion"
+path = "examples/binary_conversion.rs"
+
+ 
