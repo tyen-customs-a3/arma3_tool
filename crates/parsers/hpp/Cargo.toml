@@ -13,11 +13,6 @@ hemtt-workspace = { workspace = true }
 hemtt-preprocessor = { workspace = true }
 hemtt-common = { workspace = true }
 
-# HEMTT dependencies - remote git (uncomment these to use remote)
-# hemtt-config = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
-# hemtt-workspace = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
-# hemtt-preprocessor = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
-# hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 
 # Additional dependencies from parser_advanced
 arma3-types = { workspace = true }
@@ -31,8 +26,6 @@ regex = { workspace = true }
 serde = { workspace = true }
 tempfile = { workspace = true }
 walkdir = { workspace = true }
-
-# External dependencies not in workspace
 
 [dev-dependencies]
 criterion = { workspace = true }

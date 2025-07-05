@@ -1,4 +1,4 @@
-use parser_hpp::{HppParser, ParserMode, parse_file_simple};
+use arma3_parser_hpp::{HppParser, ParserMode, parse_file_simple};
 use std::fs;
 use std::path::Path;
 use tempfile::tempdir;
@@ -235,7 +235,7 @@ class CfgAmmo {
     let test_weapon_1 = cfg_weapons.properties.iter()
         .find(|p| p.name == "test_weapon_1")
         .and_then(|p| match &p.value {
-            parser_hpp::PropertyValue::Class(class) => Some(class),
+            arma3_parser_hpp::PropertyValue::Object(class) => Some(class),
             _ => None,
         })
         .expect("Should find test_weapon_1 class");
@@ -246,7 +246,7 @@ class CfgAmmo {
     
     // The macro TEST_MACRO should be resolved to 123
     match &value_prop.value {
-        parser_hpp::PropertyValue::Number(val) => {
+        arma3_parser_hpp::PropertyValue::Number(val) => {
             assert_eq!(*val, 123, "TEST_MACRO should be resolved to 123");
             println!("✓ Macro TEST_MACRO correctly resolved to {}", val);
         },
@@ -308,7 +308,7 @@ class CfgAmmo {
     println!("\n=== Test 5: Legacy API Compatibility ===");
     
     // Test legacy parse_file function
-    let legacy_result = parser_hpp::parse_file(&main_addon_dir.join("config.cpp")).unwrap();
+    let legacy_result = arma3_parser_hpp::parse_file(&main_addon_dir.join("config.cpp")).unwrap();
     assert!(!legacy_result.is_empty(), "Legacy parse_file should work");
     println!("✓ Legacy parse_file API working: {} classes found", legacy_result.len());
     

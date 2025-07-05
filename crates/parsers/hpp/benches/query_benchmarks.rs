@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use parser_hpp::DependencyExtractor;
+use arma3_parser_hpp::DependencyExtractor;
 
 fn create_simple_loadout() -> String {
     r#"class baseMan {
@@ -92,7 +92,7 @@ fn benchmark_queries(c: &mut Criterion) {
     let simple_loadout = create_simple_loadout();
     group.bench_function("simple_loadout", |b| {
         b.iter(|| {
-            let parser = parser_hpp::HppParser::new(std::hint::black_box(&simple_loadout)).unwrap();
+            let parser = arma3_parser_hpp::HppParser::new(std::hint::black_box(&simple_loadout)).unwrap();
             let classes = parser.parse_classes();
             let extractor = DependencyExtractor::new(classes);
             extractor.extract_dependencies()
@@ -103,7 +103,7 @@ fn benchmark_queries(c: &mut Criterion) {
     let deep_loadout = create_deep_nested_loadout(10);
     group.bench_function("deep_nested_loadout", |b| {
         b.iter(|| {
-            let parser = parser_hpp::HppParser::new(std::hint::black_box(&deep_loadout)).unwrap();
+            let parser = arma3_parser_hpp::HppParser::new(std::hint::black_box(&deep_loadout)).unwrap();
             let classes = parser.parse_classes();
             let extractor = DependencyExtractor::new(classes);
             extractor.extract_dependencies()
@@ -114,7 +114,7 @@ fn benchmark_queries(c: &mut Criterion) {
     let wide_loadout = create_wide_loadout(100);
     group.bench_function("wide_loadout", |b| {
         b.iter(|| {
-            let parser = parser_hpp::HppParser::new(std::hint::black_box(&wide_loadout)).unwrap();
+            let parser = arma3_parser_hpp::HppParser::new(std::hint::black_box(&wide_loadout)).unwrap();
             let classes = parser.parse_classes();
             let extractor = DependencyExtractor::new(classes);
             extractor.extract_dependencies()
@@ -125,7 +125,7 @@ fn benchmark_queries(c: &mut Criterion) {
     let mixed_loadout = create_mixed_loadout(5, 20);
     group.bench_function("mixed_loadout", |b| {
         b.iter(|| {
-            let parser = parser_hpp::HppParser::new(std::hint::black_box(&mixed_loadout)).unwrap();
+            let parser = arma3_parser_hpp::HppParser::new(std::hint::black_box(&mixed_loadout)).unwrap();
             let classes = parser.parse_classes();
             let extractor = DependencyExtractor::new(classes);
             extractor.extract_dependencies()

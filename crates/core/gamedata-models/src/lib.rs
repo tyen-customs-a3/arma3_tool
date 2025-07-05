@@ -100,7 +100,7 @@ pub enum PropertyValue {
     Number(i64),
 
     /// Nested class
-    Class(Box<GameClass>),
+    Object(Box<GameClass>),
 }
 
 impl PropertyValue {
@@ -128,10 +128,10 @@ impl PropertyValue {
         }
     }
 
-    /// Get the value as a class, if it's a class
-    pub fn as_class(&self) -> Option<&GameClass> {
+    /// Get the value as a class reference, if it's a class reference
+    pub fn as_class_ref(&self) -> Option<&str> {
         match self {
-            PropertyValue::Class(class) => Some(class),
+            PropertyValue::ClassRef(class_name) => Some(class_name),
             _ => None,
         }
     }

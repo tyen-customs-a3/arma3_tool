@@ -22,11 +22,6 @@ chrono = { workspace = true }
 indicatif = { workspace = true }
 rayon = { workspace = true }
 
-# HEMTT dependencies - local development (comment these out to use remote)
-# hemtt-common = { path = "../../HEMTT/libs/common" }
-
-# HEMTT dependencies - remote git (uncomment these to use remote)
-# hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 
 [lints.rust]
 dead_code = "allow"

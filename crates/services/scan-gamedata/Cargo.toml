@@ -19,32 +19,6 @@ log = { workspace = true }
 env_logger = { workspace = true }
 dashmap = { workspace = true }
 
-# HEMTT dependencies - local development (comment these out to use remote)
-# hemtt-common = { path = "../HEMTT/libs/common" }
-
-# HEMTT dependencies - remote git (uncomment these to use remote)
-# hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
-
-# rayon = { workspace = true }
-# serde = { workspace = true }
-# tempfile = { workspace = true }
-# indicatif = { workspace = true }
-# clap = { workspace = true }
-# log = { workspace = true }
-# env_logger = { workspace = true }
-# num_cpus = { workspace = true }
-# walkdir = { workspace = true }
-# chrono = { workspace = true }
-# serde_json = { workspace = true }
-# dashmap = { workspace = true }
-
 [dev-dependencies]
 tempfile = { workspace = true }
 env_logger = { workspace = true }
-
-# [lints.rust]
-# dead_code = "allow"
-# unused_parens = "allow"
-# unused_imports = "allow"
-# unused_variables = "allow"
-# unused_mut = "allow"

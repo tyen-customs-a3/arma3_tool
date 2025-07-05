@@ -121,21 +121,6 @@ arma3-scanner-tools = { path = "crates/apps/scanner-tools" }
 # Main CLI
 arma3-cli = { path = "crates/main/cli" }
 
-# Legacy aliases for transition period
-arma3_config = { path = "crates/infra/config" }
-arma3_models = { path = "crates/core/types" }
-arma3_database = { path = "crates/infra/database" }
-arma3_extractor = { path = "crates/infra/extract" }
-arma3_reporter = { path = "crates/apps/reporter" }
-arma3_workflow = { path = "crates/apps/workflow" }
-pbo_tools = { path = "crates/infra/pbo" }
-gamedata_scanner = { path = "crates/services/scan-gamedata" }
-gamedata_scanner_models = { path = "crates/core/gamedata-models" }
-mission_scanner = { path = "crates/services/scan-mission" }
-parser_hpp = { path = "crates/parsers/hpp" }
-parser_sqf = { path = "crates/parsers/sqf" }
-parser_sqm = { path = "crates/parsers/sqm" }
-sqf-analyzer = { path = "crates/services/analyze" }
 hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-pbo = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-config = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
@@ -191,9 +176,3 @@ unused_parens = "allow"
 unused_imports = "deny"
 unused_variables = "allow"
 unused_mut = "allow"
-
-# [profile.release]
-# lto = true
-# strip = true
-# incremental = false
-# panic = "abort"
