@@ -1,5 +1,5 @@
 [package]
-name = "arma3_extractor"
+name = "arma3-extract"
 version.workspace = true
 edition.workspace = true
 description = "PBO extraction and caching system for Arma 3 tools"

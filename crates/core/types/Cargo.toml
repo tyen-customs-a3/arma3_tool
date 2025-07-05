@@ -1,5 +1,5 @@
 [package]
-name = "arma3_models"
+name = "arma3-types"
 version.workspace = true
 edition.workspace = true
 

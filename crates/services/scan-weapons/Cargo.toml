@@ -1,5 +1,5 @@
 [package]
-name = "weapon_magazine_scanner"
+name = "arma3-scan-weapons"
 version.workspace = true
 edition.workspace = true
 

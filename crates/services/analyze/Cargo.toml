@@ -1,5 +1,5 @@
 [package]
-name = "sqf-analyzer"
+name = "arma3-analyze"
 version.workspace = true
 edition.workspace = true
 description = "A tool for analyzing Arma 3 SQF scripts to extract equipment item references"
@@ -21,7 +21,7 @@ path = "src/lib.rs"
 
 # Binary configuration
 [[bin]]
-name = "sqf-analyzer"
+name = "arma3-analyze"
 path = "src/main.rs"
 
 [build-dependencies]

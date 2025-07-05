@@ -1,5 +1,5 @@
 [package]
-name = "pbo_tools"
+name = "arma3-pbo"
 version.workspace = true
 edition.workspace = true
 description = "A Rust library for working with PBO (Packed Bundle Object) files"
@@ -7,11 +7,11 @@ authors = ["Tom Campbell <tyen901@gmail.com>"]
 license = "MIT"
 
 [lib]
-name = "pbo_tools"
+name = "arma3-pbo"
 path = "src/lib.rs"
 
 [[bin]]
-name = "pbo_tools"
+name = "arma3-pbo"
 path = "src/bin/pbo_tools.rs"
 
 [dependencies]

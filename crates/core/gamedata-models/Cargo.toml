@@ -1,5 +1,5 @@
 [package]
-name = "gamedata_scanner_models"
+name = "arma3-gamedata-models"
 version.workspace = true
 edition.workspace = true
 

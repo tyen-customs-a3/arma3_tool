@@ -1,5 +1,5 @@
 [package]
-name = "quick_extract"
+name = "arma3-tools"
 version.workspace = true
 edition.workspace = true
 authors = ["Your Name <you@example.com>"]

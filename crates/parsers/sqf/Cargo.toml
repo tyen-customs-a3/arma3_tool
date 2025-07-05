@@ -1,5 +1,5 @@
 [package]
-name = "parser_sqf"
+name = "arma3-parser-sqf"
 version.workspace = true
 edition.workspace = true
 

@@ -1,5 +1,5 @@
 [package]
-name = "arma3_database"
+name = "arma3-database"
 version.workspace = true
 edition.workspace = true
 description = "SQLite database integration for Arma 3 Tool"

@@ -1,5 +1,5 @@
 [package]
-name = "batch_scanner"
+name = "arma3-scanner-tools"
 version.workspace = true
 edition.workspace = true
 

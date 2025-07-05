@@ -1,5 +1,5 @@
 [package]
-name = "parser_hpp"
+name = "arma3-parser-hpp"
 version.workspace = true
 edition.workspace = true
 
