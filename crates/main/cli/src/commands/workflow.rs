@@ -56,7 +56,7 @@ pub async fn handle_command(cmd: WorkflowCommands) -> Result<()> {
             debug!("Output: {:?}, Config: {:?}", output, config);
             
             // Use arma3-workflow crate to execute the workflow
-            let workflow = arma3_workflow::WorkflowOrchestrator::new();
+            let _workflow = arma3_workflow::WorkflowOrchestrator::new();
             
             // TODO: Implement workflow execution
             // This would involve:

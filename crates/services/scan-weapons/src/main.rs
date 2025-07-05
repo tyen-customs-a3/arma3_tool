@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::path::{PathBuf, Path};
 
 // Use the library crate instead of local modules
-use weapon_magazine_scanner::{
+use arma3_scan_weapons::{
     WeaponMagazineScanner,
     Database,
     ReportGenerator,

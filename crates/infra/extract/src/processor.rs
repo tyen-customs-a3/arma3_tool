@@ -6,14 +6,16 @@ use tokio::task;
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
-use pbo_tools::core::api::{PboApi, PboApiOps};
+// TODO: Implement PBO extraction using arma3-pbo crate
+// use arma3_pbo::{PboApi, PboApiOps};
 use std::collections::HashSet;
 
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
     /// API for interacting with PBO files
     #[allow(dead_code)]
-    pbo_api: PboApi,
+    // TODO: Replace with actual PBO API when implemented
+    // pbo_api: PboApi,
     
     /// Number of threads to use for extraction
     threads: usize,
@@ -21,15 +23,13 @@ pub struct PboProcessor {
 
 impl PboProcessor {
     /// Create a new PBO processor
-    pub fn new(timeout: u64, threads: usize) -> Self {
-        let pbo_api = PboApi::builder()
-            .with_timeout(timeout as u32)
-            .build();
-            
-        Self { pbo_api, threads }
+    pub fn new(_timeout: u64, threads: usize) -> Self {
+        // TODO: Initialize PBO API when implemented
+        Self { threads }
     }
  
     /// Catalog all files in a directory recursively
+    #[allow(dead_code)]
     fn catalog_files(dir: &Path) -> Result<Vec<PathBuf>> {
         let files: Vec<PathBuf> = WalkDir::new(dir)
             .follow_links(true)
@@ -83,7 +83,8 @@ impl PboProcessor {
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
             let semaphore_clone = Arc::clone(&semaphore);
-            let processor = PboApi::new(60); // Create a new instance with 60 second timeout (TODO: Make PboApi Clone-able)
+            // TODO: Create PBO processor instance when implemented
+            // let processor = PboApi::new(60);
 
             let task = task::spawn(async move {
                 // Acquire semaphore permit
@@ -105,7 +106,7 @@ impl PboProcessor {
                     }
                 };
                 
-                let temp_dir_path = temp_dir.path().to_path_buf();
+                let _temp_dir_path = temp_dir.path().to_path_buf();
 
                 // --- Filter Augmentation for pbo_tools ---
                 let mut pbo_tool_extensions = extensions.clone();
@@ -129,17 +130,19 @@ impl PboProcessor {
                 };
                 // -----------------------------------------
 
-                // Try to extract the PBO using the new filtered API
-                match processor.extract_filtered(&pbo_path, temp_dir.path(), &filter_pattern).await {
+                // TODO: Implement PBO extraction when PBO API is available
+                // For now, just log and return empty results
+                info!("Would extract PBO {} with filter {}", pbo_path.display(), filter_pattern);
+                match Ok::<(), anyhow::Error>(()) {
                     Ok(_) => {
                         // Add a small delay to ensure file handles are released
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         
-                        // Find all extracted files
-                        match tokio::task::spawn_blocking(move || PboProcessor::catalog_files(&temp_dir_path)).await {
-                            Ok(Ok(extracted_files)) => {
-                                let mut cache_paths = Vec::new();
-                                let temp_path_str = temp_dir.path().to_string_lossy();
+                        // TODO: Find all extracted files when extraction is implemented
+                        // For now, return empty list
+                        let extracted_files: Vec<PathBuf> = Vec::new(); // Empty for now
+                        let mut cache_paths = Vec::new();
+                        let temp_path_str = temp_dir.path().to_string_lossy();
 
                                 // --- Post-Extraction Filtering Loop ---
                                 for file_path in &extracted_files {
@@ -231,18 +234,10 @@ impl PboProcessor {
                                     }
                                 } // --- End Post-Extraction Filtering Loop ---
 
-                                // Store the result (filtered paths)
-                                if !cache_paths.is_empty() { // Only store if we actually kept some files
-                                    let mut result_guard = results.lock().unwrap();
-                                    result_guard.push((pbo_path, cache_paths));
-                                }
-                            },
-                            Ok(Err(e)) => {
-                                record_failure(format!("Failed to catalog extracted files: {}", e));
-                            },
-                            Err(e) => {
-                                record_failure(format!("Task failure when cataloging files: {}", e));
-                            }
+                        // Store the result (filtered paths)
+                        if !cache_paths.is_empty() { // Only store if we actually kept some files
+                            let mut result_guard = results.lock().unwrap();
+                            result_guard.push((pbo_path, cache_paths));
                         }
                     },
                     Err(e) => {

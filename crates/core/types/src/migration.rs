@@ -1,8 +1,8 @@
 //! Migration utilities for converting between legacy and unified types
 
-use crate::unified::{Class, Value, ClassMetadata};
+use crate::unified::{Class, Value};
 use crate::types::PropertyValue as LegacyPropertyValue;
-use crate::gamedata::{GameDataClass, GameDataClasses};
+use crate::gamedata::GameDataClass;
 use std::collections::HashMap;
 
 /// Convert legacy PropertyValue to unified Value

@@ -1,11 +1,11 @@
 use anyhow::Result;
-use arma3_extractor::ExtractionConfig;
+use arma3_extract::ExtractionConfig;
 use arma3_workflow::{
     WorkflowOrchestrator, ExtractWorkflowHandler, ExtractorInterface,
     Workflow, WorkflowType, ContentType, WorkflowOptions, ExtractionOptions,
     ExtractionSummary, WorkflowError
 };
-use arma3_extractor::{extract_game_data, ExtractionConfig as ExtractorExtractionConfig};
+use arma3_extract::{extract_game_data, ExtractionConfig as ExtractorExtractionConfig};
 use async_trait::async_trait;
 use log::info;
 use std::path::PathBuf;

@@ -1,6 +1,6 @@
 use std::path::Path;
 use std::collections::HashMap;
-use gamedata_scanner_models::{GameClass, PropertyValue};
+use arma3_types::{GameClass};
 use crate::models::MagazineWellInfo;
 
 /// Handles extraction of magazine well information from configuration classes
@@ -31,10 +31,14 @@ impl MagazineExtractor {
     ) {
         // CfgMagazineWells is a class, its properties are the individual magazine wells.
         // Each property's name is the well_name, and its value is a PropertyValue::Class(well_class_definition)
-        for prop in &cfg_magazine_wells.properties {
-            let well_name = &prop.name;
-            if let PropertyValue::Class(ref well_class_definition) = prop.value {
-                if let Some(well_info) = Self::process_magazine_well_class_static(well_name, well_class_definition, file, mod_source) {
+        for (well_name, prop_value) in &cfg_magazine_wells.properties {
+            if let arma3_types::PropertyValue::Object(ref well_class_definition_map) = prop_value {
+                // Convert Object back to GameClass for compatibility
+                let mut well_class_definition = GameClass::new(well_name.clone());
+                for (prop_key, prop_val) in well_class_definition_map {
+                    well_class_definition.properties.insert(prop_key.clone(), prop_val.clone());
+                }
+                if let Some(well_info) = Self::process_magazine_well_class_static(well_name, &well_class_definition, file, mod_source) {
                     magazine_wells.insert(well_name.to_string(), well_info);
                 }
             }
@@ -52,11 +56,16 @@ impl MagazineExtractor {
         
         // Extract magazine entries from the properties of the well_class_definition
         // Each property here (e.g., "CBA_30Rnd_556x45_Stanag") is an array of magazine class names
-        for prop in &well_class_definition.properties {
-            let magazine_group_name = &prop.name; // e.g. "ACE_Magazines", "BI_Magazines"
-            if let PropertyValue::Array(magazine_list_pv) = &prop.value {
+        for (magazine_group_name, prop_value) in &well_class_definition.properties {
+            if let arma3_types::PropertyValue::Array(magazine_list_pv) = prop_value {
                 let magazine_names: Vec<String> = magazine_list_pv.iter()
-                    .map(|name_str| name_str.trim_matches('"').to_string())
+                    .filter_map(|name_val| {
+                        if let arma3_types::PropertyValue::String(s) = name_val {
+                            Some(s.trim_matches('"').to_string())
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
                 if !magazine_names.is_empty() {
                     magazines.insert(magazine_group_name.to_string(), magazine_names);

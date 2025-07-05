@@ -12,8 +12,8 @@ pub struct SerializableParseWarning {
     pub file_path: String,
 }
 
-impl From<::parser_hpp::ParseWarning> for SerializableParseWarning {
-    fn from(warning: ::parser_hpp::ParseWarning) -> Self {
+impl From<arma3_parser_hpp::ParseWarning> for SerializableParseWarning {
+    fn from(warning: arma3_parser_hpp::ParseWarning) -> Self {
         Self {
             code: warning.code,
             message: warning.message,

@@ -7,7 +7,6 @@ pub mod migration;
 // Export legacy types for backward compatibility
 pub use gamedata::*;
 pub use mission::*;
-pub use types::*;
 
 // Export new unified types as primary interface
 pub use unified::{Class, Value, ClassMetadata, ConversionError};

@@ -51,14 +51,14 @@ impl SimpleClassScanner {
                 is_forward_declaration
             );
 
-            let class = GameClass {
-                name,
-                parent,
-                file_path: file_path.to_path_buf(),
-                container_class: None,
-                properties: Vec::new(),
-                is_forward_declaration,
-            };
+            let mut class = GameClass::new(name);
+            if let Some(parent_name) = parent {
+                class = class.with_parent(parent_name);
+            }
+            class = class.with_file_path(file_path.to_path_buf());
+            if is_forward_declaration {
+                class = class.as_forward_declaration();
+            }
 
             classes.push(class);
         }

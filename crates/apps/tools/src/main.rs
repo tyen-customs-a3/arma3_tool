@@ -254,11 +254,6 @@ fn run() -> Result<()> {
                                 Err(QuickExtractError::ExtractedPrefixNotFound(pbo_path.to_path_buf()))
                             }
                         }
-                    } else {
-                        let reason = result.get_error_message().unwrap_or_else(|| "Unknown extraction error".to_string());
-                        error!("Extraction failed for {} (reported by pbo_tools): {}", pbo_path.display(), reason);
-                        Err(QuickExtractError::ExtractionFailed{ pbo_path: pbo_path.to_path_buf(), reason })
-                    }
                 }
                 Err(e) => {
                     error!("Error during extraction process for {}: {}", pbo_path.display(), e);

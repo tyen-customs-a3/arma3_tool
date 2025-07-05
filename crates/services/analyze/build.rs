@@ -11,9 +11,6 @@ fn main() {
     // Source binary path
     let sqfvm_src = Path::new(&manifest_dir).join("bin").join("sqfvm.exe");
     
-    // Print the location of the binary for debugging
-    println!("cargo:warning=Looking for sqfvm.exe at: {}", sqfvm_src.display());
-    
     // Ensure the binary exists
     if !sqfvm_src.exists() {
         panic!("sqfvm.exe not found in bin directory. Please ensure it exists at: {}", sqfvm_src.display());

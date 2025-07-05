@@ -33,10 +33,20 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-// Re-export models from models
-pub use gamedata_scanner_models::{
-    ClassProperty, FileParser, GameClass, PropertyValue, ScanResult, Scanner as ClassScanner,
-};
+// Re-export types from arma3_types and arma3_parser_common
+pub use arma3_types::{Class as GameClass, Value as PropertyValue};
+
+// Type alias for backward compatibility
+pub type ClassProperty = (String, PropertyValue);
+
+// Define a dyn-compatible trait for file parsing
+pub trait FileParser: Send + Sync {
+    /// Parse a single file and return all classes found
+    fn parse_file(&self, file_path: &Path) -> Vec<GameClass>;
+
+    /// Get the name of the parser
+    fn name(&self) -> &str;
+}
 // Do not re-export get_parser directly as its signature changed and is internal to Scanner::new
 pub use scanner::{FileScanResult, ScannerConfig, ScannerResult}; // Added FileScanResult
 

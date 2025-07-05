@@ -3,9 +3,6 @@ name = "arma3-scan-gamedata"
 version.workspace = true
 edition.workspace = true
 
-[[bin]]
-name = "test_batch_config"
-path = "test_batch_config.rs"
 
 [dependencies]
 arma3-types = { workspace = true }

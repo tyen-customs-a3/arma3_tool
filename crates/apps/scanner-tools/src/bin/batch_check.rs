@@ -1,4 +1,4 @@
-use batch_scanner::batch_process::{self, Args};
+use arma3_scanner_tools::batch_process::{self, Args};
 use clap::Parser;
 
 fn main() -> std::io::Result<()> {

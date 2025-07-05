@@ -59,14 +59,9 @@ impl<'a> Transformer<'a> {
                                     self.original_file_path.to_path_buf()
                                 });
 
-                            classes.push(GameClass {
-                                name: name.as_str().to_string(),
-                                parent: None,
-                                properties: Vec::new(),
-                                container_class: None,
-                                file_path: file_path_for_external,
-                                is_forward_declaration: true,
-                            });
+                            classes.push(GameClass::new(name.as_str())
+                                .with_file_path(file_path_for_external)
+                                .as_forward_declaration());
                         }
                     }
                     Class::Local {
@@ -221,7 +216,7 @@ impl<'a> Transformer<'a> {
                     ..
                 } => {
                     trace!("  Adding property to {}: {}", name, prop_name.as_str());
-                    game_class.add_property(
+                    game_class.properties.insert(
                         prop_name.as_str().to_string(),
                         self.convert_hemtt_value_to_property_value(value)
                     );
@@ -243,7 +238,7 @@ impl<'a> Transformer<'a> {
                             );
 
                             // Add nested class to the container's classes
-                            game_class.add_class(
+                            game_class.classes.insert(
                                 nested_game_class.name.clone(),
                                 nested_game_class.clone()
                             );
@@ -283,21 +278,16 @@ impl<'a> Transformer<'a> {
                                     self.original_file_path.to_path_buf()
                                 });
 
-                            let nested_forward_decl_game_class = GameClass {
-                                name: nested_external_name_ident.as_str().to_string(),
-                                parent: None,
-                                properties: Vec::new(),
-                                container_class: Some(name.to_string()), // `name` is the current class (e.g. "CfgAmmo")
-                                file_path: fwd_decl_file_path,
-                                is_forward_declaration: true,
-                            };
+                            let nested_forward_decl_game_class = GameClass::new(nested_external_name_ident.as_str())
+                                .with_container(name.to_string()) 
+                                .with_file_path(fwd_decl_file_path)
+                                .as_forward_declaration();
 
-                            game_class.properties.push(ClassProperty {
-                                name: nested_forward_decl_game_class.name.clone(),
-                                value: PropertyValue::Class(Box::new(
-                                    nested_forward_decl_game_class.clone(),
-                                )),
-                            });
+                            // Add the nested class to the classes HashMap
+                            game_class.classes.insert(
+                                nested_forward_decl_game_class.name.clone(),
+                                nested_forward_decl_game_class.clone()
+                            );
 
                             // Also add to the global list
                             let nested_fwd_name_str = nested_external_name_ident.as_str();

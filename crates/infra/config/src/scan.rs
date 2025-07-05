@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 use serde::{Deserialize, Serialize};
-use arma3_extractor::ExtractionConfig;
+use arma3_extract::ExtractionConfig;
 use crate::error::{ConfigError, Result};
 
 /// Configuration for the application scan settings

@@ -5,9 +5,10 @@ use std::path::Path;
 // External crate imports
 use anyhow::{Result, anyhow};
 use log::{debug, warn};
-use parser_hpp::{parse_file as parser_hpp_file, PropertyValue};
+use arma3_parser_hpp::{parse_file as parser_hpp_file};
+use arma3_types::{Value as PropertyValue};
 use sqf_analyzer::{Args, analyze_sqf};
-use parser_sqm::extract_class_dependencies;
+use arma3_parser_sqm::extract_class_dependencies;
 
 // Internal crate imports
 use crate::types::{ClassReference, ReferenceType};
@@ -88,36 +89,38 @@ pub fn parse_hpp(file_path: &Path) -> Result<Vec<ClassReference>> {
             });
         }
         
-        // Add both array properties and string properties
-        for property in class.properties {
-            match &property.value {
+        // Add both array properties and string properties  
+        for (property_name, property_value) in &class.properties {
+            match property_value {
                 PropertyValue::Array(items) => {
                     // Process array properties (uniform[], vest[], etc.)
-                    let property_name = property.name.to_lowercase();
-                    if is_equipment_array(&property_name) {
-                        debug!("Processing equipment array: {}", property_name);
+                    let property_name_lower = property_name.to_lowercase();
+                    if is_equipment_array(&property_name_lower) {
+                        debug!("Processing equipment array: {}", property_name_lower);
                         
                         // Process each array item, stripping any extra quotes
                         for item in items {
-                            // Skip empty items and preprocessor macros
-                            let clean_item = item.trim().trim_matches('"');
-                            if !clean_item.is_empty() && 
-                               clean_item != "default" && 
-                               !clean_item.starts_with("LIST_") {
-                                dependencies.push(ClassReference {
-                                    class_name: clean_item.to_string(),
-                                    reference_type: ReferenceType::Direct,
-                                    context: format!("loadout:{}:{}", property_name, file_path.display()),
-                                    source_file: file_path.to_path_buf()
-                                });
+                            if let PropertyValue::String(item_str) = item {
+                                // Skip empty items and preprocessor macros
+                                let clean_item = item_str.trim().trim_matches('"');
+                                if !clean_item.is_empty() && 
+                                   clean_item != "default" && 
+                                   !clean_item.starts_with("LIST_") {
+                                    dependencies.push(ClassReference {
+                                        class_name: clean_item.to_string(),
+                                        reference_type: ReferenceType::Direct,
+                                        context: format!("loadout:{}:{}", property_name, file_path.display()),
+                                        source_file: file_path.to_path_buf()
+                                    });
+                                }
                             }
                         }
                     }
                 },
                 PropertyValue::String(value) => {
                     // Process string properties (uniform=, vest=, etc.)
-                    let property_name = property.name.to_lowercase();
-                    if is_equipment_property(&property_name) {
+                    let property_name_lower = property_name.to_lowercase();
+                    if is_equipment_property(&property_name_lower) {
                         let clean_item = value.trim().trim_matches('"');
                         if !clean_item.is_empty() && clean_item != "default" {
                             dependencies.push(ClassReference {

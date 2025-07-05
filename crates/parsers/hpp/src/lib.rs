@@ -241,65 +241,66 @@ impl AdvancedFileParserWrapper {
     }
 }
 
-impl FileParser for AdvancedFileParserWrapper {
-    fn name(&self) -> &str {
-        "AdvancedProjectParser"
+impl arma3_parser_common::Parser<Vec<GameClass>> for AdvancedFileParserWrapper {
+    fn parse_str(&self, content: &str) -> arma3_parser_common::Result<Vec<GameClass>> {
+        // For string parsing, we need to use a temporary file approach
+        use std::io::Write;
+        let mut temp_file = tempfile::NamedTempFile::new()
+            .map_err(|e| arma3_parser_common::Error::io(format!("Failed to create temp file: {}", e)))?;
+        
+        temp_file.write_all(content.as_bytes())
+            .map_err(|e| arma3_parser_common::Error::io(format!("Failed to write to temp file: {}", e)))?;
+        
+        let temp_path = temp_file.path();
+        self.parse_file(temp_path)
     }
 
-    /// Parses a file. `file_path` is expected to be an absolute path
-    /// or a path that can be made relative to the project root.
-    fn parse_file(&self, file_path: &Path) -> Vec<GameClass> {
+    fn parse_file<P: AsRef<Path>>(&self, file_path: P) -> arma3_parser_common::Result<Vec<GameClass>> {
+        let file_path = file_path.as_ref();
+        
         // Attempt to make file_path relative to the project_root_dir
         let relative_path = match file_path.strip_prefix(&self.project_root_dir) {
             Ok(rel_path) => rel_path,
             Err(_) => {
-                // If stripping prefix fails, it might be an absolute path not within the project,
-                // or a path that's already relative but not directly.
-                // For simplicity, if it's absolute and not in project, we error.
-                // If it's already relative, we try to use it as is, but this might be fragile.
-                if file_path.is_absolute() {
-                    log::error!(
-                        "File path {} is not within the project root {}",
-                        file_path.display(),
-                        self.project_root_dir.display()
-                    );
-                    return Vec::new();
+                // If it's already relative, use it as is
+                if file_path.is_relative() {
+                    file_path
+                } else {
+                    return Err(arma3_parser_common::Error::parse(
+                        "",
+                        format!("File path {} is not within project root {}", 
+                               file_path.display(), self.project_root_dir.display())
+                    ));
                 }
-                // Assume it's a relative path the project_parser can handle from its root
-                file_path
             }
         };
 
         match self.project_parser.parse_file(relative_path) {
-            Ok((mut classes, warnings)) => { // Destructure the tuple to get classes and warnings
+            Ok((mut classes, warnings)) => {
                 // Log any warnings encountered during parsing
                 for warning in &warnings {
-                    log::warn!("Parsing warning for {}: {} - {}", file_path.display(), warning.code, warning.message);
+                    log::warn!("Parsing warning for {}: {:?}", file_path.display(), warning);
                 }
                 
-                // Convert absolute paths from project_parser back to relative for the wrapper's contract
+                // Convert file paths if needed
                 for class in &mut classes {
-                    if let Ok(new_relative_path) = class.file_path.strip_prefix(&self.project_root_dir) {
-                        class.file_path = new_relative_path.to_path_buf();
-                    } else {
-                        // This case should ideally not happen if paths are consistent.
-                        // Log a warning if a path couldn't be made relative.
-                        log::warn!(
-                            "Could not make path {} relative to project root {} for GameClass {} in wrapper",
-                            class.file_path.display(),
-                            self.project_root_dir.display(),
-                            class.name
-                        );
-                        // Keep the original (likely absolute) path if stripping fails.
+                    if let Some(ref class_file_path) = class.file_path {
+                        if let Ok(new_relative_path) = class_file_path.strip_prefix(&self.project_root_dir) {
+                            class.file_path = Some(new_relative_path.to_path_buf());
+                        }
                     }
                 }
-                classes
+                Ok(classes)
             }
             Err(e) => {
                 log::error!("Error parsing file {}: {:?}", file_path.display(), e);
-                Vec::new()
+                Err(arma3_parser_common::Error::parse("", format!("Failed to parse file: {}", e)))
             }
         }
+    }
+
+    fn supported_extensions(&self) -> &[&str] {
+        &["hpp", "cpp", "h"]
     }
 }
 

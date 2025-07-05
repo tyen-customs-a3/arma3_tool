@@ -1,4 +1,5 @@
-use gamedata_scanner_models::GameClass;
+use arma3_types::Class as GameClass;
+use crate::FileParser;
 use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -164,7 +165,7 @@ impl DiagnosticInfo {
 /// The `project_root_dir` is used by the parser for context if needed (e.g. for advanced parsing).
 pub(crate) fn scan_directory_with_parser(
     scan_dir: &Path, // The directory to actually scan (absolute)
-    parser: Arc<dyn gamedata_scanner_models::FileParser>,
+    parser: Arc<dyn FileParser>,
     config: ScannerConfig,
     _project_root_dir: &Path, // Keep for potential future use by parser or file collection logic
 ) -> io::Result<ScannerResult> {
@@ -329,7 +330,7 @@ fn is_target_file(path: &Path, extensions: &[String]) -> bool {
 
 /// Process a single file using the provided parser.
 pub(crate) fn process_single_file(
-    parser: Arc<dyn gamedata_scanner_models::FileParser>, // Accept initialized parser
+    parser: Arc<dyn FileParser>, // Accept initialized parser
     file_path: &Path,
     timeout_secs: u64,
     diagnostic_mode: bool,

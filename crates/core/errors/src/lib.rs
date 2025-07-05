@@ -4,7 +4,6 @@
 //! ensuring consistent error reporting and handling patterns.
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use thiserror::Error;
 
 /// Result type alias using our common error type

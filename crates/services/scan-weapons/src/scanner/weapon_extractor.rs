@@ -1,5 +1,5 @@
 use std::path::Path;
-use gamedata_scanner_models::{GameClass, PropertyValue};
+use arma3_types::{GameClass};
 use crate::models::WeaponInfo;
 
 /// Handles extraction of weapon information from configuration classes
@@ -21,14 +21,14 @@ impl WeaponExtractor {
         
         // Check if this class has magazineWell property (indicates it's a weapon)
         // Updated to iterate properties and check name, removed children access
-        let has_magazine_well = class.properties.iter().any(|p| p.name == "magazineWell");
+        let has_magazine_well = class.properties.iter().any(|(prop_name, _)| prop_name == "magazineWell");
         
         if !has_magazine_well {
             // Also check if any nested class within properties might define magazineWell
             // This is a common pattern for LinkedItems etc.
-            let nested_has_magazine_well = class.properties.iter().any(|p| {
-                if let PropertyValue::Class(ref nested_class) = p.value {
-                    nested_class.properties.iter().any(|np| np.name == "magazineWell")
+            let nested_has_magazine_well = class.properties.iter().any(|(_, prop_value)| {
+                if let arma3_types::PropertyValue::Object(ref nested_class_map) = prop_value {
+                    nested_class_map.iter().any(|(nested_prop_name, _)| nested_prop_name == "magazineWell")
                 } else {
                     false
                 }
@@ -61,21 +61,25 @@ impl WeaponExtractor {
         let mut magazine_wells = Vec::new();
         
         // Iterate through properties to find "magazineWell"
-        for prop in &class.properties {
-            if prop.name == "magazineWell" {
-                if let PropertyValue::Array(wells_pv) = &prop.value {
+        for (prop_name, prop_value) in &class.properties {
+            if prop_name == "magazineWell" {
+                if let arma3_types::PropertyValue::Array(wells_pv) = prop_value {
                     for well_name_str in wells_pv {
-                        magazine_wells.push(well_name_str.trim_matches('"').to_string());
+                        if let arma3_types::PropertyValue::String(s) = well_name_str {
+                            magazine_wells.push(s.trim_matches('"').to_string());
+                        }
                     }
                 }
             }
             // Check for nested magazineWell in Class type properties (e.g. LinkedItems)
-            else if let PropertyValue::Class(ref nested_class) = prop.value {
-                for nested_prop in &nested_class.properties {
-                    if nested_prop.name == "magazineWell" {
-                        if let PropertyValue::Array(wells_pv) = &nested_prop.value {
+            else if let arma3_types::PropertyValue::Object(ref nested_class_map) = prop_value {
+                for (nested_prop_name, nested_prop_value) in nested_class_map {
+                    if nested_prop_name == "magazineWell" {
+                        if let arma3_types::PropertyValue::Array(wells_pv) = nested_prop_value {
                             for well_name_str in wells_pv {
-                                magazine_wells.push(well_name_str.trim_matches('"').to_string());
+                                if let arma3_types::PropertyValue::String(s) = well_name_str {
+                                    magazine_wells.push(s.trim_matches('"').to_string());
+                                }
                             }
                         }
                     }
@@ -96,11 +100,17 @@ impl WeaponExtractor {
     /// Static version for extracting declared weapons
     pub fn extract_declared_weapons_static(class: &GameClass) -> Option<Vec<String>> {
         // Iterate through properties to find "weapons"
-        for prop in &class.properties {
-            if prop.name == "weapons" {
-                if let PropertyValue::Array(weapons_pv) = &prop.value {
+        for (prop_name, prop_value) in &class.properties {
+            if prop_name == "weapons" {
+                if let arma3_types::PropertyValue::Array(weapons_pv) = prop_value {
                     let weapon_names: Vec<String> = weapons_pv.iter()
-                        .map(|name_str| name_str.trim_matches('"').to_string())
+                        .filter_map(|name_val| {
+                            if let arma3_types::PropertyValue::String(s) = name_val {
+                                Some(s.trim_matches('"').to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .collect();
                     
                     if !weapon_names.is_empty() {

@@ -1,7 +1,7 @@
 //! Implementation of parser-common traits for the HPP parser
 
-use arma3_parser_common::{Parser, ParseError as CommonParseError, Position, Span};
-use arma3_types::{Class, Value};
+use arma3_parser_common::{Parser, ParseError as CommonParseError};
+use arma3_types::Class;
 use crate::{AdvancedProjectParser, ParseError, SimpleClassScanner};
 use std::path::Path;
 
@@ -20,7 +20,7 @@ impl HppAdvancedParser {
 
 impl Parser<Vec<Class>> for HppAdvancedParser {
     fn parse_str(&self, _content: &str) -> arma3_parser_common::Result<Vec<Class>> {
-        Err(CommonParseError::new(
+        Err(arma3_parser_common::Error::parse("",
             "AdvancedProjectParser requires file-based parsing with project context"
         ))
     }
@@ -40,7 +40,7 @@ impl Parser<Vec<Class>> for HppAdvancedParser {
 
         // Log warnings
         for warning in warnings {
-            log::warn!("HPP parser warning: {}", warning);
+            log::warn!("HPP parser warning: {:?}", warning);
         }
 
         Ok(classes)

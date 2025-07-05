@@ -10,7 +10,8 @@ use std::thread;
 use crossbeam_channel;
 use std::sync::Arc;
 
-use parser_hpp::{AdvancedProjectParser};
+use arma3_parser_hpp::{AdvancedProjectParser};
+use arma3_types::{GameClass};
 use crate::models::{WeaponInfo, MagazineWellInfo};
 use super::{WeaponExtractor, MagazineExtractor};
 
@@ -32,14 +33,14 @@ pub struct FileProcessingResult {
 }
 
 /// Extract mod source from CfgPatches
-fn extract_mod_source_from_patches(game_classes: &[parser_hpp::GameClass]) -> Option<String> {
+fn extract_mod_source_from_patches(game_classes: &[GameClass]) -> Option<String> {
     for class in game_classes {
         if class.name == "CfgPatches" {
             // CfgPatches contains patch classes, each representing a mod
-            for prop in &class.properties {
-                if let parser_hpp::PropertyValue::Class(_) = prop.value {
+            for (prop_name, prop_value) in &class.properties {
+                if let arma3_types::PropertyValue::String(_) = prop_value {
                     // The property name is the mod name
-                    return Some(prop.name.clone());
+                    return Some(prop_name.clone());
                 }
             }
         }
@@ -206,21 +207,36 @@ impl FileProcessor {
 
         for class in &game_classes {
             if class.name == "CfgWeapons" {
-                for prop in &class.properties {
-                    if let parser_hpp::PropertyValue::Class(ref weapon_class_value) = prop.value {
-                         if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(weapon_class_value, original_absolute_path) {
+                for (prop_name, prop_value) in &class.properties {
+                    if let arma3_types::PropertyValue::Object(ref weapon_class_map) = prop_value {
+                        // Convert Object back to GameClass for compatibility
+                        let mut weapon_class_value = GameClass::new(prop_name.clone());
+                        for (prop_key, prop_val) in weapon_class_map {
+                            weapon_class_value.properties.insert(prop_key.clone(), prop_val.clone());
+                        }
+                         if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(&weapon_class_value, original_absolute_path) {
                             weapon_info.mod_source = mod_source.clone();
                             weapons.push(weapon_info);
                         }
                     }
                 }
             } else {
-                for prop in &class.properties {
-                    if prop.name == "CfgWeapons" {
-                        if let parser_hpp::PropertyValue::Class(ref cfg_weapons_class) = prop.value {
-                            for inner_prop in &cfg_weapons_class.properties {
-                                if let parser_hpp::PropertyValue::Class(ref weapon_class_value) = inner_prop.value {
-                                    if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(weapon_class_value, original_absolute_path) {
+                for (prop_name, prop_value) in &class.properties {
+                    if prop_name == "CfgWeapons" {
+                        if let arma3_types::PropertyValue::Object(ref cfg_weapons_class_map) = prop_value {
+                            // Convert Object back to GameClass for compatibility
+                            let mut cfg_weapons_class = GameClass::new(prop_name.clone());
+                            for (prop_key, prop_val) in cfg_weapons_class_map {
+                                cfg_weapons_class.properties.insert(prop_key.clone(), prop_val.clone());
+                            }
+                            for (inner_prop_name, inner_prop_value) in &cfg_weapons_class.properties {
+                                if let arma3_types::PropertyValue::Object(ref weapon_class_map) = inner_prop_value {
+                                    // Convert Object back to GameClass for compatibility
+                                    let mut weapon_class_value = GameClass::new(inner_prop_name.clone());
+                                    for (prop_key, prop_val) in weapon_class_map {
+                                        weapon_class_value.properties.insert(prop_key.clone(), prop_val.clone());
+                                    }
+                                    if let Some(mut weapon_info) = WeaponExtractor::extract_weapon_info_static(&weapon_class_value, original_absolute_path) {
                                         weapon_info.mod_source = mod_source.clone();
                                         weapons.push(weapon_info);
                                     }
@@ -234,10 +250,15 @@ impl FileProcessor {
             if class.name == "CfgMagazineWells" {
                  MagazineExtractor::extract_magazine_wells_static(class, original_absolute_path, &mod_source, &mut magazine_wells);
             } else {
-                for prop in &class.properties {
-                    if prop.name == "CfgMagazineWells" {
-                         if let parser_hpp::PropertyValue::Class(ref cfg_magazine_wells_class) = prop.value {
-                            MagazineExtractor::extract_magazine_wells_static(cfg_magazine_wells_class, original_absolute_path, &mod_source, &mut magazine_wells);
+                for (prop_name, prop_value) in &class.properties {
+                    if prop_name == "CfgMagazineWells" {
+                         if let arma3_types::PropertyValue::Object(ref cfg_magazine_wells_class_map) = prop_value {
+                            // Convert Object back to GameClass for compatibility
+                            let mut cfg_magazine_wells_class = GameClass::new(prop_name.clone());
+                            for (prop_key, prop_val) in cfg_magazine_wells_class_map {
+                                cfg_magazine_wells_class.properties.insert(prop_key.clone(), prop_val.clone());
+                            }
+                            MagazineExtractor::extract_magazine_wells_static(&cfg_magazine_wells_class, original_absolute_path, &mod_source, &mut magazine_wells);
                         }
                     }
                 }

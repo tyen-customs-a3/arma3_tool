@@ -120,15 +120,15 @@ impl DependencyExtractor {
                                 dependencies.insert(s.to_string());
                             }
                             PropertyValue::Array(arr) => {
-                                dependencies.extend(arr.iter().cloned());
+                                // Extract string values from the array
+                                for value in arr {
+                                    if let PropertyValue::String(s) = value {
+                                        dependencies.insert(s.clone());
+                                    }
+                                }
                             }
-                            PropertyValue::Class(nested_class) => {
-                                // For nested classes, process them with the current path
-                                let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
-                                    .filter(|p| self.property_names.contains(&p.name))
-                                    .map(|p| (&p.name, &p.value))
-                                    .collect();
-                                self.process_class(nested_class, &class_path, &nested_property_index, dependencies);
+                            PropertyValue::ClassRef(class_name) => {
+                                dependencies.insert(class_name.clone());
                             }
                             _ => {}
                         }
@@ -137,8 +137,9 @@ impl DependencyExtractor {
             }
         }
         
-        // Process nested classes stored in the classes field
-        for (_, nested_class) in &class.classes {
+        // Process nested classes
+        for nested_class in class.classes.values() {
+            // Build property index for nested class
             let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
                 .filter(|(name, _)| self.property_names.contains(*name))
                 .collect();

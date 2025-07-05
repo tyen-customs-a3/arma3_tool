@@ -7,7 +7,7 @@ use std::io::Write;
 use std::thread;
 use std::sync::mpsc;
 
-use gamedata_scanner::{Scanner, ScannerConfig};
+use arma3_scan_gamedata::{Scanner, ScannerConfig};
 use super::error_handler::{categorize_error, extract_related_context};
 use super::types::FileFailure;
 use super::config::{Args, ParserType};
@@ -102,7 +102,7 @@ fn handle_failing_file(
 ///
 /// Phase 6 cleanup: Clear distinction between warnings (PE12, etc.) and hard errors.
 /// Only true errors from parser_hpp propagate as FileFailure, not PE12 warnings.
-pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) -> (bool, Option<FileFailure>, Vec<::parser_hpp::ParseWarning>) {
+pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) -> (bool, Option<FileFailure>, Vec<arma3_parser_hpp::ParseWarning>) {
     let file_path_str = file_path.to_string_lossy().to_string();
     debug!("Processing file: {}", file_path_str);
     
@@ -252,7 +252,7 @@ pub fn process_file(file_path: &Path, output_dir: Option<&Path>, args: &Args) ->
 /// Process a file using the gamedata scanner
 /// Returns either (classes, warnings) on success or error string on hard failure
 /// Phase 6 cleanup: PE12 warnings are included in success case, not error case
-fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gamedata_scanner_models::GameClass>, Vec<::parser_hpp::ParseWarning>), String> {
+fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<arma3_types::GameClass>, Vec<arma3_parser_hpp::ParseWarning>), String> {
     if use_advanced {
         // Find the project root by looking for hemtt.toml, starting from the file's directory
         let project_root = find_project_root(file_path)
@@ -272,7 +272,7 @@ fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gam
         };
         
         // Create the AdvancedProjectParser with consistent project root
-        let project_parser = ::parser_hpp::AdvancedProjectParser::new(
+        let project_parser = arma3_parser_hpp::AdvancedProjectParser::new(
             &project_root,
             config_path.as_deref()
         ).map_err(|e| format!("Failed to create AdvancedProjectParser: {:?}", e))?;
@@ -299,8 +299,8 @@ fn process_with_scanner(file_path: &Path, use_advanced: bool) -> Result<(Vec<gam
             }
         }
     } else {
-        // Call ::parser_hpp::parse_file(file_path) and return empty warnings
-        let simple_classes = ::parser_hpp::parse_file(file_path)
+        // Call arma3_parser_hpp::parse_file(file_path) and return empty warnings
+        let simple_classes = arma3_parser_hpp::parse_file(file_path)
             .map_err(|e| format!("{:?}", e))?;
         Ok((simple_classes, Vec::new()))
     }
