@@ -340,7 +340,7 @@ mod tests {
         
         let text = "/* multi\nline */hello";
         let pos = utils::skip_whitespace_and_comments(text, 0);
-        assert_eq!(pos, 15); // Position of 'h'
+        assert_eq!(pos, 16); // Position of 'h'
     }
     
     #[test]

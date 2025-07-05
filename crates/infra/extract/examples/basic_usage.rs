@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use anyhow::Result;
-use arma3_extractor::{ExtractionConfig, ExtractionManager};
+use arma3_extract::{ExtractionConfig, ExtractionManager};
 use log::{info, LevelFilter};
 
 #[tokio::main]

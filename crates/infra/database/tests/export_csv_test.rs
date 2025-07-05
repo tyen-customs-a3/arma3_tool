@@ -4,7 +4,7 @@ use std::io::Write;
 use arma3_database::{
     DatabaseManager, ClassRepository, ClassModel
 };
-use arma3_models::types::PropertyValue;
+use arma3_types::types::PropertyValue;
 use tempfile::tempdir;
 use serde_json;
 

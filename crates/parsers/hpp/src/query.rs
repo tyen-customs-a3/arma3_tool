@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use arma3_types::{Class, Value, ClassMetadata};
 use crate::{GameClass, PropertyValue};
 
 /// Represents a query pattern to search for and extract data from HPP classes
@@ -151,7 +152,6 @@ impl DependencyExtractor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ClassProperty;
     use std::path::PathBuf;
 
     #[test]
@@ -170,32 +170,44 @@ mod tests {
 
     #[test]
     fn test_nested_extraction() {
-        let nested_class = GameClass {
+        use std::collections::HashMap;
+        
+        let mut nested_properties = HashMap::new();
+        nested_properties.insert("name".to_string(), Value::String("test_rifle".to_string()));
+        
+        let nested_class = Class {
             name: "primaryWeapon".to_string(),
             parent: None,
-            properties: vec![
-                ClassProperty {
-                    name: "name".to_string(),
-                    value: PropertyValue::String("test_rifle".to_string()),
-                },
-            ],
+            properties: nested_properties,
+            classes: HashMap::new(),
+            arrays: HashMap::new(),
+            external_classes: Vec::new(),
+            delete_properties: Vec::new(),
+            delete_classes: Vec::new(),
             container_class: Some("rifleman".to_string()),
-            file_path: PathBuf::from("test.hpp"),
+            file_path: Some(PathBuf::from("test.hpp")),
             is_forward_declaration: false,
+            line_number: None,
+            metadata: ClassMetadata::default(),
         };
 
-        let class = GameClass {
+        let mut classes = HashMap::new();
+        classes.insert("primaryWeapon".to_string(), nested_class);
+
+        let class = Class {
             name: "rifleman".to_string(),
             parent: Some("baseMan".to_string()),
-            properties: vec![
-                ClassProperty {
-                    name: "primaryWeapon".to_string(),
-                    value: PropertyValue::Class(Box::new(nested_class)),
-                },
-            ],
+            properties: HashMap::new(),
+            classes,
+            arrays: HashMap::new(),
+            external_classes: Vec::new(),
+            delete_properties: Vec::new(),
+            delete_classes: Vec::new(),
             container_class: None,
-            file_path: PathBuf::from("test.hpp"),
+            file_path: Some(PathBuf::from("test.hpp")),
             is_forward_declaration: false,
+            line_number: None,
+            metadata: ClassMetadata::default(),
         };
 
         let extractor = DependencyExtractor::new(vec![class]);

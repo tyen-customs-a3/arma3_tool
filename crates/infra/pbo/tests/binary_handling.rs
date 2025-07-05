@@ -1,5 +1,5 @@
-use pbo_tools::core::PboConfig;
-use pbo_tools::fs::{convert_binary_file, process_binary_files};
+use arma3_pbo::core::PboConfig;
+use arma3_pbo::fs::{convert_binary_file, process_binary_files};
 use std::path::Path;
 use tempfile::TempDir;
 use std::fs;

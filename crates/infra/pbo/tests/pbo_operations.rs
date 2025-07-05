@@ -1,4 +1,4 @@
-use pbo_tools::core::{PboApi, PboApiOps};
+use arma3_pbo::core::{PboApi, PboApiOps};
 use std::path::Path;
 use tempfile::TempDir;
 use std::fs;

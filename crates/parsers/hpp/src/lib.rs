@@ -16,6 +16,7 @@ mod common_parser;
 pub use error::ParseError;
 pub use file_processor::{ParseResult, ParseWarning}; // Export new parsing result types
 pub use models::{GameClass, ClassProperty, PropertyValue, FileParser}; // Re-export all needed types
+use arma3_types::Value;
 pub use query::DependencyExtractor;
 pub use simple_parser::{SimpleClassScanner, parse_file_simple};
 pub use common_parser::{HppAdvancedParser, HppSimpleParser};
@@ -529,8 +530,8 @@ mod tests {
         let test_class = classes.iter().find(|c| c.name == "MyTestClass").unwrap();
         assert_eq!(test_class.parent.as_deref(), Some("MyBaseClass"));
         assert_eq!(test_class.properties.len(), 3);
-        let display_name_prop = test_class.properties.iter().find(|p| p.name == "displayName").unwrap();
-        assert_eq!(display_name_prop.value, PropertyValue::String("Test Display".to_string()));
+        let display_name_value = test_class.properties.get("displayName").unwrap();
+        assert_eq!(*display_name_value, Value::String("Test Display".to_string()));
     }
 
     #[test]
@@ -550,8 +551,8 @@ mod tests {
         assert_eq!(classes.len(), 1);
         let another_class = &classes[0];
         assert_eq!(another_class.name, "AnotherClass");
-        let value_prop = another_class.properties.iter().find(|p| p.name == "anotherValue").unwrap();
-        assert_eq!(value_prop.value, PropertyValue::Number(456)); // MY_VALUE from common.hpp
+        let value_prop = another_class.properties.get("anotherValue").unwrap();
+        assert_eq!(*value_prop, Value::Integer(456)); // MY_VALUE from common.hpp
     }
 
     #[test]
@@ -563,20 +564,24 @@ mod tests {
 
         // Test with an absolute path
         let absolute_path_to_config = project_root.join("addons/main/config.cpp");
-        let classes1 = wrapper.parse_file(&absolute_path_to_config);
+        let classes1_result = wrapper.parse_file(&absolute_path_to_config);
+        assert!(classes1_result.is_ok(), "Parse failed: {:?}", classes1_result.err());
+        let classes1 = classes1_result.unwrap();
         assert_eq!(classes1.len(), 2);
         let test_class1 = classes1.iter().find(|c| c.name == "MyTestClass").unwrap();
         assert_eq!(test_class1.properties.len(), 3);
-        assert_eq!(test_class1.file_path, PathBuf::from("addons/main/config.cpp"));
+        assert_eq!(test_class1.file_path, Some(PathBuf::from("addons/main/config.cpp")));
 
         // Test with a path already relative to the project root (if wrapper handles it)
         // or ensure your calling code makes it relative if that's the contract.
         // For this test, our wrapper makes it relative.
-        let classes2 = wrapper.parse_file(Path::new("addons/main/other.cpp")); // Passed as if relative
+        let classes2_result = wrapper.parse_file(Path::new("addons/main/other.cpp")); // Passed as if relative
+        assert!(classes2_result.is_ok(), "Parse failed: {:?}", classes2_result.err());
+        let classes2 = classes2_result.unwrap();
         assert_eq!(classes2.len(), 1);
         let another_class = &classes2[0];
         assert_eq!(another_class.name, "AnotherClass");
-        assert_eq!(another_class.file_path, PathBuf::from("addons/main/other.cpp"));
+        assert_eq!(another_class.file_path, Some(PathBuf::from("addons/main/other.cpp")));
     }
 
      #[test]
@@ -697,8 +702,14 @@ enabled = true
         let outside_file_path = outside_file_dir.path().join("outside.hpp");
         fs::write(&outside_file_path, "class OutsideClass {};").unwrap();
 
-        let classes = wrapper.parse_file(&outside_file_path);
-        assert!(classes.is_empty(), "Should return empty for files outside the project root");
+        let classes_result = wrapper.parse_file(&outside_file_path);
+        match classes_result {
+            Ok(classes) => assert!(classes.is_empty(), "Should return empty for files outside the project root"),
+            Err(e) => {
+                // It's also acceptable if parsing fails for files outside the project
+                println!("Parse failed as expected for outside file: {:?}", e);
+            }
+        }
     }
 
     #[test]

@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use parser_sqm::extract_class_dependencies;
+    use arma3_parser_sqm::extract_class_dependencies;
 
     #[test]
     fn test_parse_class_with_inventory() {

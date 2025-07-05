@@ -1,4 +1,4 @@
-use parser_hpp::{HppParser, PropertyValue, ParserMode};
+use arma3_parser_hpp::{HppParser, PropertyValue, ParserMode};
 use std::fs;
 
 #[test]

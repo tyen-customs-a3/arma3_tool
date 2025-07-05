@@ -1,5 +1,5 @@
-use pbo_tools::core::{PboApi, PboApiOps};
-use pbo_tools::ops::PboOperationError;
+use arma3_pbo::core::{PboApi, PboApiOps};
+use arma3_pbo::ops::PboOperationError;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
