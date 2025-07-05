@@ -5,7 +5,9 @@ edition = "2021"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [dependencies]
-arma3_extractor = { workspace = true }
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
+arma3-extract = { workspace = true }
 num_cpus = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

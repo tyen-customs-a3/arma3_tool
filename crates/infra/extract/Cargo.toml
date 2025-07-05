@@ -5,11 +5,14 @@ edition.workspace = true
 description = "PBO extraction and caching system for Arma 3 tools"
 
 [dependencies]
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
+arma3-pbo = { workspace = true }
+arma3-database = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 num_cpus = { workspace = true }
-pbo_tools = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

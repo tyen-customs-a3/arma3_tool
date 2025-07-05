@@ -15,7 +15,8 @@ notify = { workspace = true, optional = true }
 csv = { workspace = true }
 strsim = { workspace = true }
 
-arma3_models = { workspace = true }
+arma3-types = { workspace = true }
+arma3-errors = { workspace = true }
 
 anyhow = { workspace = true }
 chrono = { workspace = true }
