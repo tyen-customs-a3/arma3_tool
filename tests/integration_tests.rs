@@ -6,12 +6,12 @@ use tempfile::TempDir;
 use std::fs;
 use tokio;
 
-use arma3_tool::cli::{run_extract, run_process, run_report, run_export};
+// CLI functions are not used in these workflow orchestration tests
 use arma3_workflow::orchestrator::WorkflowOrchestrator;
 use arma3_workflow::types::{Workflow, WorkflowType, ContentType};
 use arma3_workflow::types::options::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ExportOptions, ReportFormat};
 use arma3_database::DatabaseManager;
-use arma3_extractor::ExtractionConfig;
+use arma3_extract::ExtractionConfig;
 
 /// Helper function to create test PBO files
 fn create_test_pbo_files(dir: &PathBuf) -> std::io::Result<()> {
@@ -25,7 +25,8 @@ fn create_test_pbo_files(dir: &PathBuf) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Helper function to create test extraction config
+/// Helper function to create test extraction config (currently unused)
+#[allow(dead_code)]
 fn create_test_extraction_config(work_dir: &PathBuf, db_path: &PathBuf) -> ExtractionConfig {
     ExtractionConfig {
         cache_dir: work_dir.clone(),
@@ -58,7 +59,7 @@ async fn test_complete_workflow_orchestration() {
     // Create test database
     fs::write(&db_path, "").unwrap();
     
-    let orchestrator = WorkflowOrchestrator::new();
+    let _orchestrator = WorkflowOrchestrator::new();
     
     // Test complete workflow
     let workflow_options = WorkflowOptions::new()
@@ -209,15 +210,15 @@ async fn test_database_state_consistency() {
     let db_path = temp_dir.path().join("consistency_test.db");
     
     // Create initial database
-    let db_manager = DatabaseManager::new(&db_path).expect("Failed to create database");
+    let _db_manager = DatabaseManager::new(&db_path).expect("Failed to create database");
     
     // Simulate multiple workflow operations affecting database state
     let initial_time = Instant::now();
     
     // Test that database can be accessed consistently
-    let db1 = DatabaseManager::new(&db_path).expect("First DB access should succeed");
-    let db2 = DatabaseManager::new(&db_path).expect("Second DB access should succeed");
-    let db3 = DatabaseManager::new(&db_path).expect("Third DB access should succeed");
+    let _db1 = DatabaseManager::new(&db_path).expect("First DB access should succeed");
+    let _db2 = DatabaseManager::new(&db_path).expect("Second DB access should succeed");
+    let _db3 = DatabaseManager::new(&db_path).expect("Third DB access should succeed");
     
     // Test database operations don't conflict
     // In a real test, we would perform actual database operations here
@@ -280,7 +281,7 @@ async fn test_workflow_orchestrator_integration() {
     fs::create_dir_all(&work_dir).unwrap();
     fs::create_dir_all(&output_dir).unwrap();
     
-    let orchestrator = WorkflowOrchestrator::new();
+    let _orchestrator = WorkflowOrchestrator::new();
     
     // Test orchestrator can be created and configured
     // In a real test, we would execute workflows through the orchestrator

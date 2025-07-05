@@ -1,4 +1,4 @@
-use arma3_extract::pbo_interface::{PboExtractor, HemttPboExtractor};
+use arma3_extract::{PboExtractor, HemttPboExtractor};
 use std::path::Path;
 use tempfile::tempdir;
 use std::fs;

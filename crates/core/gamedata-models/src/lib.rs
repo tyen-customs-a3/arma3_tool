@@ -101,6 +101,9 @@ pub enum PropertyValue {
 
     /// Nested class
     Object(Box<GameClass>),
+
+    /// Reference to another class
+    ClassRef(String),
 }
 
 impl PropertyValue {

@@ -20,6 +20,7 @@ pub use manager::ExtractionManager;
 pub use models::{PboMetadata, PboType, ExtractionConfig};
 pub use error::{CacheError, Result};
 pub use file_db::{FileDbManager, ExtractedFileInfo, PboRecord};
+pub use pbo_interface::{PboExtractor, HemttPboExtractor};
 
 // Convenience re-exports of core functionality
 pub use manager::{extract_game_data, extract_mission};

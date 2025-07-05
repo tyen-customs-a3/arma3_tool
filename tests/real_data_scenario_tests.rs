@@ -5,10 +5,8 @@ use tempfile::TempDir;
 use std::fs;
 use tokio;
 
-use arma3_workflow::orchestrator::WorkflowOrchestrator;
 use arma3_workflow::types::{Workflow, WorkflowType, ContentType};
 use arma3_workflow::types::options::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions, ExportOptions, ReportFormat};
-use arma3_database::DatabaseManager;
 
 /// Create realistic Arma 3 PBO content for testing
 fn create_realistic_pbo_content(dir: &PathBuf) -> std::io::Result<()> {
