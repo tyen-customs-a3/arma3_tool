@@ -86,10 +86,9 @@ impl DependencyExtractor {
         let mut dependencies = HashSet::new();
         
         for class in &self.classes {
-            // Build property index for fast lookup
+            // Build property index for fast lookup from HashMap properties
             let property_index: HashMap<_, _> = class.properties.iter()
-                .filter(|p| self.property_names.contains(&p.name))
-                .map(|p| (&p.name, &p.value))
+                .filter(|(name, _)| self.property_names.contains(*name))
                 .collect();
             
             self.process_class(class, &[], &property_index, &mut dependencies);
@@ -138,15 +137,12 @@ impl DependencyExtractor {
             }
         }
         
-        // Process nested classes in properties
-        for prop in &class.properties {
-            if let PropertyValue::Class(nested_class) = &prop.value {
-                let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
-                    .filter(|p| self.property_names.contains(&p.name))
-                    .map(|p| (&p.name, &p.value))
-                    .collect();
-                self.process_class(nested_class, &class_path, &nested_property_index, dependencies);
-            }
+        // Process nested classes stored in the classes field
+        for (_, nested_class) in &class.classes {
+            let nested_property_index: HashMap<_, _> = nested_class.properties.iter()
+                .filter(|(name, _)| self.property_names.contains(*name))
+                .collect();
+            self.process_class(nested_class, &class_path, &nested_property_index, dependencies);
         }
     }
 }
@@ -159,23 +155,10 @@ mod tests {
 
     #[test]
     fn test_simple_extraction() {
-        let class = GameClass {
-            name: "baseMan".to_string(),
-            parent: None,
-            properties: vec![
-                ClassProperty {
-                    name: "uniform".to_string(),
-                    value: PropertyValue::Array(vec!["test_uniform".to_string()]),
-                },
-                ClassProperty {
-                    name: "vest".to_string(),
-                    value: PropertyValue::Array(vec!["test_vest".to_string()]),
-                },
-            ],
-            container_class: None,
-            file_path: PathBuf::from("test.hpp"),
-            is_forward_declaration: false,
-        };
+        let class = GameClass::new("baseMan")
+            .with_property("uniform", PropertyValue::Array(vec![PropertyValue::String("test_uniform".to_string())]))
+            .with_property("vest", PropertyValue::Array(vec![PropertyValue::String("test_vest".to_string())]))
+            .with_file_path(PathBuf::from("test.hpp"));
 
         let extractor = DependencyExtractor::new(vec![class]);
         let dependencies = extractor.extract_dependencies();

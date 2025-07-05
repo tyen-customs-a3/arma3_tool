@@ -1,4 +1,4 @@
-use gamedata_scanner_models::{ClassProperty, GameClass, PropertyValue};
+use arma3_types::{Class as GameClass, Value as PropertyValue};
 use hemtt_config::{Class, Config as HemttConfig, Item, Number as HemttNumber, Property, Value};
 use hemtt_workspace::reporting::Processed;
 use log::trace;
@@ -201,14 +201,17 @@ impl<'a> Transformer<'a> {
             });
         trace!("  Final file_path for class '{}': {}", name, file_path_for_class.display());
 
-        let mut game_class = GameClass {
-            name: name.to_string(),
-            parent: parent_name.map(String::from),
-            properties: Vec::new(),
-            container_class: container_class_name.map(String::from),
-            file_path: file_path_for_class, // Use resolved path
-            is_forward_declaration: false, // This function creates full definitions
-        };
+        let mut game_class = GameClass::new(name.to_string());
+        
+        if let Some(parent) = parent_name {
+            game_class = game_class.with_parent(parent.to_string());
+        }
+        
+        if let Some(container) = container_class_name {
+            game_class = game_class.with_container(container.to_string());
+        }
+        
+        game_class = game_class.with_file_path(file_path_for_class);
 
         for prop in hemtt_properties {
             match prop {
@@ -218,10 +221,10 @@ impl<'a> Transformer<'a> {
                     ..
                 } => {
                     trace!("  Adding property to {}: {}", name, prop_name.as_str());
-                    game_class.properties.push(ClassProperty {
-                        name: prop_name.as_str().to_string(),
-                        value: self.convert_hemtt_value_to_property_value(value),
-                    });
+                    game_class.add_property(
+                        prop_name.as_str().to_string(),
+                        self.convert_hemtt_value_to_property_value(value)
+                    );
                 }
                 Property::Class(nested_hemtt_class) => {
                     match nested_hemtt_class {
@@ -239,11 +242,11 @@ impl<'a> Transformer<'a> {
                                 Some(name), // The current class 'name' is the container
                             );
 
-                            // Add nested class as a property of its container
-                            game_class.properties.push(ClassProperty {
-                                name: nested_game_class.name.clone(),
-                                value: PropertyValue::Class(Box::new(nested_game_class.clone())),
-                            });
+                            // Add nested class to the container's classes
+                            game_class.add_class(
+                                nested_game_class.name.clone(),
+                                nested_game_class.clone()
+                            );
 
                             // Also add the nested class to the global list if not already present with this container
                             let nested_name_str = nested_name_ident.as_str();
@@ -323,56 +326,66 @@ impl<'a> Transformer<'a> {
         match value {
             Value::Str(s) => PropertyValue::String(s.value().to_string()),
             Value::Number(n) => match n {
-                HemttNumber::Int32 { value, .. } => PropertyValue::Number(*value as i64),
-                HemttNumber::Int64 { value, .. } => PropertyValue::Number(*value),
-                HemttNumber::Float32 { value, .. } => PropertyValue::Number(*value as i64), // Consider if f32 should be stored differently
+                HemttNumber::Int32 { value, .. } => PropertyValue::Integer(*value as i64),
+                HemttNumber::Int64 { value, .. } => PropertyValue::Integer(*value),
+                HemttNumber::Float32 { value, .. } => PropertyValue::Number(*value as f64),
             },
             Value::Array(arr) => PropertyValue::Array(
                 arr.items
                     .iter()
-                    .map(|item| self.convert_hemtt_item_to_string(item))
+                    .map(|item| self.convert_hemtt_item_to_value(item))
                     .collect(),
             ),
-            Value::Expression(e) => PropertyValue::String(format!("EXPRESSION: {:?}", e)), // Represent expression
-            Value::Macro(m) => PropertyValue::String(m.to_string()), // Use MacroExpression's to_string
+            Value::Expression(e) => PropertyValue::Expression(format!("EXPRESSION: {:?}", e)),
+            Value::Macro(m) => PropertyValue::Expression(m.to_string()),
             Value::UnexpectedArray(arr) => {
                 log::warn!(
-                    "Encountered UnexpectedArray, converting to string array: {:?}",
+                    "Encountered UnexpectedArray, converting to value array: {:?}",
                     arr.span
                 );
                 PropertyValue::Array(
                     arr.items
                         .iter()
-                        .map(|item| self.convert_hemtt_item_to_string(item))
+                        .map(|item| self.convert_hemtt_item_to_value(item))
                         .collect(),
                 )
             }
             Value::Invalid(range) => {
                 log::warn!("Encountered Invalid Hemtt Value at range {:?}, representing as empty string", range);
-                PropertyValue::String("INVALID_HEMTT_VALUE".to_string()) // Or a more descriptive placeholder
+                PropertyValue::String("INVALID_HEMTT_VALUE".to_string())
             }
         }
     }
 
-    fn convert_hemtt_item_to_string(&self, item: &Item) -> String {
+    fn convert_hemtt_item_to_value(&self, item: &Item) -> PropertyValue {
         match item {
-            Item::Str(s) => s.value().to_string(),
-            Item::Number(n) => n.to_string(),
-            Item::Macro(m) => m.to_string(),
+            Item::Str(s) => PropertyValue::String(s.value().to_string()),
+            Item::Number(n) => {
+                // Try to parse as integer first, fallback to float
+                let num_str = n.to_string();
+                if let Ok(int_val) = num_str.parse::<i64>() {
+                    PropertyValue::Integer(int_val)
+                } else if let Ok(float_val) = num_str.parse::<f64>() {
+                    PropertyValue::Number(float_val)
+                } else {
+                    PropertyValue::String(num_str)
+                }
+            }
+            Item::Macro(m) => PropertyValue::Expression(m.to_string()),
             Item::Array(items_vec) => {
-                // Recursively convert nested arrays, e.g., "{elem1, elem2, {sub1, sub2}}"
-                let inner_items: Vec<String> = items_vec
+                // Recursively convert nested arrays
+                let inner_items: Vec<PropertyValue> = items_vec
                     .iter()
-                    .map(|sub_item| self.convert_hemtt_item_to_string(sub_item))
+                    .map(|sub_item| self.convert_hemtt_item_to_value(sub_item))
                     .collect();
-                format!("{{{}}}", inner_items.join(", "))
+                PropertyValue::Array(inner_items)
             }
             Item::Invalid(range) => {
                 log::warn!(
                     "Encountered Invalid Hemtt Item at range {:?}, representing as placeholder",
                     range
                 );
-                "INVALID_HEMTT_ITEM".to_string()
+                PropertyValue::String("INVALID_HEMTT_ITEM".to_string())
             }
         }
     }

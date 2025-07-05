@@ -20,7 +20,8 @@ hemtt-common = { workspace = true }
 # hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 
 # Additional dependencies from parser_advanced
-gamedata_scanner_models = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-common = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
 
