@@ -13,6 +13,7 @@ mod processor;
 pub mod file_db;
 mod utils;
 pub mod error;
+mod pbo_interface;
 
 // Public API exports
 pub use manager::ExtractionManager;

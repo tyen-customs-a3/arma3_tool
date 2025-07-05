@@ -6,16 +6,13 @@ use tokio::task;
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
-// TODO: Implement PBO extraction using arma3-pbo crate
-// use arma3_pbo::{PboApi, PboApiOps};
 use std::collections::HashSet;
+use crate::pbo_interface::{PboExtractor, HemttPboExtractor};
 
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
-    /// API for interacting with PBO files
-    #[allow(dead_code)]
-    // TODO: Replace with actual PBO API when implemented
-    // pbo_api: PboApi,
+    /// Timeout for PBO operations in seconds
+    timeout: u64,
     
     /// Number of threads to use for extraction
     threads: usize,
@@ -23,9 +20,8 @@ pub struct PboProcessor {
 
 impl PboProcessor {
     /// Create a new PBO processor
-    pub fn new(_timeout: u64, threads: usize) -> Self {
-        // TODO: Initialize PBO API when implemented
-        Self { threads }
+    pub fn new(timeout: u64, threads: usize) -> Self {
+        Self { timeout, threads }
     }
  
     /// Catalog all files in a directory recursively
@@ -83,8 +79,7 @@ impl PboProcessor {
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
             let semaphore_clone = Arc::clone(&semaphore);
-            // TODO: Create PBO processor instance when implemented
-            // let processor = PboApi::new(60);
+            let timeout = self.timeout;
 
             let task = task::spawn(async move {
                 // Acquire semaphore permit
@@ -121,62 +116,89 @@ impl PboProcessor {
                 // Create a filter pattern for the requested extensions
                 let filter_pattern = if pbo_tool_extensions.is_empty() {
                     "*".to_string() // Extract all files if no specific extensions requested
+                } else if pbo_tool_extensions.len() == 1 {
+                    format!("*.{}", pbo_tool_extensions[0])
                 } else {
-                    // Create a pattern like "*.cpp,*.bin" 
-                    pbo_tool_extensions.iter()
-                        .map(|ext| format!("*.{}", ext))
-                        .collect::<Vec<_>>()
-                        .join(",")
+                    // Use brace expansion for multiple extensions
+                    format!("*.{{{}}}", pbo_tool_extensions.join(","))
                 };
                 // -----------------------------------------
 
-                // TODO: Implement PBO extraction when PBO API is available
-                // For now, just log and return empty results
-                info!("Would extract PBO {} with filter {}", pbo_path.display(), filter_pattern);
-                match Ok::<(), anyhow::Error>(()) {
-                    Ok(_) => {
+                // Create PBO extractor
+                let extractor = HemttPboExtractor::new(timeout);
+                
+                // Extract files using the PBO API
+                let extraction_result = extractor.extract_filtered(
+                    &pbo_path,
+                    temp_dir.path(),
+                    &filter_pattern
+                ).await;
+
+                match extraction_result {
+                    Ok(extracted_rel_paths) => {
                         // Add a small delay to ensure file handles are released
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         
-                        // TODO: Find all extracted files when extraction is implemented
-                        // For now, return empty list
-                        let extracted_files: Vec<PathBuf> = Vec::new(); // Empty for now
+                        // If user wants cpp files, attempt binary config conversion
+                        let mut final_extracted_paths = extracted_rel_paths.clone();
+                        if user_wants_cpp {
+                            match extractor.convert_binary_configs(&extracted_rel_paths, temp_dir.path()).await {
+                                Ok(conversions) => {
+                                    // Add converted files to the list and remove originals
+                                    for (original, converted) in conversions {
+                                        // Remove the original binary file from the list
+                                        final_extracted_paths.retain(|p| p != &original);
+                                        // Add the converted file
+                                        final_extracted_paths.push(converted);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to convert binary configs: {}", e);
+                                    // Continue with original files
+                                }
+                            }
+                        }
+                        
+                        // Convert relative paths to absolute paths in temp directory
+                        let extracted_files: Vec<PathBuf> = final_extracted_paths
+                            .into_iter()
+                            .map(|rel_path| temp_dir.path().join(rel_path))
+                            .collect();
                         let mut cache_paths = Vec::new();
                         let temp_path_str = temp_dir.path().to_string_lossy();
 
                                 // --- Post-Extraction Filtering Loop ---
+                                // With improved pattern matching, we should have fewer files to filter
+                                // This loop now mainly handles the bin->cpp conversion case
                                 for file_path in &extracted_files {
-                                    let file_name = match file_path.file_name() {
-                                        Some(name) => name.to_string_lossy().to_lowercase(),
-                                        None => continue, // Skip if no filename
+
+                                    // Get the actual extension for files
+                                    let effective_extension = match file_path.extension() {
+                                        Some(ext) => ext.to_string_lossy().to_lowercase(),
+                                        None => continue, // Skip files without extensions
                                     };
 
-                                    let mut rename_to_cpp = false;
-                                    let effective_extension: String;
-
-                                    // Handle config.bin potential rename
-                                    if file_name == "config.bin" {
-                                        if user_wants_cpp {
-                                            rename_to_cpp = true;
-                                            effective_extension = "cpp".to_string();
-                                        } else {
-                                            continue; // Skip config.bin if user didn't ask for cpp
+                                    // Special handling for bin files when user wants cpp
+                                    if effective_extension == "bin" && user_wants_cpp && !bin_already_requested {
+                                        // This bin file was only extracted for conversion, skip if not converted
+                                        let file_name = file_path.file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("");
+                                        
+                                        // Only skip non-config bin files
+                                        if !file_name.eq_ignore_ascii_case("config.bin") {
+                                            continue;
                                         }
-                                    } else {
-                                        // Get the actual extension for other files
-                                        effective_extension = match file_path.extension() {
-                                            Some(ext) => ext.to_string_lossy().to_lowercase(),
-                                            None => continue, // Skip files without extensions
-                                        };
                                     }
 
                                     // Check against user's *original* requested extensions
                                     if !original_extensions_set.contains(&effective_extension) {
-                                        // info!("Skipping file {} (effective ext: {}) as it's not in requested set: {:?}", file_path.display(), effective_extension, original_extensions_set);
+                                        trace!("Skipping file {} (ext: {}) as it's not in requested set", 
+                                               file_path.display(), effective_extension);
                                         continue; // Skip file if its effective extension wasn't requested
                                     }
 
-                                    // --- File matches original filter (or is config.bin treated as cpp) ---
+                                    // --- File matches original filter ---
 
                                     // Compute the relative path from temp dir
                                     let rel_path_str = file_path.to_string_lossy()
@@ -184,16 +206,7 @@ impl PboProcessor {
                                         .trim_start_matches(['/', '\\'])
                                         .to_string();
 
-                                    let final_rel_path: PathBuf;
-                                    if rename_to_cpp {
-                                        // Create path ending in .cpp
-                                        let mut temp_path = PathBuf::from(rel_path_str);
-                                        temp_path.set_extension("cpp");
-                                        final_rel_path = temp_path;
-                                    } else {
-                                        final_rel_path = PathBuf::from(rel_path_str);
-                                    }
-
+                                    let final_rel_path = PathBuf::from(rel_path_str);
                                     let target_path = cache_dir.join(&final_rel_path);
 
                                     // Ensure the target directory exists

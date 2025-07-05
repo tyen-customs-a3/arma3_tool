@@ -50,27 +50,79 @@ impl HemttPboOperations {
     }
 
     /// Check if a file path matches a glob pattern
+    /// Supports patterns like:
+    /// - `*` matches any characters except path separators
+    /// - `**` matches any characters including path separators
+    /// - `?` matches exactly one character
+    /// - `*.{ext1,ext2}` matches files with any of the specified extensions
     fn matches_pattern(file_path: &str, pattern: &str) -> bool {
-        // Simple glob pattern matching
-        // In a production implementation, you'd want to use a proper glob library
+        // Normalize path separators to forward slashes
+        let normalized_path = file_path.replace('\\', "/");
+        
+        // Simple cases first
         if pattern == "*" || pattern == "**" {
             return true;
         }
-
-        // Handle basic patterns
-        if pattern.contains('*') {
-            let pattern_regex = pattern
-                .replace("**", ".*")
-                .replace("*", "[^/]*")
-                .replace("?", ".");
-            
-            if let Ok(regex) = regex::Regex::new(&format!("^{}$", pattern_regex)) {
-                return regex.is_match(file_path);
+        
+        // Handle brace expansion for multiple extensions (e.g., *.{cpp,hpp,sqf})
+        if pattern.contains('{') && pattern.contains('}') {
+            if let Some(start) = pattern.find('{') {
+                if let Some(end) = pattern.find('}') {
+                    let prefix = &pattern[..start];
+                    let suffix = &pattern[end + 1..];
+                    let extensions = &pattern[start + 1..end];
+                    
+                    // Try each extension
+                    for ext in extensions.split(',') {
+                        let single_pattern = format!("{}{}{}", prefix, ext.trim(), suffix);
+                        if Self::matches_single_pattern(&normalized_path, &single_pattern) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
             }
         }
-
-        // Fallback to simple string matching
-        file_path.contains(pattern)
+        
+        // Single pattern matching
+        Self::matches_single_pattern(&normalized_path, pattern)
+    }
+    
+    /// Check if a file path matches a single glob pattern (no brace expansion)
+    fn matches_single_pattern(file_path: &str, pattern: &str) -> bool {
+        // Convert glob pattern to regex
+        let mut regex_pattern = String::with_capacity(pattern.len() * 2);
+        let mut chars = pattern.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            match ch {
+                '*' => {
+                    if chars.peek() == Some(&'*') {
+                        chars.next(); // Consume the second '*'
+                        regex_pattern.push_str(".*"); // ** matches everything including /
+                    } else {
+                        regex_pattern.push_str("[^/]*"); // * matches everything except /
+                    }
+                }
+                '?' => regex_pattern.push('.'),
+                '.' | '+' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '\\' | '|' => {
+                    // Escape regex special characters
+                    regex_pattern.push('\\');
+                    regex_pattern.push(ch);
+                }
+                _ => regex_pattern.push(ch),
+            }
+        }
+        
+        // Try to compile and match the regex
+        match regex::Regex::new(&format!("^{}$", regex_pattern)) {
+            Ok(regex) => regex.is_match(file_path),
+            Err(_) => {
+                // If regex compilation fails, fall back to substring matching
+                warn!("Failed to compile glob pattern '{}' as regex, falling back to substring match", pattern);
+                file_path.contains(pattern)
+            }
+        }
     }
 }
 
@@ -247,6 +299,7 @@ impl PboOperations for HemttPboOperations {
 
         let files = pbo.files_sorted();
         let mut extracted_count = 0;
+        let mut skipped_count = 0;
 
         for header in files {
             let file_path = header.filename();
@@ -254,6 +307,8 @@ impl PboOperations for HemttPboOperations {
 
             // Check if file matches the filter
             if !Self::matches_pattern(&normalized_path, filter) {
+                skipped_count += 1;
+                trace!("Skipping file '{}' (doesn't match filter '{}')", normalized_path, filter);
                 continue;
             }
 
@@ -296,7 +351,8 @@ impl PboOperations for HemttPboOperations {
             }
         }
 
-        debug!("Extracted {} files matching filter '{}'", extracted_count, filter);
+        debug!("Extracted {} files matching filter '{}' (skipped {} files)", 
+               extracted_count, filter, skipped_count);
         Ok(())
     }
 
@@ -571,5 +627,61 @@ mod tests {
         assert!(format!("{:?}", ops).contains("HemttPboOperations"));
     }
 
-    // Note: Actual functionality tests will be added when the implementation is complete
+    #[test]
+    fn test_glob_pattern_matching() {
+        // Test wildcard patterns
+        assert!(HemttPboOperations::matches_pattern("file.cpp", "*"));
+        assert!(HemttPboOperations::matches_pattern("path/to/file.cpp", "**"));
+        assert!(HemttPboOperations::matches_pattern("file.cpp", "*.cpp"));
+        assert!(HemttPboOperations::matches_pattern("path/to/file.cpp", "**/*.cpp"));
+        assert!(HemttPboOperations::matches_pattern("test.sqf", "*.sqf"));
+        
+        // Test that * doesn't match path separators
+        assert!(!HemttPboOperations::matches_pattern("path/to/file.cpp", "*.cpp"));
+        
+        // Test ? pattern
+        assert!(HemttPboOperations::matches_pattern("a.cpp", "?.cpp"));
+        assert!(!HemttPboOperations::matches_pattern("ab.cpp", "?.cpp"));
+        
+        // Test negative cases
+        assert!(!HemttPboOperations::matches_pattern("file.hpp", "*.cpp"));
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", "*.hpp"));
+    }
+    
+    #[test]
+    fn test_brace_expansion_patterns() {
+        // Test multiple extensions
+        assert!(HemttPboOperations::matches_pattern("file.cpp", "*.{cpp,hpp,h}"));
+        assert!(HemttPboOperations::matches_pattern("file.hpp", "*.{cpp,hpp,h}"));
+        assert!(HemttPboOperations::matches_pattern("file.h", "*.{cpp,hpp,h}"));
+        assert!(!HemttPboOperations::matches_pattern("file.sqf", "*.{cpp,hpp,h}"));
+        
+        // Test with paths
+        assert!(HemttPboOperations::matches_pattern("path/to/file.cpp", "**/*.{cpp,hpp}"));
+        assert!(HemttPboOperations::matches_pattern("path/to/file.hpp", "**/*.{cpp,hpp}"));
+        assert!(!HemttPboOperations::matches_pattern("path/to/file.sqf", "**/*.{cpp,hpp}"));
+        
+        // Test with spaces in brace expansion
+        assert!(HemttPboOperations::matches_pattern("file.cpp", "*.{cpp, hpp, h}"));
+        assert!(HemttPboOperations::matches_pattern("file.hpp", "*.{cpp, hpp, h}"));
+    }
+    
+    #[test]
+    fn test_path_normalization() {
+        // Test Windows-style paths are normalized
+        assert!(HemttPboOperations::matches_pattern("path\\to\\file.cpp", "**/*.cpp"));
+        assert!(HemttPboOperations::matches_pattern("path\\to\\file.cpp", "path/to/*.cpp"));
+        
+        // Mixed separators
+        assert!(HemttPboOperations::matches_pattern("path\\to/file.cpp", "path/to/*.cpp"));
+    }
+    
+    #[test]
+    fn test_special_characters_in_patterns() {
+        // Test that special regex characters in filenames are handled
+        assert!(HemttPboOperations::matches_pattern("file.test.cpp", "*.test.cpp"));
+        assert!(HemttPboOperations::matches_pattern("file+test.cpp", "file+test.cpp"));
+        assert!(HemttPboOperations::matches_pattern("file[1].cpp", "file[1].cpp"));
+        assert!(HemttPboOperations::matches_pattern("file(1).cpp", "file(1).cpp"));
+    }
 }
