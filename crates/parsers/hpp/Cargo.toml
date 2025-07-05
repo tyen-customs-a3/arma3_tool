@@ -37,6 +37,7 @@ walkdir = { workspace = true }
 [dev-dependencies]
 criterion = { workspace = true }
 env_logger = { workspace = true }
+tempfile = { workspace = true }
 
 [[bench]]
 name = "query_benchmarks"

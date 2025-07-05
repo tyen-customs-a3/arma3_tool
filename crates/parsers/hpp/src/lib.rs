@@ -11,12 +11,14 @@ mod ast_transformer;
 pub mod models; // Ensure models module is public if types are used in public API
 mod query;
 mod simple_parser;
+mod common_parser;
 
 pub use error::ParseError;
 pub use file_processor::{ParseResult, ParseWarning}; // Export new parsing result types
 pub use models::{GameClass, ClassProperty, PropertyValue, FileParser}; // Re-export all needed types
 pub use query::DependencyExtractor;
 pub use simple_parser::{SimpleClassScanner, parse_file_simple};
+pub use common_parser::{HppAdvancedParser, HppSimpleParser};
 use workspace_manager::WorkspaceManager;
 
 /// Parsing mode selection for different performance/accuracy tradeoffs
