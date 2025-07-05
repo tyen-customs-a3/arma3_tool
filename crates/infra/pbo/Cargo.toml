@@ -7,7 +7,7 @@ authors = ["Tom Campbell <tyen901@gmail.com>"]
 license = "MIT"
 
 [lib]
-name = "arma3-pbo"
+name = "arma3_pbo"
 path = "src/lib.rs"
 
 [[bin]]

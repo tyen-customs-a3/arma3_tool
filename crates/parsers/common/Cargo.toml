@@ -1,0 +1,13 @@
+[package]
+name = "arma3-parser-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+arma3-errors = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }

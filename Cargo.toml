@@ -36,23 +36,35 @@ futures = { workspace = true }
 
 [workspace]
 members = [
-    "libs/config",
-    "libs/database",
-    "libs/models",
-    "libs/parser_hpp",
-    "libs/parser_sqf",
-    "libs/parser_sqm",
-    "libs/pbo_extractor",
-    "libs/pbo_tools",
-    "libs/quick_extract",
-    "libs/reporter",
-    "libs/scanner_gamedata",
-    "libs/scanner_gamedata/models",
-    "libs/scanner_gamedata/tool",
-    "libs/scanner_mission",
-    "libs/sqf-analyzer",
-    "libs/weapon_magazine_scanner",
-    "libs/workflow",
+    # Core layer
+    "crates/core/types",
+    "crates/core/gamedata-models",
+    "crates/core/errors",
+    "crates/core/common",
+    
+    # Parser layer
+    "crates/parsers/common",
+    "crates/parsers/hpp",
+    "crates/parsers/sqf",
+    "crates/parsers/sqm",
+    
+    # Infrastructure layer
+    "crates/infra/config",
+    "crates/infra/database",
+    "crates/infra/extract",
+    "crates/infra/pbo",
+    
+    # Service layer
+    "crates/services/scan-gamedata",
+    "crates/services/scan-mission",
+    "crates/services/scan-weapons",
+    "crates/services/analyze",
+    
+    # Application layer
+    "crates/apps/workflow",
+    "crates/apps/reporter",
+    "crates/apps/tools",
+    "crates/apps/scanner-tools",
 ]
 
 [[bin]]
@@ -73,21 +85,51 @@ edition = "2021"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [workspace.dependencies]
-# Internal crates
-arma3_config = { path = "libs/config" }
-arma3_models = { path = "libs/models" }
-arma3_database = { path = "libs/database" }
-arma3_extractor = { path = "libs/pbo_extractor" }
-arma3_reporter = { path = "libs/reporter" }
-arma3_workflow = { path = "libs/workflow" }
-pbo_tools = { path = "libs/pbo_tools" }
-gamedata_scanner = { path = "libs/scanner_gamedata" }
-gamedata_scanner_models = { path = "libs/scanner_gamedata/models" }
-mission_scanner = { path = "libs/scanner_mission" }
-parser_hpp = { path = "libs/parser_hpp" }
-parser_sqf = { path = "libs/parser_sqf" }
-parser_sqm = { path = "libs/parser_sqm" }
-sqf-analyzer = { path = "libs/sqf-analyzer" }
+# Internal crates - Core layer
+arma3-types = { path = "crates/core/types" }
+arma3-gamedata-models = { path = "crates/core/gamedata-models" }
+arma3-errors = { path = "crates/core/errors" }
+arma3-common = { path = "crates/core/common" }
+
+# Internal crates - Parser layer
+arma3-parser-common = { path = "crates/parsers/common" }
+arma3-parser-hpp = { path = "crates/parsers/hpp" }
+arma3-parser-sqf = { path = "crates/parsers/sqf" }
+arma3-parser-sqm = { path = "crates/parsers/sqm" }
+
+# Internal crates - Infrastructure layer
+arma3-config = { path = "crates/infra/config" }
+arma3-database = { path = "crates/infra/database" }
+arma3-extract = { path = "crates/infra/extract" }
+arma3-pbo = { path = "crates/infra/pbo" }
+
+# Internal crates - Service layer
+arma3-scan-gamedata = { path = "crates/services/scan-gamedata" }
+arma3-scan-mission = { path = "crates/services/scan-mission" }
+arma3-scan-weapons = { path = "crates/services/scan-weapons" }
+arma3-analyze = { path = "crates/services/analyze" }
+
+# Internal crates - Application layer
+arma3-workflow = { path = "crates/apps/workflow" }
+arma3-reporter = { path = "crates/apps/reporter" }
+arma3-tools = { path = "crates/apps/tools" }
+arma3-scanner-tools = { path = "crates/apps/scanner-tools" }
+
+# Legacy aliases for transition period
+arma3_config = { path = "crates/infra/config" }
+arma3_models = { path = "crates/core/types" }
+arma3_database = { path = "crates/infra/database" }
+arma3_extractor = { path = "crates/infra/extract" }
+arma3_reporter = { path = "crates/apps/reporter" }
+arma3_workflow = { path = "crates/apps/workflow" }
+pbo_tools = { path = "crates/infra/pbo" }
+gamedata_scanner = { path = "crates/services/scan-gamedata" }
+gamedata_scanner_models = { path = "crates/core/gamedata-models" }
+mission_scanner = { path = "crates/services/scan-mission" }
+parser_hpp = { path = "crates/parsers/hpp" }
+parser_sqf = { path = "crates/parsers/sqf" }
+parser_sqm = { path = "crates/parsers/sqm" }
+sqf-analyzer = { path = "crates/services/analyze" }
 hemtt-common = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-pbo = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
 hemtt-config = { git = "https://github.com/tyen-customs-a3/HEMTT.git", rev = "9fb1caf76cbfd50da57cbbea19e3d498b35697de" }
