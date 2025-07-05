@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Create a label (use class ID if no display name is available)
         let display_name = class.properties.get("displayName")
             .map(|v| match v {
-                arma3_models::types::PropertyValue::String(s) => s.clone(),
+                arma3_types::types::PropertyValue::String(s) => s.clone(),
                 _ => class.id.clone(),
             })
             .unwrap_or_else(|| class.id.clone());

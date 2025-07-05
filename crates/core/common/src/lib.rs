@@ -3,7 +3,6 @@
 //! This crate provides shared functionality that doesn't belong to any specific
 //! layer but is used throughout the application.
 
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Common configuration and utility functions
@@ -16,17 +15,17 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
     for component in path.components() {
         match component {
             std::path::Component::ParentDir => {
-                if !components.is_empty() && components.last() != Some(&"..") {
+                if !components.is_empty() && components.last() != Some(&"..".to_string()) {
                     components.pop();
                 } else {
-                    components.push("..");
+                    components.push("..".to_string());
                 }
             }
             std::path::Component::CurDir => {
                 // Skip current directory components
             }
             _ => {
-                components.push(component.as_os_str().to_string_lossy().as_ref());
+                components.push(component.as_os_str().to_string_lossy().to_string());
             }
         }
     }

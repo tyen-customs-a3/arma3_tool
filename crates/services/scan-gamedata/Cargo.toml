@@ -8,8 +8,11 @@ name = "test_batch_config"
 path = "test_batch_config.rs"
 
 [dependencies]
-parser_hpp = { workspace = true }
-gamedata_scanner_models = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-hpp = { workspace = true }
+arma3-parser-common = { workspace = true }
+arma3-config = { workspace = true }
+arma3-database = { workspace = true }
 hemtt-common = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }

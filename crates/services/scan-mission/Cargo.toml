@@ -4,9 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-parser_sqm = { workspace = true }
-parser_hpp = { workspace = true }
-sqf-analyzer = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-sqm = { workspace = true }
+arma3-parser-hpp = { workspace = true }
+arma3-parser-common = { workspace = true }
+arma3-analyze = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }

@@ -540,7 +540,7 @@ impl<'a> Cache<'a> {
     }
     
     /// Import file index mappings from GameDataClasses
-    pub fn import_file_index_mappings(&self, game_data: &arma3_models::GameDataClasses) -> Result<()> {
+    pub fn import_file_index_mappings(&self, game_data: &arma3_types::GameDataClasses) -> Result<()> {
         if game_data.file_sources.is_empty() {
             return Ok(());
         }

@@ -3,7 +3,7 @@ mod args;
 use clap::Parser;
 use env_logger::Builder;
 use log::{info, warn, error, debug, LevelFilter};
-use pbo_tools::{PboApi, ExtractOptions, PboError, PboApiOps};
+use arma3_pbo::{PboApi, ExtractOptions, PboError, PboApiOps};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};

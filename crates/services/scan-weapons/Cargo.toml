@@ -5,8 +5,11 @@ edition.workspace = true
 
 [dependencies]
 # Local dependencies
-parser_hpp = { workspace = true }
-gamedata_scanner_models = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-hpp = { workspace = true }
+arma3-parser-common = { workspace = true }
+arma3-database = { workspace = true }
+arma3-config = { workspace = true }
 
 # External dependencies
 walkdir = { workspace = true }

@@ -8,9 +8,9 @@ name = "batch_check"
 path = "src/bin/batch_check.rs"
 
 [dependencies]
-gamedata_scanner = { workspace = true }
-gamedata_scanner_models = { workspace = true }
-parser_hpp = { workspace = true }
+arma3-scan-gamedata = { workspace = true }
+arma3-types = { workspace = true }
+arma3-parser-hpp = { workspace = true }
 hemtt-common = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }

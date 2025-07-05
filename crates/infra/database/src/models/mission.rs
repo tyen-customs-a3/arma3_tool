@@ -68,7 +68,7 @@ impl MissionModel {
     }
     
     /// Convert from shared_models::Mission
-    pub fn from_mission(mission: &arma3_models::Mission) -> Self {
+    pub fn from_mission(mission: &arma3_types::Mission) -> Self {
         Self {
             id: mission.name.clone(),
             name: mission.name.clone(),
@@ -120,7 +120,7 @@ impl MissionComponentModel {
     /// Convert from shared_models::MissionComponent
     pub fn from_component(
         mission_id: &str,
-        component: &arma3_models::MissionComponent,
+        component: &arma3_types::MissionComponent,
     ) -> Self {
         Self {
             id: None,
@@ -198,7 +198,7 @@ impl MissionDependencyModel {
     /// Convert from shared_models::DependencyRef
     pub fn from_dependency(
         mission_id: &str,
-        dependency: &arma3_models::DependencyRef,
+        dependency: &arma3_types::DependencyRef,
     ) -> Self {
         Self {
             id: None,
@@ -215,7 +215,7 @@ impl MissionDependencyModel {
     pub fn from_component_dependency(
         mission_id: &str,
         component_id: i64,
-        dependency: &arma3_models::DependencyRef,
+        dependency: &arma3_types::DependencyRef,
     ) -> Self {
         Self {
             id: None,

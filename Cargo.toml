@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arma3_config = { workspace = true }
-arma3_database = { workspace = true }
-arma3_extractor = { workspace = true }
-arma3_models = { workspace = true }
-arma3_reporter = { workspace = true }
-arma3_workflow = { workspace = true }
+arma3-config = { workspace = true }
+arma3-database = { workspace = true }
+arma3-extract = { workspace = true }
+arma3-types = { workspace = true }
+arma3-reporter = { workspace = true }
+arma3-workflow = { workspace = true }
 
-gamedata_scanner = { workspace = true }
-mission_scanner = { workspace = true }
+arma3-scan-gamedata = { workspace = true }
+arma3-scan-mission = { workspace = true }
 
 anyhow = { workspace = true }
 async-trait = "0.1"
@@ -152,7 +152,7 @@ directories = "5.0.1"
 env_logger = "0.11.7"
 futures = "0.3.31"
 fs_extra = "1.3.0"
-indicatif = "0.17.12"
+indicatif = "0.17.8"
 log = "0.4.27"
 lz4_flex = "0.11.5"
 memchr = "2.7.5"

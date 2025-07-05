@@ -389,7 +389,7 @@ impl<'a> ClassRepository<'a> {
     /// Convert from GameDataClasses to database models and import
     pub fn import_from_game_data(
         &self, 
-        game_data: &arma3_models::GameDataClasses
+        game_data: &arma3_types::GameDataClasses
     ) -> Result<()> {
         debug!("Importing {} classes from GameDataClasses", game_data.classes.len());
         

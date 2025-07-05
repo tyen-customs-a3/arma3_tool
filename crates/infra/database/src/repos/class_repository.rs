@@ -7,7 +7,7 @@ use serde_json;
 use crate::error::Result;
 use crate::models::class::ClassModel;
 use crate::DatabaseManager;
-use arma3_models::types::PropertyValue;
+use arma3_types::types::PropertyValue;
 
 /// Repository for class-related database operations
 pub struct ClassRepository<'a> {
@@ -66,7 +66,7 @@ impl<'a> ClassRepository<'a> {
     /// Import game data classes with proper foreign key handling
     pub fn import_from_game_data(
         &self, 
-        game_data: &arma3_models::GameDataClasses
+        game_data: &arma3_types::GameDataClasses
     ) -> Result<()> {
         debug!("Importing {} classes from GameDataClasses", game_data.classes.len());
         

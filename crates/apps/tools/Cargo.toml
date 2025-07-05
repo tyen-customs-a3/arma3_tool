@@ -7,7 +7,7 @@ authors = ["Your Name <you@example.com>"]
 [dependencies]
 clap = { workspace = true }
 walkdir = { workspace = true }
-pbo_tools = { workspace = true }
+arma3-pbo = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 thiserror = { workspace = true }

@@ -298,7 +298,7 @@ impl<'a> MissionRepository<'a> {
     }
     
     /// Import mission data from a shared model
-    pub fn import_from_shared_model(&self, mission: &arma3_models::Mission) -> Result<()> {
+    pub fn import_from_shared_model(&self, mission: &arma3_types::Mission) -> Result<()> {
         debug!("Importing mission: {}", mission.name);
         
         // Create transaction
@@ -391,7 +391,7 @@ impl<'a> MissionRepository<'a> {
     }
     
     /// Import all missions from a shared model collection
-    pub fn import_from_collection(&self, mission_data: &arma3_models::MissionData) -> Result<()> {
+    pub fn import_from_collection(&self, mission_data: &arma3_types::MissionData) -> Result<()> {
         debug!("Importing {} missions", mission_data.missions.len());
         
         for mission in &mission_data.missions {

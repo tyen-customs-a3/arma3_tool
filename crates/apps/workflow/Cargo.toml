@@ -5,9 +5,9 @@ edition = "2021"
 authors = ["Tom Campbell <tyen901@gmail.com>"]
 
 [dependencies]
-arma3_database = { workspace = true }
-arma3_extractor = { workspace = true }
-arma3_reporter = { workspace = true }
+arma3-database = { workspace = true }
+arma3-extract = { workspace = true }
+arma3-reporter = { workspace = true }
 anyhow = { workspace = true }
 async-trait = "0.1"
 futures = "0.3"

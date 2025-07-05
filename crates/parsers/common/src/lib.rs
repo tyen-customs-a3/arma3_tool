@@ -3,7 +3,7 @@
 //! This crate provides the foundational traits and utilities that all
 //! Arma3 parsers implement, ensuring consistent parsing interfaces.
 
-use arma3_errors::{Error, Result};
+pub use arma3_errors::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

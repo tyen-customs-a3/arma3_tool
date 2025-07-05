@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use arma3_models::types::PropertyValue;
+use arma3_types::types::PropertyValue;
 
 /// Model representing a class in the database
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -45,7 +45,7 @@ impl ClassModel {
     
     /// Convert from a GameDataClass
     pub fn from_game_data_class(
-        class: &arma3_models::gamedata::GameDataClass,
+        class: &arma3_types::gamedata::GameDataClass,
     ) -> Self {
         Self {
             id: class.name.clone(),
@@ -58,8 +58,8 @@ impl ClassModel {
     }
     
     /// Convert to a GameDataClass
-    pub fn to_game_data_class(&self) -> arma3_models::gamedata::GameDataClass {
-        arma3_models::gamedata::GameDataClass {
+    pub fn to_game_data_class(&self) -> arma3_types::gamedata::GameDataClass {
+        arma3_types::gamedata::GameDataClass {
             name: self.id.clone(),
             parent: self.parent_id.clone(),
             container_class: self.container_class.clone(),
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn test_class_model_conversion() {
         // Create a GameDataClass
-        let game_data_class = arma3_models::gamedata::GameDataClass {
+        let game_data_class = arma3_types::gamedata::GameDataClass {
             name: "TestClass".to_string(),
             parent: Some("ParentClass".to_string()),
             container_class: None,

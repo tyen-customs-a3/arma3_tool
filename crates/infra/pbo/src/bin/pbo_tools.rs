@@ -1,9 +1,9 @@
 use env_logger;
 use log::error;
 use clap::Parser;
-use pbo_tools::cli::args::Cli;
-use pbo_tools::cli::CliProcessor;
-use pbo_tools::core::constants::DEFAULT_TIMEOUT;
+use arma3_pbo::cli::args::Cli;
+use arma3_pbo::cli::CliProcessor;
+use arma3_pbo::core::constants::DEFAULT_TIMEOUT;
 
 #[tokio::main]
 async fn main() {
