@@ -7,6 +7,7 @@
 mod models;
 mod evaluator;
 mod array_handler;
+mod common_parser;
 
 use std::path::Path;
 use std::fs;
@@ -20,6 +21,7 @@ use hemtt_workspace::{reporting::{Processed, Output, Token, Symbol}, position::{
 
 // Export our public types
 pub use models::{ClassReference, UsageContext};
+pub use common_parser::SqfParser;
 
 #[derive(Debug)]
 pub enum Error {
