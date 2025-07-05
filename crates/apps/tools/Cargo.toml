@@ -4,10 +4,15 @@ version.workspace = true
 edition.workspace = true
 authors = ["Your Name <you@example.com>"]
 
+[lib]
+name = "arma3_tools"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { workspace = true }
 walkdir = { workspace = true }
 arma3-pbo = { workspace = true }
+anyhow = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 thiserror = { workspace = true }

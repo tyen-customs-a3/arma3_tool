@@ -3,7 +3,7 @@ mod args;
 use clap::Parser;
 use env_logger::Builder;
 use log::{info, warn, error, debug, LevelFilter};
-use arma3_pbo::{PboApi, ExtractOptions, PboError, PboApiOps};
+use arma3_tools::{ExtractOptions, extract_pbo};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -38,7 +38,7 @@ enum QuickExtractError {
     #[error("Directory walking error: {0}")]
     WalkDir(#[from] walkdir::Error),
     #[error("PBO Tool error: {0}")]
-    Pbo(#[from] PboError),
+    Pbo(#[from] anyhow::Error),
     #[error("Failed to get PBO filename from path: {0}")]
     FileNameError(PathBuf),
     #[error("Failed to get PBO stem (name without extension) from path: {0}")]
@@ -178,10 +178,6 @@ fn run() -> Result<()> {
     fs::write(&project_toml_path, updated_toml_content)?;
     info!("Updated project.toml with name/prefix: {}", project_name);
 
-    let pbo_api = PboApi::builder()
-        .with_timeout(cli.timeout)
-        .build();
-
     let mut processed_count = 0;
     let mut skipped_count = 0;
     let target_addons_base_dir = absolute_destination_dir.join("addons"); 
@@ -228,21 +224,13 @@ fn run() -> Result<()> {
             // Consider logging temp dir path only if verbose
             // debug!("Created temporary directory: {}", temp_dir_path.display());
 
-            // Create PboApi instance per task
-            let pbo_api = PboApi::builder()
-                .with_timeout(timeout) // Use captured timeout
-                .build();
-
             let extract_options = ExtractOptions {
-                no_pause: true,
-                warnings_as_errors: false,
-                verbose: verbose, // Use captured verbosity
-                ..Default::default()
+                preserve_structure: true,
+                overwrite: true,
             };
 
-            match pbo_api.extract_with_options(&pbo_path, temp_dir_path, extract_options) {
-                Ok(result) => {
-                    if result.is_success() {
+            match extract_pbo(&pbo_path, temp_dir_path, extract_options) {
+                Ok(()) => {
                         // debug!("Successfully extracted {} to temp dir {}", pbo_path.display(), temp_dir_path.display());
                         match find_prefix_file(temp_dir_path) {
                             Some(temp_prefix_file_path) => {
