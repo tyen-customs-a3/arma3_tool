@@ -1,10 +1,14 @@
 pub mod models;
 mod parser;
 mod query;
+mod common_parser;
 
 use std::collections::HashSet;
 use parser::parse_sqm_content;
 use query::DependencyExtractor;
+
+// Export parser-common integration
+pub use common_parser::SqmParser;
 
 /// Extract class dependencies from SQM content
 /// 
