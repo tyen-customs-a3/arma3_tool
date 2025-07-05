@@ -684,4 +684,32 @@ mod tests {
         assert!(HemttPboOperations::matches_pattern("file[1].cpp", "file[1].cpp"));
         assert!(HemttPboOperations::matches_pattern("file(1).cpp", "file(1).cpp"));
     }
+    
+    #[test]
+    fn test_pattern_edge_cases() {
+        // Test empty pattern
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", ""));
+        
+        // Test very long pattern
+        let long_pattern = format!("*{}", ".cpp".repeat(100));
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", &long_pattern));
+        
+        // Test special regex characters in filename
+        assert!(HemttPboOperations::matches_pattern("file$test.cpp", "file$test.cpp"));
+        assert!(HemttPboOperations::matches_pattern("file^test.cpp", "file^test.cpp"));
+        
+        // Test Unicode in patterns
+        assert!(HemttPboOperations::matches_pattern("файл.cpp", "файл.cpp"));
+        assert!(HemttPboOperations::matches_pattern("文件.cpp", "文件.cpp"));
+        
+        // Test malformed brace patterns
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", "*.{cpp"));  // Missing closing brace
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", "*.cpp}"));  // Missing opening brace
+        assert!(!HemttPboOperations::matches_pattern("file.cpp", "*.{}"));    // Empty braces
+        
+        // Test edge cases with path separators
+        assert!(HemttPboOperations::matches_pattern("path/to/file.cpp", "**/file.cpp"));
+        assert!(!HemttPboOperations::matches_pattern("path/to/file.cpp", "*/file.cpp"));
+        assert!(HemttPboOperations::matches_pattern("path\\to\\file.cpp", "path/to/file.cpp"));
+    }
 }

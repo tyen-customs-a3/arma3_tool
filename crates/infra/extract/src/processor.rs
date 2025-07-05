@@ -1,13 +1,50 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use anyhow::Result;
-use log::{info, warn, error};
-use tokio::task;
+use log::{info, warn, error, debug, trace};
+use tokio::task::{self, JoinHandle};
 use tempfile::tempdir;
 use walkdir::WalkDir;
 use std::sync::{Arc, Mutex};
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 use crate::pbo_interface::{PboExtractor, HemttPboExtractor};
+
+/// Statistics for tracking extraction performance
+#[derive(Debug, Default)]
+struct ExtractionStats {
+    total_files_extracted: usize,
+    total_bytes_extracted: u64,
+    pbos_processed: usize,
+    pbos_failed: usize,
+    extraction_times: Vec<Duration>,
+}
+
+impl ExtractionStats {
+    fn new() -> Self {
+        Self::default()
+    }
+    
+    fn add_extraction(&mut self, files: usize, bytes: u64, duration: Duration) {
+        self.total_files_extracted += files;
+        self.total_bytes_extracted += bytes;
+        self.pbos_processed += 1;
+        self.extraction_times.push(duration);
+    }
+    
+    fn add_failure(&mut self) {
+        self.pbos_failed += 1;
+    }
+    
+    fn average_extraction_time(&self) -> Duration {
+        if self.extraction_times.is_empty() {
+            Duration::from_secs(0)
+        } else {
+            let total: Duration = self.extraction_times.iter().sum();
+            total / self.extraction_times.len() as u32
+        }
+    }
+}
 
 /// Handles extraction of PBO files to the cache
 pub struct PboProcessor {
@@ -44,7 +81,7 @@ impl PboProcessor {
         pbos: Vec<PathBuf>,
         cache_dir: &Path,
         extensions: Vec<String>,
-        _verbose: bool,
+        verbose: bool,
         on_failed_extraction: &mut F,
     ) -> Result<Vec<(PathBuf, Vec<PathBuf>)>> 
     where
@@ -54,8 +91,9 @@ impl PboProcessor {
             return Ok(Vec::new());
         }
         let initial_pbo_count = pbos.len(); // Store initial count
+        let start_time = Instant::now();
 
-        info!("Extracting {} PBOs to cache", initial_pbo_count);
+        info!("Extracting {} PBOs to cache using {} threads", initial_pbo_count, self.threads);
 
         // Convert original extensions to HashSet for efficient lookup later
         let original_extensions_set: HashSet<String> = extensions.iter().cloned().collect();
@@ -65,12 +103,15 @@ impl PboProcessor {
         
         // Create a mutex for tracking failures
         let failures = Arc::new(Mutex::new(Vec::new()));
+        
+        // Track extraction statistics
+        let stats = Arc::new(Mutex::new(ExtractionStats::new()));
 
         // Limit concurrency
         let semaphore = Arc::new(tokio::sync::Semaphore::new(self.threads));
 
         // Process PBOs in parallel
-        let mut tasks = vec![];
+        let mut tasks: Vec<JoinHandle<()>> = vec![];
 
         for pbo_path in pbos {
             let cache_dir = cache_dir.to_path_buf();
@@ -78,18 +119,30 @@ impl PboProcessor {
             let original_extensions_set = original_extensions_set.clone();
             let results = Arc::clone(&results);
             let failures = Arc::clone(&failures);
+            let stats = Arc::clone(&stats);
             let semaphore_clone = Arc::clone(&semaphore);
             let timeout = self.timeout;
 
             let task = task::spawn(async move {
+                let pbo_start_time = Instant::now();
+                
                 // Acquire semaphore permit
-                let _permit = semaphore_clone.acquire().await.unwrap();
+                let _permit = match semaphore_clone.acquire().await {
+                    Ok(permit) => permit,
+                    Err(_) => {
+                        error!("Failed to acquire semaphore permit for {}", pbo_path.display());
+                        return;
+                    }
+                };
 
                 // Common error handling function to reduce duplication
                 let record_failure = |error_msg: String| {
                     error!("Error processing PBO {}: {}", pbo_path.display(), error_msg);
                     let mut failures_guard = failures.lock().unwrap();
                     failures_guard.push((pbo_path.clone(), error_msg));
+                    
+                    let mut stats_guard = stats.lock().unwrap();
+                    stats_guard.add_failure();
                 };
 
                 // Extract the PBO to a temporary directory
@@ -222,20 +275,30 @@ impl PboProcessor {
                                     // Copy the file (from original temp path to final target path)
                                     let mut retries = 3;
                                     let mut last_error = None;
+                                    let mut retry_delay = Duration::from_millis(100);
 
                                     while retries > 0 {
                                         match fs::copy(file_path, &target_path) {
-                                            Ok(_) => {
+                                            Ok(bytes_copied) => {
                                                 // Store the final relative path (e.g., .../config.cpp)
                                                 cache_paths.push(final_rel_path);
                                                 last_error = None; // Clear error on success
+                                                
+                                                if verbose {
+                                                    debug!("Copied {} bytes: {} -> {}", 
+                                                          bytes_copied, 
+                                                          file_path.display(), 
+                                                          target_path.display());
+                                                }
                                                 break;
                                             },
                                             Err(e) => {
                                                 last_error = Some(e);
                                                 retries -= 1;
                                                 if retries > 0 {
-                                                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                                                    // Exponential backoff
+                                                    tokio::time::sleep(retry_delay).await;
+                                                    retry_delay *= 2;
                                                 }
                                             }
                                         }
@@ -250,7 +313,27 @@ impl PboProcessor {
                         // Store the result (filtered paths)
                         if !cache_paths.is_empty() { // Only store if we actually kept some files
                             let mut result_guard = results.lock().unwrap();
-                            result_guard.push((pbo_path, cache_paths));
+                            result_guard.push((pbo_path.clone(), cache_paths.clone()));
+                            
+                            // Update statistics
+                            let extraction_time = pbo_start_time.elapsed();
+                            let total_bytes: u64 = cache_paths.iter()
+                                .filter_map(|p| cache_dir.join(p).metadata().ok())
+                                .map(|m| m.len())
+                                .sum();
+                            
+                            let mut stats_guard = stats.lock().unwrap();
+                            stats_guard.add_extraction(cache_paths.len(), total_bytes, extraction_time);
+                            
+                            if verbose {
+                                debug!("Extracted {} from {} files in {:?} ({} bytes)", 
+                                      pbo_path.display(), cache_paths.len(), extraction_time, total_bytes);
+                            }
+                        } else {
+                            // No files matched the filter
+                            if verbose {
+                                debug!("No files matched filter for PBO: {}", pbo_path.display());
+                            }
                         }
                     },
                     Err(e) => {
@@ -285,7 +368,35 @@ impl PboProcessor {
             .into_inner()
             .expect("Failed to get inner results");
 
-        info!("Successfully processed {} PBOs ({} might have failed or yielded no matching files)", initial_pbo_count, initial_pbo_count - final_results.len());
+        // Get final statistics
+        let final_stats = Arc::try_unwrap(stats)
+            .expect("Failed to unwrap stats")
+            .into_inner()
+            .expect("Failed to get inner stats");
+        
+        let elapsed = start_time.elapsed();
+        
+        // Log extraction summary
+        info!("PBO extraction completed in {:.2}s", elapsed.as_secs_f64());
+        info!("  - Total PBOs: {} (processed: {}, failed: {}, skipped: {})", 
+              initial_pbo_count, 
+              final_stats.pbos_processed,
+              final_stats.pbos_failed,
+              initial_pbo_count - final_stats.pbos_processed - final_stats.pbos_failed);
+        info!("  - Files extracted: {} ({:.2} MB)", 
+              final_stats.total_files_extracted,
+              final_stats.total_bytes_extracted as f64 / 1_048_576.0);
+        
+        if !final_stats.extraction_times.is_empty() {
+            info!("  - Average extraction time per PBO: {:.2}s", 
+                  final_stats.average_extraction_time().as_secs_f64());
+        }
+        
+        if verbose && final_stats.pbos_processed > 0 {
+            let throughput = final_stats.total_bytes_extracted as f64 / elapsed.as_secs_f64() / 1_048_576.0;
+            info!("  - Extraction throughput: {:.2} MB/s", throughput);
+        }
+
         Ok(final_results)
     }
 }

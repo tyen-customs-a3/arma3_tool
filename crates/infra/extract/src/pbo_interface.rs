@@ -4,6 +4,10 @@ use async_trait::async_trait;
 use log::{debug, warn, info};
 use walkdir::WalkDir;
 use std::fs;
+use std::sync::Arc;
+use tokio::task;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 /// Trait for abstracting PBO extraction operations
 #[async_trait]
@@ -15,6 +19,15 @@ pub trait PboExtractor: Send + Sync {
         output_dir: &Path,
         filter: &str,
     ) -> Result<Vec<PathBuf>, PboOperationError>;
+    
+    /// Extract files from multiple PBOs in parallel
+    async fn extract_filtered_parallel(
+        &self,
+        pbo_paths: &[&Path],
+        output_dir: &Path,
+        filter: &str,
+        max_concurrent: usize,
+    ) -> Result<HashMap<PathBuf, Vec<PathBuf>>, PboOperationError>;
     
     /// List all files that were extracted to a directory
     async fn list_extracted_files(
@@ -29,11 +42,89 @@ pub trait PboExtractor: Send + Sync {
         extracted_files: &[PathBuf],
         output_dir: &Path,
     ) -> Result<Vec<(PathBuf, PathBuf)>, PboOperationError>;
+    
+    /// Benchmark extraction performance
+    async fn benchmark_extraction(
+        &self,
+        pbo_path: &Path,
+        output_dir: &Path,
+        filter: &str,
+        iterations: usize,
+    ) -> Result<ExtractionBenchmark, PboOperationError>;
+}
+
+/// Benchmark results for PBO extraction operations
+#[derive(Debug, Clone)]
+pub struct ExtractionBenchmark {
+    pub iterations: usize,
+    pub total_duration: Duration,
+    pub average_duration: Duration,
+    pub min_duration: Duration,
+    pub max_duration: Duration,
+    pub files_extracted: usize,
+    pub total_bytes: u64,
+    pub throughput_mb_per_sec: f64,
+    pub files_per_second: f64,
+}
+
+impl ExtractionBenchmark {
+    pub fn new(iterations: usize) -> Self {
+        Self {
+            iterations,
+            total_duration: Duration::ZERO,
+            average_duration: Duration::ZERO,
+            min_duration: Duration::MAX,
+            max_duration: Duration::ZERO,
+            files_extracted: 0,
+            total_bytes: 0,
+            throughput_mb_per_sec: 0.0,
+            files_per_second: 0.0,
+        }
+    }
+    
+    pub fn add_iteration(&mut self, duration: Duration, files: usize, bytes: u64) {
+        self.total_duration += duration;
+        self.files_extracted = files; // Use the last iteration's file count
+        self.total_bytes = bytes; // Use the last iteration's byte count
+        
+        if duration < self.min_duration {
+            self.min_duration = duration;
+        }
+        if duration > self.max_duration {
+            self.max_duration = duration;
+        }
+    }
+    
+    pub fn finalize(&mut self) {
+        if self.iterations > 0 {
+            self.average_duration = self.total_duration / self.iterations as u32;
+            
+            // Calculate throughput based on average duration
+            let avg_secs = self.average_duration.as_secs_f64();
+            if avg_secs > 0.0 {
+                self.throughput_mb_per_sec = (self.total_bytes as f64 / 1_048_576.0) / avg_secs;
+                self.files_per_second = self.files_extracted as f64 / avg_secs;
+            }
+        }
+    }
+    
+    pub fn print_summary(&self) {
+        println!("=== PBO Extraction Benchmark Results ===");
+        println!("Iterations: {}", self.iterations);
+        println!("Files extracted: {}", self.files_extracted);
+        println!("Total bytes: {} ({:.2} MB)", self.total_bytes, self.total_bytes as f64 / 1_048_576.0);
+        println!("Average duration: {:.2}ms", self.average_duration.as_millis());
+        println!("Min duration: {:.2}ms", self.min_duration.as_millis());
+        println!("Max duration: {:.2}ms", self.max_duration.as_millis());
+        println!("Throughput: {:.2} MB/s", self.throughput_mb_per_sec);
+        println!("Files per second: {:.2}", self.files_per_second);
+    }
 }
 
 /// HEMTT-based PBO extractor implementation
 pub struct HemttPboExtractor {
     pbo_api: PboApi,
+    timeout_seconds: u64,
 }
 
 impl HemttPboExtractor {
@@ -41,7 +132,28 @@ impl HemttPboExtractor {
     pub fn new(timeout_seconds: u64) -> Self {
         Self {
             pbo_api: PboApi::new(timeout_seconds as u32),
+            timeout_seconds,
         }
+    }
+    
+    /// Create a new HEMTT PBO extractor with custom configuration
+    pub fn with_config(timeout_seconds: u64) -> Self {
+        Self::new(timeout_seconds)
+    }
+    
+    /// Extract files from a single PBO for use in parallel operations
+    async fn extract_single_pbo(
+        &self,
+        pbo_path: &Path,
+        output_dir: &Path,
+        filter: &str,
+    ) -> Result<Vec<PathBuf>, PboOperationError> {
+        self.extract_filtered(pbo_path, output_dir, filter).await
+    }
+    
+    /// Get the timeout value for creating new API instances
+    fn get_timeout(&self) -> u64 {
+        self.timeout_seconds
     }
     
     /// Try to convert a binary config file to text format
@@ -138,78 +250,136 @@ impl PboExtractor for HemttPboExtractor {
             (output_dir.to_path_buf(), prefix)
         };
         
-        // Create a temporary directory for extraction
-        let temp_extract_dir = output_dir.join(".temp_extract");
-        fs::create_dir_all(&temp_extract_dir)
-            .map_err(|e| PboOperationError::io_error("creating temp directory", e))?;
+        // OPTIMIZATION: Use HEMTT's native filtering instead of post-extraction filtering
+        // This is much more efficient as it only extracts files that match the filter
+        let target_extract_dir = if is_mission_pbo {
+            extract_base_dir.clone()
+        } else if let Some(ref prefix_str) = dir_prefix {
+            if !prefix_str.is_empty() {
+                output_dir.join(prefix_str)
+            } else {
+                output_dir.to_path_buf()
+            }
+        } else {
+            output_dir.to_path_buf()
+        };
         
-        // Extract files to the temporary directory
-        self.pbo_api.extract_filtered(pbo_path, &temp_extract_dir, filter).await?;
+        // Ensure the target directory exists
+        fs::create_dir_all(&target_extract_dir)
+            .map_err(|e| PboOperationError::io_error("creating target directory", e))?;
         
-        // Now move files to the correct location
+        // Use HEMTT's direct filtered extraction - this is the key optimization!
+        self.pbo_api.extract_filtered(pbo_path, &target_extract_dir, filter).await?;
+        
+        // Collect the extracted files by walking the target directory
         let mut extracted_files = Vec::new();
         
-        for entry in WalkDir::new(&temp_extract_dir)
+        for entry in WalkDir::new(&target_extract_dir)
             .follow_links(true)
             .into_iter()
             .filter_map(|e| e.ok())
         {
             if entry.file_type().is_file() {
-                if let Ok(rel_path) = entry.path().strip_prefix(&temp_extract_dir) {
-                    // For missions, we already have the mission directory as base
-                    // For mods, we need to add the prefix if it exists
-                    let final_path = if is_mission_pbo {
-                        extract_base_dir.join(rel_path)
-                    } else if let Some(ref prefix_str) = dir_prefix {
-                        if !prefix_str.is_empty() {
-                            output_dir.join(prefix_str).join(rel_path)
-                        } else {
-                            output_dir.join(rel_path)
-                        }
-                    } else {
-                        output_dir.join(rel_path)
-                    };
-                    
-                    // Create parent directories
-                    if let Some(parent) = final_path.parent() {
-                        fs::create_dir_all(parent)
-                            .map_err(|e| PboOperationError::io_error("creating parent directory", e))?;
-                    }
-                    
-                    // Move the file
-                    fs::rename(entry.path(), &final_path)
-                        .or_else(|_| {
-                            // If rename fails (e.g., across filesystems), try copy and delete
-                            fs::copy(entry.path(), &final_path)?;
-                            fs::remove_file(entry.path())?;
-                            Ok(())
-                        })
-                        .map_err(|e| PboOperationError::io_error("moving file", e))?;
-                    
-                    // Calculate the relative path from the output_dir
-                    if let Ok(final_rel_path) = final_path.strip_prefix(output_dir) {
-                        extracted_files.push(final_rel_path.to_path_buf());
-                    } else {
-                        warn!("Failed to calculate relative path for {}", final_path.display());
-                    }
+                // Calculate the relative path from the output_dir
+                if let Ok(rel_path) = entry.path().strip_prefix(output_dir) {
+                    extracted_files.push(rel_path.to_path_buf());
+                } else {
+                    warn!("Failed to calculate relative path for {}", entry.path().display());
                 }
             }
         }
         
-        // Clean up temp directory
-        let _ = fs::remove_dir_all(&temp_extract_dir);
-        
         if let Some(ref prefix_str) = dir_prefix {
             if !prefix_str.is_empty() {
                 if is_mission_pbo {
-                    info!("Extracted {} files from mission PBO to '{}'", extracted_files.len(), prefix_str);
+                    info!("Extracted {} filtered files from mission PBO to '{}'", extracted_files.len(), prefix_str);
                 } else {
-                    info!("Extracted {} files from mod PBO with prefix '{}'", extracted_files.len(), prefix_str);
+                    info!("Extracted {} filtered files from mod PBO with prefix '{}'", extracted_files.len(), prefix_str);
                 }
             }
         }
         
         Ok(extracted_files)
+    }
+    
+    async fn extract_filtered_parallel(
+        &self,
+        pbo_paths: &[&Path],
+        output_dir: &Path,
+        filter: &str,
+        max_concurrent: usize,
+    ) -> Result<HashMap<PathBuf, Vec<PathBuf>>, PboOperationError> {
+        info!("Starting parallel extraction of {} PBOs with filter '{}'", pbo_paths.len(), filter);
+        
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+        let mut tasks = Vec::new();
+        
+        // Create a task for each PBO
+        for &pbo_path in pbo_paths {
+            let pbo_path = pbo_path.to_path_buf();
+            let output_dir = output_dir.to_path_buf();
+            let filter = filter.to_string();
+            let semaphore = semaphore.clone();
+            
+            // Create a new PBO API instance for each task
+            let timeout_seconds = self.timeout_seconds;
+            
+            let task = task::spawn(async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                
+                debug!("Starting extraction of PBO: {}", pbo_path.display());
+                
+                // Create a temporary extractor for this task
+                let extractor = HemttPboExtractor::new(timeout_seconds);
+                
+                let result = extractor.extract_single_pbo(&pbo_path, &output_dir, &filter).await;
+                
+                match result {
+                    Ok(files) => {
+                        info!("Successfully extracted {} files from {}", files.len(), pbo_path.display());
+                        Ok((pbo_path, files))
+                    }
+                    Err(e) => {
+                        warn!("Failed to extract from {}: {}", pbo_path.display(), e);
+                        Err((pbo_path, e))
+                    }
+                }
+            });
+            
+            tasks.push(task);
+        }
+        
+        // Wait for all tasks to complete
+        let mut results = HashMap::new();
+        let mut errors = Vec::new();
+        
+        for task in tasks {
+            match task.await {
+                Ok(Ok((pbo_path, files))) => {
+                    results.insert(pbo_path, files);
+                }
+                Ok(Err((pbo_path, error))) => {
+                    errors.push((pbo_path, error));
+                }
+                Err(join_error) => {
+                    warn!("Task join error: {}", join_error);
+                }
+            }
+        }
+        
+        // Report summary
+        info!("Parallel extraction completed: {} successful, {} failed", 
+              results.len(), errors.len());
+        
+        if !errors.is_empty() {
+            warn!("Errors occurred during parallel extraction:");
+            for (pbo_path, error) in &errors {
+                warn!("  {}: {}", pbo_path.display(), error);
+            }
+        }
+        
+        // Return results (successful extractions)
+        Ok(results)
     }
     
     async fn list_extracted_files(
@@ -290,6 +460,63 @@ impl PboExtractor for HemttPboExtractor {
         }
         
         Ok(conversions)
+    }
+    
+    async fn benchmark_extraction(
+        &self,
+        pbo_path: &Path,
+        output_dir: &Path,
+        filter: &str,
+        iterations: usize,
+    ) -> Result<ExtractionBenchmark, PboOperationError> {
+        info!("Starting benchmark of {} iterations for PBO: {}", iterations, pbo_path.display());
+        
+        let mut benchmark = ExtractionBenchmark::new(iterations);
+        
+        // Create a temporary directory for benchmark extractions
+        let bench_dir = output_dir.join(".benchmark_temp");
+        
+        for i in 0..iterations {
+            let iteration_dir = bench_dir.join(format!("iteration_{}", i));
+            
+            // Clean up previous iteration if it exists
+            if iteration_dir.exists() {
+                fs::remove_dir_all(&iteration_dir)
+                    .map_err(|e| PboOperationError::io_error("cleaning benchmark directory", e))?;
+            }
+            
+            fs::create_dir_all(&iteration_dir)
+                .map_err(|e| PboOperationError::io_error("creating benchmark directory", e))?;
+            
+            // Time the extraction
+            let start = Instant::now();
+            let extracted_files = self.extract_filtered(pbo_path, &iteration_dir, filter).await?;
+            let duration = start.elapsed();
+            
+            // Calculate total bytes extracted
+            let mut total_bytes = 0u64;
+            for rel_path in &extracted_files {
+                let full_path = iteration_dir.join(rel_path);
+                if let Ok(metadata) = fs::metadata(&full_path) {
+                    total_bytes += metadata.len();
+                }
+            }
+            
+            benchmark.add_iteration(duration, extracted_files.len(), total_bytes);
+            
+            debug!("Benchmark iteration {}: {:.2}ms, {} files, {} bytes", 
+                   i + 1, duration.as_millis(), extracted_files.len(), total_bytes);
+        }
+        
+        // Clean up benchmark directory
+        let _ = fs::remove_dir_all(&bench_dir);
+        
+        benchmark.finalize();
+        
+        info!("Benchmark completed - Average: {:.2}ms, Throughput: {:.2} MB/s", 
+              benchmark.average_duration.as_millis(), benchmark.throughput_mb_per_sec);
+        
+        Ok(benchmark)
     }
 }
 
