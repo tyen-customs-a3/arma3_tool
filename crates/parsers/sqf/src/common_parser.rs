@@ -99,7 +99,7 @@ mod tests {
         let result = parser.parse_str(content);
         assert!(result.is_ok());
         
-        let references = result.unwrap();
+        let _references = result.unwrap();
         // The specific results depend on the evaluator logic
         // This test just ensures the trait implementation works
     }
@@ -136,7 +136,7 @@ mod tests {
         let result = parser.parse_file(&file_path);
         
         assert!(result.is_ok());
-        let references = result.unwrap();
+        let _references = result.unwrap();
         // The specific results depend on the evaluator implementation
     }
 

@@ -152,6 +152,7 @@ impl HemttPboExtractor {
     }
     
     /// Get the timeout value for creating new API instances
+    #[allow(dead_code)]
     fn get_timeout(&self) -> u64 {
         self.timeout_seconds
     }

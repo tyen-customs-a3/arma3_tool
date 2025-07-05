@@ -137,7 +137,7 @@ impl ExporterInterface for MockExporter {
     async fn export_data(&self, 
         _source_dir: &PathBuf,
         output_dir: &PathBuf,
-        options: &ExportOptions,
+        _options: &ExportOptions,
     ) -> Result<ExportSummary> {
         if self.should_fail {
             return Err(WorkflowError::export_error("Mock export failed"));

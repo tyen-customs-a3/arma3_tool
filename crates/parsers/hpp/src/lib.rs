@@ -16,6 +16,7 @@ mod common_parser;
 pub use error::ParseError;
 pub use file_processor::{ParseResult, ParseWarning}; // Export new parsing result types
 pub use models::{GameClass, ClassProperty, PropertyValue, FileParser}; // Re-export all needed types
+#[cfg(test)]
 use arma3_types::Value;
 pub use query::DependencyExtractor;
 pub use simple_parser::{SimpleClassScanner, parse_file_simple};

@@ -450,7 +450,7 @@ impl WorkflowResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{WorkflowOptions, ExtractionOptions, ProcessingOptions, ReportingOptions};
+    use crate::types::WorkflowOptions;
     use crate::ContentType;
 
     #[tokio::test]

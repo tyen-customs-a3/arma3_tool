@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use arma3_types::{Class, Value, ClassMetadata};
 use crate::{GameClass, PropertyValue};
+
+#[cfg(test)]
+use arma3_types::{Class, Value, ClassMetadata};
 
 /// Represents a query pattern to search for and extract data from HPP classes
 #[derive(Debug, Clone)]
